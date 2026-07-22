@@ -1,0 +1,1284 @@
+     1→'use client'
+     2→
+     3→import { useQuery } from '@tanstack/react-query'
+     4→import { useState, useEffect, useRef } from 'react'
+     5→import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+     6→import { Badge } from '@/components/ui/badge'
+     7→import { Button } from '@/components/ui/button'
+     8→import { Progress } from '@/components/ui/progress'
+     9→import { Skeleton } from '@/components/ui/skeleton'
+    10→import { Separator } from '@/components/ui/separator'
+    11→import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from '@/components/ui/tooltip'
+    12→import { ChartContainer, ChartTooltip, ChartTooltipContent } from '@/components/ui/chart'
+    13→import { Pie, PieChart, Cell, Bar, BarChart, XAxis, YAxis } from 'recharts'
+    14→import { FileText, Users, BookOpen, AlertTriangle, Clock, CheckCircle, CheckCircle2, Circle, Zap, Shield, Scale, ArrowRight, RefreshCw, XCircle, Gavel, Activity, MapPin, UploadCloud, FileSearch, Bookmark, Swords, History, Flame, CalendarClock, TrendingUp, FileUp, MessageCircle, ShieldCheck, Download, BrainCircuit, Eye, PenLine } from 'lucide-react'
+    15→import { mockDashboardStats, mockCaseHealthScore, mockEvidenceTimeline, mockCaseBrief, mockBookmarks, mockCaseTimeline, mockAuditLog } from '@/lib/mock-data'
+    16→import { getDashboardStats, getCaseHealthScore, getEvidenceTimeline, getCaseBrief, getBookmarks, getCaseTimeline, getAuditLog } from '@/lib/case-api'
+    17→import { useCaseStore } from '@/lib/case-store'
+    18→import { toast } from '@/hooks/use-toast'
+    19→import type { CaseHealthScore, EvidenceTimelineEvent, BookmarkData, CaseTimelineEvent, SectionId, AuditLogEntry } from '@/lib/case-store'
+    20→
+    21→const BOOKMARK_BORDER: Record<string, string> = { red: 'border-l-red-700', amber: 'border-l-amber-600', emerald: 'border-l-emerald-700', stone: 'border-l-stone-500' }
+    22→const BOOKMARK_BADGE: Record<string, string> = { red: 'bg-red-700 text-white', amber: 'bg-amber-600 text-white', emerald: 'bg-emerald-700 text-white', stone: 'bg-stone-500 text-white' }
+    23→const TIMELINE_CAT_COLOR: Record<string, string> = { crime: 'bg-red-600', investigation: 'bg-amber-500', legal: 'bg-stone-500', defense: 'bg-emerald-600', evidence: 'bg-orange-500', hearing: 'bg-red-700' }
+    24→const GUILT_COLORS: Record<string, string> = { high: '#dc2626', moderate: '#ea580c', low: '#ca8a04', none: '#525252' }
+    25→const GUILT_LABEL: Record<string, string> = { high: 'Высокая', moderate: 'Средняя', low: 'Низкая', none: 'Нет' }
+    26→const DOC_COLORS = ['#dc2626', '#ea580c', '#ca8a04', '#78716c']
+    27→const guiltChartConfig = Object.fromEntries(Object.entries(GUILT_LABEL).map(([k, v]) => [v, { label: v, color: GUILT_COLORS[k] }]))
+    28→const docTypeChartConfig = { 'Обвинение': { label: 'Обвинение', color: '#dc2626' }, 'Показание': { label: 'Показание', color: '#ea580c' }, 'Протокол': { label: 'Протокол', color: '#ca8a04' }, 'Экспертиза': { label: 'Экспертиза', color: '#78716c' } }
+    29→
+    30→const STAT_ITEMS = [
+    31→  { key: 'totalDocuments', label: 'Документы', icon: FileText, gradient: 'from-red-900/20 to-stone-900/10', border: 'border-red-700' },
+    32→  { key: 'totalPersons', label: 'Участники', icon: Users, gradient: 'from-orange-900/20 to-stone-900/10', border: 'border-orange-600' },
+    33→  { key: 'totalEpisodes', label: 'Эпизоды', icon: BookOpen, gradient: 'from-amber-900/20 to-stone-900/10', border: 'border-amber-600' },
+    34→  { key: 'totalArticles', label: 'Статьи', icon: Scale, gradient: 'from-stone-800/20 to-stone-900/10', border: 'border-stone-600' },
+    35→] as const
+    36→
+    37→const STATUS_ICON: Record<string, React.ReactNode> = {
+    38→  completed: <CheckCircle className="w-3 h-3 text-emerald-600" />,
+    39→  processing: <Clock className="w-3 h-3 text-amber-500 animate-spin" />,
+    40→  pending: <Clock className="w-3 h-3 text-stone-400" />,
+    41→  failed: <XCircle className="w-3 h-3 text-red-600" />,
+    42→}
+    43→
+    44→// ──── Animated counter hook — smoothly increments from 0 to target value over ~700ms ────
+    45→function useAnimatedCounter(target: number, durationMs: number = 700) {
+    46→  const [value, setValue] = useState(0)
+    47→  const rafRef = useRef<number | null>(null)
+    48→  useEffect(() => {
+    49→    const start = performance.now()
+    50→    const startValue = value
+    51→    const delta = target - startValue
+    52→    if (delta === 0) return
+    53→    const tick = (now: number) => {
+    54→      const elapsed = now - start
+    55→      const t = Math.min(1, elapsed / durationMs)
+    56→      // ease-out cubic
+    57→      const eased = 1 - Math.pow(1 - t, 3)
+    58→      setValue(Math.round(startValue + delta * eased))
+    59→      if (t < 1) {
+    60→        rafRef.current = requestAnimationFrame(tick)
+    61→      }
+    62→    }
+    63→    rafRef.current = requestAnimationFrame(tick)
+    64→    return () => { if (rafRef.current) cancelAnimationFrame(rafRef.current) }
+    65→  }, [target, durationMs])
+    66→  return value
+    67→}
+    68→
+    69→// ──── ENHANCED: Speedometer-style Health Gauge with color segments and pulsing ────
+    70→function HealthScoreSpeedometer({ score }: { score: number }) {
+    71→  const animatedScore = useAnimatedCounter(score, 900)
+    72→  const isLow = score < 40
+    73→  // Gauge dimensions
+    74→  const cx = 80
+    75→  const cy = 80
+    76→  const outerR = 70
+    77→  const innerR = 50
+    78→  // Arc spans from -210° to 30° (240° sweep, like a speedometer)
+    79→  const startAngle = -210
+    80→  const sweepAngle = 240
+    81→  // Background arc
+    82→  const bgStartRad = (startAngle * Math.PI) / 180
+    83→  const bgEndRad = ((startAngle + sweepAngle) * Math.PI) / 180
+    84→  const bgStartX = cx + outerR * Math.cos(bgStartRad)
+    85→  const bgStartY = cy + outerR * Math.sin(bgStartRad)
+    86→  const bgEndX = cx + outerR * Math.cos(bgEndRad)
+    87→  const bgEndY = cy + outerR * Math.sin(bgEndRad)
+    88→  const bgInnerStartX = cx + innerR * Math.cos(bgStartRad)
+    89→  const bgInnerStartY = cy + innerR * Math.sin(bgStartRad)
+    90→  const bgInnerEndX = cx + innerR * Math.cos(bgEndRad)
+    91→  const bgInnerEndY = cy + innerR * Math.sin(bgEndRad)
+    92→  const bgLargeArc = sweepAngle > 180 ? 1 : 0
+    93→
+    94→  // Color segments: red 0-40, amber 40-60, emerald 60-100
+    95→  const segments = [
+    96→    { start: 0, end: 40, color: '#dc2626' },
+    97→    { start: 40, end: 60, color: '#d97706' },
+    98→    { start: 60, end: 100, color: '#059669' },
+    99→  ]
+   100→
+   101→  function arcPath(segStart: number, segEnd: number) {
+   102→    const sa = startAngle + (segStart / 100) * sweepAngle
+   103→    const ea = startAngle + (segEnd / 100) * sweepAngle
+   104→    const saRad = (sa * Math.PI) / 180
+   105→    const eaRad = (ea * Math.PI) / 180
+   106→    const sOuterX = cx + outerR * Math.cos(saRad)
+   107→    const sOuterY = cy + outerR * Math.sin(saRad)
+   108→    const eOuterX = cx + outerR * Math.cos(eaRad)
+   109→    const eOuterY = cy + outerR * Math.sin(eaRad)
+   110→    const sInnerX = cx + innerR * Math.cos(saRad)
+   111→    const sInnerY = cy + innerR * Math.sin(saRad)
+   112→    const eInnerX = cx + innerR * Math.cos(eaRad)
+   113→    const eInnerY = cy + innerR * Math.sin(eaRad)
+   114→    const arcSweep = ea - sa
+   115→    const largeArc = arcSweep > 180 ? 1 : 0
+   116→    return `M ${sOuterX} ${sOuterY} A ${outerR} ${outerR} 0 ${largeArc} 1 ${eOuterX} ${eOuterY} L ${eInnerX} ${eInnerY} A ${innerR} ${innerR} 0 ${largeArc} 0 ${sInnerX} ${sInnerY} Z`
+   117→  }
+   118→
+   119→  // Needle angle
+   120→  const needleAngle = startAngle + (animatedScore / 100) * sweepAngle
+   121→  const needleRad = (needleAngle * Math.PI) / 180
+   122→  const needleLen = 42
+   123→  const needleX = cx + needleLen * Math.cos(needleRad)
+   124→  const needleY = cy + needleLen * Math.sin(needleRad)
+   125→
+   126→  // Current color based on score
+   127→  const currentColor = score >= 60 ? '#059669' : score >= 40 ? '#d97706' : '#dc2626'
+   128→
+   129→  return (
+   130→    <div className={`flex items-center justify-center ${isLow ? 'animate-pulse' : ''}`}>
+   131→      <svg width="160" height="120" viewBox="0 0 160 120">
+   132→        {/* Background arc */}
+   133→        <path
+   134→          d={`M ${bgStartX} ${bgStartY} A ${outerR} ${outerR} 0 ${bgLargeArc} 1 ${bgEndX} ${bgEndY} L ${bgInnerEndX} ${bgInnerEndY} A ${innerR} ${innerR} 0 ${bgLargeArc} 0 ${bgInnerStartX} ${bgInnerStartY} Z`}
+   135→          fill="#e7e5e4"
+   136→          className="dark:fill-stone-700"
+   137→        />
+   138→        {/* Color segments */}
+   139→        {segments.map(seg => (
+   140→          <path
+   141→            key={seg.color}
+   142→            d={arcPath(seg.start, seg.end)}
+   143→            fill={seg.color}
+   144→            opacity={0.25}
+   145→          />
+   146→        ))}
+   147→        {/* Active segment up to score */}
+   148→        <path
+   149→          d={arcPath(0, animatedScore)}
+   150→          fill={currentColor}
+   151→          opacity={0.8}
+   152→          className="transition-all duration-700"
+   153→        />
+   154→        {/* Needle */}
+   155→        <line
+   156→          x1={cx}
+   157→          y1={cy}
+   158→          x2={needleX}
+   159→          y2={needleY}
+   160→          stroke={currentColor}
+   161→          strokeWidth="3"
+   162→          strokeLinecap="round"
+   163→          className="transition-all duration-700"
+   164→        />
+   165→        {/* Center circle */}
+   166→        <circle cx={cx} cy={cy} r="6" fill={currentColor} className="transition-all duration-700" />
+   167→        {/* Score text */}
+   168→        <text x={cx} y={cy + 28} textAnchor="middle" className="text-sm font-bold fill-foreground" style={{ fontSize: '14px' }}>
+   169→          {animatedScore}
+   170→        </text>
+   171→        <text x={cx} y={cy + 40} textAnchor="middle" className="fill-muted-foreground" style={{ fontSize: '10px' }}>
+   172→          из 100
+   173→        </text>
+   174→        {/* Scale labels */}
+   175→        <text x={bgStartX - 2} y={bgStartY + 4} textAnchor="end" className="fill-muted-foreground" style={{ fontSize: '9px' }}>0</text>
+   176→        <text x={bgEndX + 2} y={bgEndY + 4} textAnchor="start" className="fill-muted-foreground" style={{ fontSize: '9px' }}>100</text>
+   177→        {/* Color labels at midpoints */}
+   178→        <text x={cx - 52} y={cy + 52} textAnchor="middle" className="fill-red-600" style={{ fontSize: '8px', fontWeight: 'bold' }}>Крит.</text>
+   179→        <text x={cx - 8} y={cy + 52} textAnchor="middle" className="fill-amber-600" style={{ fontSize: '8px', fontWeight: 'bold' }}>Умер.</text>
+   180→        <text x={cx + 42} y={cy + 52} textAnchor="middle" className="fill-emerald-600" style={{ fontSize: '8px', fontWeight: 'bold' }}>Хорошо</text>
+   181→      </svg>
+   182→    </div>
+   183→  )
+   184→}
+   185→
+   186→// Factor breakdown with tooltip
+   187→function FactorRow({ factor }: { factor: { value: number; label: string; tooltip: string } }) {
+   188→  const color = factor.value >= 70 ? 'bg-emerald-700 text-white' : factor.value >= 50 ? 'bg-amber-600 text-white' : 'bg-red-700 text-white'
+   189→  const progressColor = factor.value >= 70 ? '[&>div]:bg-emerald-600' : factor.value >= 50 ? '[&>div]:bg-amber-500' : '[&>div]:bg-red-600'
+   190→  return (
+   191→    <TooltipProvider delayDuration={200}>
+   192→      <Tooltip>
+   193→        <TooltipTrigger asChild>
+   194→          <div className="flex items-center gap-2 cursor-help">
+   195→            <span className="text-xs font-medium min-w-[120px]">{factor.label}</span>
+   196→            <Progress value={factor.value} className={`h-2 flex-1 ${progressColor}`} />
+   197→            <Badge className={color}>{factor.value}%</Badge>
+   198→          </div>
+   199→        </TooltipTrigger>
+   200→        <TooltipContent side="right" className="max-w-[280px] text-xs"><p>{factor.tooltip}</p></TooltipContent>
+   201→      </Tooltip>
+   202→    </TooltipProvider>
+   203→  )
+   204→}
+   205→
+   206→// Evidence timeline event type config
+   207→const EVENT_TYPE_CONFIG: Record<string, { icon: React.ReactNode; dotColor: string }> = {
+   208→  document_upload: { icon: <UploadCloud className="w-3 h-3 text-amber-600" />, dotColor: 'bg-amber-500' },
+   209→  analysis_complete: { icon: <CheckCircle className="w-3 h-3 text-emerald-600" />, dotColor: 'bg-emerald-500' },
+   210→  compliance_check: { icon: <Scale className="w-3 h-3 text-orange-600" />, dotColor: 'bg-orange-500' },
+   211→  defense_update: { icon: <Shield className="w-3 h-3 text-stone-500" />, dotColor: 'bg-stone-500' },
+   212→  episode_found: { icon: <BookOpen className="w-3 h-3 text-red-600" />, dotColor: 'bg-red-500' },
+   213→}
+   214→
+   215→function EvidenceTimelineSection({ events }: { events: EvidenceTimelineEvent[] }) {
+   216→  return (
+   217→    <Card className="rounded-xl shadow-sm bg-gradient-to-br from-card via-card to-muted/20 border-t-2 border-t-amber-500 transition-shadow hover:shadow-md">
+   218→      <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2"><FileSearch className="w-4 h-4 text-amber-600" /> Хронология событий</CardTitle></CardHeader>
+   219→      <CardContent className="p-4">
+   220→        <div className="relative pl-6 space-y-3 max-h-80 overflow-y-auto scrollbar-thin">
+   221→          {events.map((event, i) => {
+   222→            const config = EVENT_TYPE_CONFIG[event.eventType] ?? { icon: <Clock className="w-3 h-3" />, dotColor: 'bg-stone-400' }
+   223→            return (
+   224→              <div key={event.id} className="relative group">
+   225→                <div className={`absolute -left-6 w-3 h-3 rounded-full ${config.dotColor} ring-2 ring-background transition-transform group-hover:scale-125`} />
+   226→                {i < events.length - 1 && <div className="absolute -left-[21px] top-3 w-0.5 h-full bg-stone-300 dark:bg-stone-600" />}
+   227→                <div className="flex items-start gap-2 text-sm">
+   228→                  <div className="flex items-center gap-1 shrink-0">{config.icon}</div>
+   229→                  <div className="flex-1 min-w-0">
+   230→                    <p className="font-medium text-xs">{event.description}</p>
+   231→                    <p className="text-xs text-muted-foreground">{new Date(event.date).toLocaleDateString('ru-RU', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</p>
+   232→                  </div>
+   233→                </div>
+   234→              </div>
+   235→            )
+   236→          })}
+   237→        </div>
+   238→      </CardContent>
+   239→    </Card>
+   240→  )
+   241→}
+   242→
+   243→// Case Strength meter
+   244→function CaseStrengthMeter({ brief }: { brief: typeof mockCaseBrief }) {
+   245→  const prosecutionPct = brief.predictedOutcome.slice(0, 2).reduce((s, o) => s + o.probability, 0)
+   246→  const defensePct = Math.max(0, 100 - prosecutionPct)
+   247→  return (
+   248→    <Card className="rounded-xl shadow-sm border-l-4 border-amber-600 bg-gradient-to-br from-card via-card to-muted/20 transition-shadow hover:shadow-md">
+   249→      <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2"><Swords className="w-4 h-4 text-amber-600" /> Баланс сил дела</CardTitle></CardHeader>
+   250→      <CardContent className="p-4 space-y-3">
+   251→        <div>
+   252→          <div className="flex justify-between text-xs mb-1"><span className="font-semibold text-red-700 flex items-center gap-1"><Gavel className="w-3 h-3" />Обвинение</span><span className="font-bold text-red-700">{prosecutionPct}%</span></div>
+   253→          <div className="h-4 rounded-full bg-stone-200 dark:bg-stone-700 overflow-hidden"><div className="h-full bg-gradient-to-r from-red-800 to-red-600 transition-all duration-700" style={{ width: `${prosecutionPct}%` }} /></div>
+   254→        </div>
+   255→        <div>
+   256→          <div className="flex justify-between text-xs mb-1"><span className="font-semibold text-emerald-700 flex items-center gap-1"><Shield className="w-3 h-3" />Защита</span><span className="font-bold text-emerald-700">{defensePct}%</span></div>
+   257→          <div className="h-4 rounded-full bg-stone-200 dark:bg-stone-700 overflow-hidden"><div className="h-full bg-gradient-to-r from-emerald-800 to-emerald-600 transition-all duration-700" style={{ width: `${defensePct}%` }} /></div>
+   258→        </div>
+   259→        <Separator />
+   260→        <div className="space-y-1.5">
+   261→          {brief.predictedOutcome.map(o => (
+   262→            <div key={o.scenario} className="flex items-center justify-between gap-2 text-xs p-1.5 rounded-md bg-muted/40">
+   263→              <span className="flex-1 min-w-0 leading-tight">{o.scenario}</span>
+   264→              <Badge variant="outline" className="text-xs shrink-0 font-semibold">{o.probability}%</Badge>
+   265→            </div>
+   266→          ))}
+   267→        </div>
+   268→        <p className="text-xs text-muted-foreground">ИИ-прогноз исхода • Уверенность {brief.aiConfidence}%</p>
+   269→      </CardContent>
+   270→    </Card>
+   271→  )
+   272→}
+   273→
+   274→// Quick Bookmarks
+   275→function QuickBookmarks({ bookmarks, onNavigate }: { bookmarks: BookmarkData[]; onNavigate: () => void }) {
+   276→  return (
+   277→    <Card className="rounded-xl shadow-sm bg-gradient-to-br from-card via-card to-muted/20 border-t-2 border-t-amber-500 transition-shadow hover:shadow-md">
+   278→      <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2"><Bookmark className="w-4 h-4 text-amber-600" /> Быстрые закладки <Button size="sm" variant="ghost" className="ml-auto rounded-lg" onClick={onNavigate}>Все <RefreshCw className="w-3 h-3 ml-1" /></Button></CardTitle></CardHeader>
+   279→      <CardContent className="p-4">
+   280→        <div className="grid sm:grid-cols-2 gap-2 max-h-48 overflow-y-auto scrollbar-thin">
+   281→          {bookmarks.map(bm => (
+   282→            <div key={bm.id} className={`border-l-4 ${BOOKMARK_BORDER[bm.color]} bg-muted/40 rounded-r-lg p-2 transition-all duration-200 hover:bg-muted hover:translate-x-0.5`}>
+   283→              <div className="flex items-center gap-1.5">
+   284→                <Badge className={`${BOOKMARK_BADGE[bm.color]} text-xs capitalize`}>{bm.entityType}</Badge>
+   285→                <span className="text-xs font-medium truncate flex-1">{bm.entityName}</span>
+   286→              </div>
+   287→              <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{bm.note}</p>
+   288→            </div>
+   289→          ))}
+   290→        </div>
+   291→      </CardContent>
+   292→    </Card>
+   293→  )
+   294→}
+   295→
+   296→// ──── ENHANCED: Quick Actions Card with gradient backgrounds and hover animations ────
+   297→function QuickActionsCard({ onNavigate }: { onNavigate: (section: SectionId) => void }) {
+   298→  const actions = [
+   299→    {
+   300→      label: 'Загрузить документ',
+   301→      icon: FileUp,
+   302→      gradient: 'from-red-800/90 to-red-700/90',
+   303→      hoverGradient: 'from-red-800 to-red-700',
+   304→      shadow: 'shadow-red-900/30',
+   305→      onClick: () => {
+   306→        onNavigate('documents')
+   307→        toast({ title: 'Загрузка документа', description: 'Открыт раздел "Документы". Перетащите PDF для загрузки.' })
+   308→      },
+   309→    },
+   310→    {
+   311→      label: 'Спросить ИИ',
+   312→      icon: MessageCircle,
+   313→      gradient: 'from-amber-700/90 to-amber-600/90',
+   314→      hoverGradient: 'from-amber-700 to-amber-600',
+   315→      shadow: 'shadow-amber-900/30',
+   316→      onClick: () => {
+   317→        onNavigate('qa')
+   318→        toast({ title: 'Вопрос ИИ', description: 'Открыт раздел "Вопросы ИИ-аналитику".' })
+   319→      },
+   320→    },
+   321→    {
+   322→      label: 'Проверить нормы',
+   323→      icon: ShieldCheck,
+   324→      gradient: 'from-emerald-800/90 to-emerald-700/90',
+   325→      hoverGradient: 'from-emerald-800 to-emerald-700',
+   326→      shadow: 'shadow-emerald-900/30',
+   327→      onClick: () => {
+   328→        onNavigate('legal-check')
+   329→        toast({ title: 'Правовая проверка', description: 'Открыт раздел правовой проверки.' })
+   330→      },
+   331→    },
+   332→    {
+   333→      label: 'Экспорт отчёта',
+   334→      icon: Download,
+   335→      gradient: 'from-stone-700/90 to-stone-600/90',
+   336→      hoverGradient: 'from-stone-700 to-stone-600',
+   337→      shadow: 'shadow-stone-900/30',
+   338→      onClick: () => {
+   339→        toast({ title: 'Экспорт отчёта', description: 'Подготовка отчёта по делу № 2024-00145...' })
+   340→      },
+   341→    },
+   342→  ]
+   343→  return (
+   344→    <Card className="rounded-xl shadow-sm bg-gradient-to-br from-card via-card to-muted/20 border-t-2 border-t-amber-500 transition-shadow hover:shadow-md">
+   345→      <CardHeader className="pb-2">
+   346→        <CardTitle className="text-sm flex items-center gap-2">
+   347→          <Zap className="w-4 h-4 text-amber-600" /> Быстрые действия
+   348→          <Badge variant="outline" className="text-xs ml-auto">4 действия</Badge>
+   349→        </CardTitle>
+   350→      </CardHeader>
+   351→      <CardContent className="p-4">
+   352→        <div className="grid grid-cols-2 gap-3">
+   353→          {actions.map(({ label, icon: Icon, gradient, hoverGradient, shadow, onClick }) => (
+   354→            <button
+   355→              key={label}
+   356→              type="button"
+   357→              onClick={onClick}
+   358→              className={`group relative flex items-center gap-3 p-3 rounded-xl bg-gradient-to-br ${gradient} text-white text-left transition-all duration-300 hover:bg-gradient-to-br ${hoverGradient} hover:shadow-lg ${shadow} hover:-translate-y-1 hover:scale-[1.02] focus:outline-none focus:ring-2 focus:ring-amber-500/40 focus-visible:ring-2 focus-visible:ring-amber-500/40 overflow-hidden`}
+   359→            >
+   360→              {/* Decorative background shape */}
+   361→              <div className="absolute -right-2 -top-2 w-10 h-10 rounded-full bg-white/10 group-hover:bg-white/15 transition-colors" />
+   362→              <span className="flex items-center justify-center w-9 h-9 rounded-lg bg-white/20 shrink-0 transition-all duration-300 group-hover:bg-white/30 group-hover:scale-110 group-hover:rotate-3">
+   363→                <Icon className="w-5 h-5 drop-shadow-sm" />
+   364→              </span>
+   365→              <span className="text-sm font-semibold leading-tight drop-shadow-sm">{label}</span>
+   366→            </button>
+   367→          ))}
+   368→        </div>
+   369→      </CardContent>
+   370→    </Card>
+   371→  )
+   372→}
+   373→
+   374→// Case procedure stages
+   375→const PROCEDURE_STAGES = [
+   376→  { id: 1, short: 'Возбуждение дела', full: 'Возбуждение уголовного дела' },
+   377→  { id: 2, short: 'Предварительное расследование', full: 'Предварительное расследование' },
+   378→  { id: 3, short: 'Предъявление обвинения', full: 'Предъявление обвинения' },
+   379→  { id: 4, short: 'Ознакомление с материалами', full: 'Ознакомление с материалами дела' },
+   380→  { id: 5, short: 'Передача дела в суд', full: 'Передача дела в суд' },
+   381→  { id: 6, short: 'Предварительное слушание', full: 'Предварительное слушание' },
+   382→  { id: 7, short: 'Судебное разбирательство', full: 'Судебное разбирательство' },
+   383→  { id: 8, short: 'Вынесение приговора', full: 'Вынесение приговора' },
+   384→  { id: 9, short: 'Апелляция', full: 'Апелляция' },
+   385→  { id: 10, short: 'Вступление приговора в силу', full: 'Вступление приговора в силу' },
+   386→] as const
+   387→
+   388→const PROCEDURE_CURRENT_INDEX = 3
+   389→
+   390→function ProcedureProgressDonut({ percent }: { percent: number }) {
+   391→  const radius = 30
+   392→  const circumference = 2 * Math.PI * radius
+   393→  const offset = circumference - (percent / 100) * circumference
+   394→  return (
+   395→    <div className="relative shrink-0" aria-label={`Прогресс производства ${percent}%`}>
+   396→      <svg width="80" height="80" className="transform -rotate-90">
+   397→        <circle cx="40" cy="40" r={radius} stroke="#e7e5e4" strokeWidth="8" fill="none" className="dark:stroke-stone-700" />
+   398→        <circle cx="40" cy="40" r={radius} stroke="#9333ea" strokeWidth="8" fill="none" strokeDasharray={circumference} strokeDashoffset={offset} strokeLinecap="round" className="transition-all duration-700" />
+   399→      </svg>
+   400→      <div className="absolute inset-0 flex flex-col items-center justify-center">
+   401→        <span className="text-sm font-bold text-purple-600">{percent}%</span>
+   402→      </div>
+   403→    </div>
+   404→  )
+   405→}
+   406→
+   407→function CaseProcedureStage() {
+   408→  const currentIndex = PROCEDURE_CURRENT_INDEX
+   409→  const completedCount = currentIndex
+   410→  const percent = Math.round((completedCount / PROCEDURE_STAGES.length) * 100)
+   411→  const currentStage = PROCEDURE_STAGES[currentIndex]
+   412→  const nextStage = PROCEDURE_STAGES[currentIndex + 1] ?? PROCEDURE_STAGES[currentIndex]
+   413→
+   414→  return (
+   415→    <Card className="rounded-xl shadow-sm bg-gradient-to-br from-card via-card to-muted/20 border-t-2 border-t-purple-500 transition-shadow hover:shadow-md">
+   416→      <CardHeader className="pb-2 relative">
+   417→        <CardTitle className="text-sm flex items-center gap-2">
+   418→          <Scale className="w-4 h-4 text-purple-600" /> Этапы производства по делу
+   419→        </CardTitle>
+   420→        <p className="text-xs text-muted-foreground mt-1 pr-24">
+   421→          {currentStage.full} · {percent}% выполнено
+   422→        </p>
+   423→        <div className="absolute top-3 right-4">
+   424→          <ProcedureProgressDonut percent={percent} />
+   425→        </div>
+   426→      </CardHeader>
+   427→      <CardContent className="p-4">
+   428→        <div
+   429→          className="flex items-start gap-0 overflow-x-auto pb-2 [scrollbar-width:thin] [scrollbar-color:theme(colors.stone.400)_transparent] [&::-webkit-scrollbar]:h-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-stone-400/60"
+   430→          aria-label="Этапы производства по делу (горизонтальная прокрутка)"
+   431→        >
+   432→          {PROCEDURE_STAGES.map((stage, i) => {
+   433→            const isCompleted = i < currentIndex
+   434→            const isCurrent = i === currentIndex
+   435→            const isUpcoming = i > currentIndex
+   436→            const isLast = i === PROCEDURE_STAGES.length - 1
+   437→            return (
+   438→              <div key={stage.id} className="flex items-start shrink-0">
+   439→                <div className="flex flex-col items-center text-center min-w-[110px] max-w-[120px]">
+   440→                  <div
+   441→                    className={`relative flex items-center justify-center w-9 h-9 rounded-full transition-all
+   442→                      ${isCompleted ? 'bg-emerald-600 text-white' : ''}
+   443→                      ${isCurrent ? 'bg-amber-500 text-white ring-4 ring-amber-500/30 animate-pulse' : ''}
+   444→                      ${isUpcoming ? 'bg-stone-200 dark:bg-stone-700 text-stone-500 dark:text-stone-400' : ''}`}
+   445→                  >
+   446→                    {isCompleted ? (
+   447→                      <CheckCircle2 className="w-5 h-5" />
+   448→                    ) : (
+   449→                      <span className="text-sm font-bold">{stage.id}</span>
+   450→                    )}
+   451→                    {isCurrent && <Circle className="w-9 h-9 absolute text-amber-500/30" />}
+   452→                  </div>
+   453→                  <span
+   454→                    className={`text-[10px] mt-1.5 leading-tight font-medium line-clamp-2
+   455→                      ${isCompleted ? 'text-emerald-700 dark:text-emerald-500' : ''}
+   456→                      ${isCurrent ? 'text-amber-700 dark:text-amber-500 font-bold' : ''}
+   457→                      ${isUpcoming ? 'text-muted-foreground' : ''}`}
+   458→                  >
+   459→                    {stage.short}
+   460→                  </span>
+   461→                </div>
+   462→                {!isLast && (
+   463→                  <div
+   464→                    className="self-start mt-4 h-0.5 w-6 shrink-0"
+   465→                    style={{ background: i < currentIndex ? '#059669' : '#d6d3d1' }}
+   466→                    aria-hidden
+   467→                  />
+   468→                )}
+   469→              </div>
+   470→            )
+   471→          })}
+   472→        </div>
+   473→        <Separator className="mt-3" />
+   474→        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs mt-3">
+   475→          <div className="p-2 rounded-md bg-muted/40 flex items-start gap-1.5">
+   476→            <Clock className="w-3 h-3 text-amber-600 mt-0.5 shrink-0" />
+   477→            <div className="min-w-0">
+   478→              <p className="font-medium text-muted-foreground">Текущая стадия</p>
+   479→              <p className="text-sm font-bold mt-0.5 truncate">{currentStage.short}</p>
+   480→            </div>
+   481→          </div>
+   482→          <div className="p-2 rounded-md bg-muted/40 flex items-start gap-1.5">
+   483→            <CalendarClock className="w-3 h-3 text-purple-600 mt-0.5 shrink-0" />
+   484→            <div className="min-w-0">
+   485→              <p className="font-medium text-muted-foreground">Прогноз срока</p>
+   486→              <p className="text-sm font-bold mt-0.5">~4 месяца</p>
+   487→            </div>
+   488→          </div>
+   489→          <div className="p-2 rounded-md bg-muted/40 flex items-start gap-1.5">
+   490→            <ArrowRight className="w-3 h-3 text-emerald-700 mt-0.5 shrink-0" />
+   491→            <div className="min-w-0 flex-1">
+   492→              <p className="font-medium text-muted-foreground">Следующий этап</p>
+   493→              <p className="text-xs sm:text-sm font-bold mt-0.5 leading-tight">{nextStage.short}</p>
+   494→              <p className="text-[10px] font-normal text-muted-foreground mt-0.5">через ~30 дней</p>
+   495→            </div>
+   496→          </div>
+   497→        </div>
+   498→      </CardContent>
+   499→    </Card>
+   500→  )
+   501→}
+   502→
+   503→// Mini Timeline Preview
+   504→function MiniTimelinePreview({ events, onNavigate }: { events: CaseTimelineEvent[]; onNavigate: () => void }) {
+   505→  const last5 = [...events].slice(-5)
+   506→  return (
+   507→    <Card className="rounded-xl shadow-sm bg-gradient-to-br from-card via-card to-muted/20 transition-shadow hover:shadow-md">
+   508→      <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2"><History className="w-4 h-4 text-amber-600" /> Мини-хронология дела <Button size="sm" variant="ghost" className="ml-auto rounded-lg" onClick={onNavigate}>Полная <RefreshCw className="w-3 h-3 ml-1" /></Button></CardTitle></CardHeader>
+   509→      <CardContent className="p-4">
+   510→        <div
+   511→          className="flex items-stretch gap-2 overflow-x-auto pb-2 [scrollbar-width:thin] [scrollbar-color:theme(colors.stone.400)_transparent] [&::-webkit-scrollbar]:h-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-stone-400/60"
+   512→          aria-label="Мини-хронология дела (горизонтальная прокрутка)"
+   513→        >
+   514→          {last5.map((ev, i) => (
+   515→            <div key={ev.id} className="flex items-stretch shrink-0">
+   516→              <div className="flex flex-col items-center text-center min-w-[200px] max-w-[220px] p-2 rounded-lg bg-muted/30 transition-colors hover:bg-muted/60">
+   517→                <div className={`w-3 h-3 rounded-full ${TIMELINE_CAT_COLOR[ev.category] ?? 'bg-stone-400'} ring-2 ring-background shrink-0`} />
+   518→                <p className="text-xs font-medium mt-1.5 leading-tight line-clamp-3">{ev.title}</p>
+   519→                <p className="text-xs text-muted-foreground mt-1 shrink-0">{new Date(ev.date).toLocaleDateString('ru-RU', { day: '2-digit', month: 'short' })}</p>
+   520→              </div>
+   521→              {i < last5.length - 1 && <div className="self-center mx-0.5 h-0.5 w-5 shrink-0 bg-stone-300 dark:bg-stone-600" />}
+   522→            </div>
+   523→          ))}
+   524→        </div>
+   525→        {last5.length >= 4 && (
+   526→          <p className="text-[10px] text-muted-foreground mt-1 text-right flex items-center justify-end gap-1">
+   527→            <RefreshCw className="w-2.5 h-2.5" /> Прокрутите для просмотра всех событий
+   528→          </p>
+   529→        )}
+   530→      </CardContent>
+   531→    </Card>
+   532→  )
+   533→}
+   534→
+   535→// ──── ENHANCED: Animated Stat Card with progress bar, icon in colored circle, hover lift ────
+   536→function AnimatedStatCard({
+   537→  label,
+   538→  value,
+   539→  delta,
+   540→  deltaType,
+   541→  icon: Icon,
+   542→  iconBg,
+   543→  iconColor,
+   544→  border,
+   545→  gradient,
+   546→  progressValue,
+   547→  onClick,
+   548→}: {
+   549→  label: string
+   550→  value: number
+   551→  delta?: string
+   552→  deltaType?: 'up' | 'down' | 'flat'
+   553→  icon: React.ComponentType<{ className?: string }>
+   554→  iconBg: string
+   555→  iconColor: string
+   556→  border: string
+   557→  gradient: string
+   558→  progressValue?: number
+   559→  onClick?: () => void
+   560→}) {
+   561→  const animated = useAnimatedCounter(value)
+   562→  const deltaColor = deltaType === 'up' ? 'text-emerald-600' : deltaType === 'down' ? 'text-red-600' : 'text-muted-foreground'
+   563→  const DeltaIcon = deltaType === 'up' ? TrendingUp : deltaType === 'down' ? AlertTriangle : Activity
+   564→  const progressColor = progressValue !== undefined
+   565→    ? progressValue >= 70 ? '[&>div]:bg-emerald-600' : progressValue >= 50 ? '[&>div]:bg-amber-500' : '[&>div]:bg-red-600'
+   566→    : '[&>div]:bg-stone-400'
+   567→  return (
+   568→    <Card
+   569→      className={`min-w-0 rounded-xl shadow-sm border-t-2 ${border} bg-gradient-to-br ${gradient} transition-all duration-300 ${onClick ? 'cursor-pointer hover:shadow-md hover:-translate-y-1 hover:scale-[1.02]' : ''}`}
+   570→      onClick={onClick}
+   571→    >
+   572→      <CardContent className="p-3 sm:p-4">
+   573→        <div className="flex items-start justify-between gap-2">
+   574→          <div className="flex-1 min-w-0">
+   575→            <p className="text-[10px] sm:text-xs text-muted-foreground font-medium uppercase tracking-wide truncate">{label}</p>
+   576→            <p className="text-xl sm:text-2xl font-bold tracking-tight mt-1 tabular-nums">{animated}</p>
+   577→            {delta && (
+   578→              <div className={`flex items-center gap-1 text-[10px] mt-1 font-medium ${deltaColor} truncate`}>
+   579→                <DeltaIcon className="w-3 h-3 shrink-0" />
+   580→                <span className="truncate">{delta}</span>
+   581→              </div>
+   582→            )}
+   583→          </div>
+   584→          <div className={`flex items-center justify-center w-8 h-8 sm:w-9 sm:h-9 rounded-lg ${iconBg} shrink-0`}>
+   585→            <Icon className={`w-4 h-4 ${iconColor}`} />
+   586→          </div>
+   587→        </div>
+   588→        {progressValue !== undefined && (
+   589→          <div className="mt-2">
+   590→            <Progress value={progressValue} className={`h-1.5 ${progressColor}`} />
+   591→          </div>
+   592→        )}
+   593→      </CardContent>
+   594→    </Card>
+   595→  )
+   596→}
+   597→
+   598→function QuickStatsBar({ stats, onNavigate }: {
+   599→  stats: typeof mockDashboardStats
+   600→  onNavigate: (section: SectionId) => void
+   601→}) {
+   602→  const s = stats.summary
+   603→  const complianceRate = stats.complianceChecks.total > 0
+   604→    ? Math.round(((stats.complianceChecks.byStatus.compliant ?? 0) / stats.complianceChecks.total) * 100)
+   605→    : 0
+   606→  const processedRate = stats.documents.total > 0
+   607→    ? Math.round(((stats.documents.byStatus.completed ?? 0) / stats.documents.total) * 100)
+   608→    : 0
+   609→  const defenseStrongRate = stats.defenseLines.total > 0
+   610→    ? Math.round(((stats.defenseLines.byStrength.strong ?? 0) / stats.defenseLines.total) * 100)
+   611→    : 0
+   612→
+   613→  return (
+   614→    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 px-1">
+   615→      <AnimatedStatCard
+   616→        label="Документы"
+   617→        value={s.totalDocuments}
+   618→        delta={`${processedRate}% обработано`}
+   619→        deltaType={processedRate >= 70 ? 'up' : 'flat'}
+   620→        icon={FileText}
+   621→        iconBg="bg-red-700/15"
+   622→        iconColor="text-red-700"
+   623→        border="border-t-red-500"
+   624→        gradient="from-card via-card to-red-500/5"
+   625→        progressValue={processedRate}
+   626→        onClick={() => onNavigate('documents')}
+   627→      />
+   628→      <AnimatedStatCard
+   629→        label="Участники"
+   630→        value={s.totalPersons}
+   631→        delta={`${stats.persons.kolesnichenko ? '1 обвиняемый' : '—'}`}
+   632→        deltaType="flat"
+   633→        icon={Users}
+   634→        iconBg="bg-orange-600/15"
+   635→        iconColor="text-orange-600"
+   636→        border="border-t-orange-500"
+   637→        gradient="from-card via-card to-orange-500/5"
+   638→        progressValue={20}
+   639→        onClick={() => onNavigate('persons')}
+   640→      />
+   641→      <AnimatedStatCard
+   642→        label="Эпизоды"
+   643→        value={s.totalEpisodes}
+   644→        delta={`${stats.episodes.byStatus['доказано'] ?? 0} доказано`}
+   645→        deltaType="up"
+   646→        icon={BookOpen}
+   647→        iconBg="bg-amber-600/15"
+   648→        iconColor="text-amber-600"
+   649→        border="border-t-amber-500"
+   650→        gradient="from-card via-card to-amber-500/5"
+   651→        progressValue={33}
+   652→        onClick={() => onNavigate('episodes')}
+   653→      />
+   654→      <AnimatedStatCard
+   655→        label="Статьи УК"
+   656→        value={s.totalArticles}
+   657→        delta="активные статьи"
+   658→        deltaType="flat"
+   659→        icon={Scale}
+   660→        iconBg="bg-stone-600/15"
+   661→        iconColor="text-stone-600"
+   662→        border="border-t-stone-500"
+   663→        gradient="from-card via-card to-stone-500/5"
+   664→        progressValue={100}
+   665→        onClick={() => onNavigate('legal-check')}
+   666→      />
+   667→      <AnimatedStatCard
+   668→        label="Соответствие"
+   669→        value={complianceRate}
+   670→        delta={`${stats.complianceChecks.total} проверок`}
+   671→        deltaType={complianceRate >= 70 ? 'up' : 'down'}
+   672→        icon={ShieldCheck}
+   673→        iconBg="bg-emerald-700/15"
+   674→        iconColor="text-emerald-700"
+   675→        border="border-t-emerald-500"
+   676→        gradient="from-card via-card to-emerald-500/5"
+   677→        progressValue={complianceRate}
+   678→        onClick={() => onNavigate('legal-check')}
+   679→      />
+   680→      <AnimatedStatCard
+   681→        label="Линия защиты"
+   682→        value={s.totalDefenseLines}
+   683→        delta={`${defenseStrongRate}% сильных`}
+   684→        deltaType={defenseStrongRate >= 50 ? 'up' : 'flat'}
+   685→        icon={Swords}
+   686→        iconBg="bg-purple-700/15"
+   687→        iconColor="text-purple-700"
+   688→        border="border-t-purple-500"
+   689→        gradient="from-card via-card to-purple-500/5"
+   690→        progressValue={defenseStrongRate}
+   691→        onClick={() => onNavigate('defense')}
+   692→      />
+   693→    </div>
+   694→  )
+   695→}
+   696→
+   697→// ──── ENHANCED: Procedural Deadlines Tracker with pulsing dots and clickable article badges ────
+   698→const PROCEDURAL_DEADLINES = [
+   699→  {
+   700→    id: 'd1',
+   701→    title: 'Ознакомление обвиняемого с материалами дела',
+   702→    article: 'ст. 217 УПК РФ',
+   703→    deadline: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000).toISOString(),
+   704→    importance: 'high' as const,
+   705→    status: 'upcoming' as const,
+   706→    description: 'Колесниченко должен быть ознакомлен со всеми материалами дела до направления в суд',
+   707→  },
+   708→  {
+   709→    id: 'd2',
+   710→    title: 'Предварительное слушание',
+   711→    article: 'ст. 234 УПК РФ',
+   712→    deadline: new Date(Date.now() + 23 * 24 * 60 * 60 * 1000).toISOString(),
+   713→    importance: 'critical' as const,
+   714→    status: 'upcoming' as const,
+   715→    description: 'Решение вопросов о допустимости доказательств, возврате дела прокурору',
+   716→  },
+   717→  {
+   718→    id: 'd3',
+   719→    title: 'Срок следствия по тяжкому преступлению',
+   720→    article: 'ст. 162 ч.1 УПК РФ',
+   721→    deadline: new Date(Date.now() + 29 * 24 * 60 * 60 * 1000).toISOString(),
+   722→    importance: 'critical' as const,
+   723→    status: 'warning' as const,
+   724→    description: 'Предельный срок следствия — 12 месяцев с возможностью продления руководителем СК',
+   725→  },
+   726→  {
+   727→    id: 'd4',
+   728→    title: 'Подача ходатайства об исключении доказательств',
+   729→    article: 'ст. 235 УПК РФ',
+   730→    deadline: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString(),
+   731→    importance: 'high' as const,
+   732→    status: 'urgent' as const,
+   733→    description: 'Ходатайство о признании недопустимым доказательства — протокол обыска без адвоката',
+   734→  },
+   735→  {
+   736→    id: 'd5',
+   737→    title: 'Срок содержания под стражей',
+   738→    article: 'ст. 109 УПК РФ',
+   739→    deadline: new Date(Date.now() + 47 * 24 * 60 * 60 * 1000).toISOString(),
+   740→    importance: 'critical' as const,
+   741→    status: 'upcoming' as const,
+   742→    description: 'Максимальный срок содержания под стражей по тяжким преступлениям — 18 месяцев',
+   743→  },
+   744→  {
+   745→    id: 'd6',
+   746→    title: 'Срок обжалования действий следователя',
+   747→    article: 'ст. 124 УПК РФ',
+   748→    deadline: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
+   749→    importance: 'medium' as const,
+   750→    status: 'overdue' as const,
+   751→    description: 'Жалоба в прокуратуру на действия/бездействие следователя — 3 суток',
+   752→  },
+   753→] as const
+   754→
+   755→const DEADLINE_IMPORTANCE: Record<string, { color: string; badge: string; label: string }> = {
+   756→  critical: { color: 'border-l-red-700 bg-red-700/5', badge: 'bg-red-700 text-white', label: 'Критический' },
+   757→  high: { color: 'border-l-orange-600 bg-orange-600/5', badge: 'bg-orange-600 text-white', label: 'Высокий' },
+   758→  medium: { color: 'border-l-amber-600 bg-amber-600/5', badge: 'bg-amber-600 text-white', label: 'Средний' },
+   759→  low: { color: 'border-l-stone-500 bg-stone-500/5', badge: 'bg-stone-500 text-white', label: 'Низкий' },
+   760→}
+   761→
+   762→const DEADLINE_STATUS: Record<string, { badge: string; label: string; icon: 'clock' | 'urgent' | 'overdue' | 'warning'; borderColor: string }> = {
+   763→  upcoming: { badge: 'bg-emerald-700 text-white', label: 'Запланировано', icon: 'clock', borderColor: 'border-l-emerald-700' },
+   764→  urgent: { badge: 'bg-amber-600 text-white', label: 'Срочно', icon: 'urgent', borderColor: 'border-l-amber-600' },
+   765→  warning: { badge: 'bg-orange-600 text-white', label: 'Предупреждение', icon: 'warning', borderColor: 'border-l-orange-600' },
+   766→  overdue: { badge: 'bg-red-800 text-white', label: 'Просрочено', icon: 'overdue', borderColor: 'border-l-red-800' },
+   767→}
+   768→
+   769→function ProceduralDeadlinesTracker() {
+   770→  const now = new Date()
+   771→  const sorted = [...PROCEDURAL_DEADLINES].sort((a, b) => new Date(a.deadline).getTime() - new Date(b.deadline).getTime())
+   772→  const upcoming = sorted.filter(d => new Date(d.deadline).getTime() > now.getTime())
+   773→  const overdue = sorted.filter(d => new Date(d.deadline).getTime() <= now.getTime())
+   774→  const nextDeadline = upcoming[0]
+   775→  const daysToNext = nextDeadline
+   776→    ? Math.ceil((new Date(nextDeadline.deadline).getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
+   777→    : 0
+   778→
+   779→  const fmtDate = (iso: string) => new Date(iso).toLocaleDateString('ru-RU', { day: '2-digit', month: 'long', year: 'numeric' })
+   780→  const daysTo = (iso: string) => {
+   781→    const diff = Math.ceil((new Date(iso).getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
+   782→    if (diff < 0) return `просрочено на ${Math.abs(diff)} дн.`
+   783→    if (diff === 0) return 'сегодня'
+   784→    if (diff === 1) return 'завтра'
+   785→    return `через ${diff} дн.`
+   786→  }
+   787→
+   788→  return (
+   789→    <Card className="rounded-xl shadow-sm bg-gradient-to-br from-card via-card to-red-500/5 border-t-2 border-t-red-500 transition-shadow hover:shadow-md">
+   790→      <CardHeader className="pb-2">
+   791→        <CardTitle className="text-sm flex items-center gap-2">
+   792→          <div className="flex items-center justify-center w-7 h-7 rounded-lg bg-red-700/15">
+   793→            <CalendarClock className="w-3.5 h-3.5 text-red-700" />
+   794→          </div>
+   795→          Процессуальные сроки
+   796→          <Badge variant="outline" className="text-xs ml-1">{sorted.length} событий</Badge>
+   797→          {overdue.length > 0 && (
+   798→            <Badge className="bg-red-800 text-white text-xs ml-auto gap-1">
+   799→              <AlertTriangle className="w-3 h-3" />{overdue.length} просрочено
+   800→            </Badge>
+   801→          )}
+   802→        </CardTitle>
+   803→      </CardHeader>
+   804→      <CardContent className="p-4 space-y-3">
+   805→        {/* Next deadline highlight */}
+   806→        {nextDeadline && (
+   807→          <div className={`p-3 rounded-xl border-l-4 ${DEADLINE_IMPORTANCE[nextDeadline.importance].color} flex items-center gap-3 transition-transform hover:scale-[1.01]`}>
+   808→            <div className="flex flex-col items-center justify-center w-14 h-14 rounded-xl bg-background/70 shrink-0">
+   809→              <span className={`text-2xl font-black leading-none ${daysToNext <= 3 ? 'text-red-700' : daysToNext <= 14 ? 'text-orange-600' : 'text-stone-700 dark:text-stone-200'}`}>
+   810→                {daysToNext === 0 ? '!' : daysToNext}
+   811→              </span>
+   812→              <span className="text-[10px] text-muted-foreground mt-0.5">дн.</span>
+   813→            </div>
+   814→            <div className="flex-1 min-w-0">
+   815→              <div className="flex items-center gap-2 flex-wrap">
+   816→                <p className="text-sm font-semibold leading-tight">{nextDeadline.title}</p>
+   817→                <Badge className={`text-[10px] ${DEADLINE_IMPORTANCE[nextDeadline.importance].badge}`}>{DEADLINE_IMPORTANCE[nextDeadline.importance].label}</Badge>
+   818→                {/* Pulsing countdown indicator */}
+   819→                {daysToNext <= 3 && (
+   820→                  <span className="relative flex h-3 w-3">
+   821→                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
+   822→                    <span className="relative inline-flex rounded-full h-3 w-3 bg-red-600" />
+   823→                  </span>
+   824→                )}
+   825→              </div>
+   826→              <div className="flex items-center gap-1.5 mt-1">
+   827→                <Badge
+   828→                  variant="outline"
+   829→                  className="text-[10px] cursor-pointer hover:bg-red-50 dark:hover:bg-red-950/20 transition-colors border-red-300 text-red-700"
+   830→                  onClick={() => {
+   831→                    toast({ title: nextDeadline.article, description: nextDeadline.description })
+   832→                  }}
+   833→                >
+   834→                  {nextDeadline.article}
+   835→                </Badge>
+   836→                <span className="text-xs text-muted-foreground">{fmtDate(nextDeadline.deadline)} • {daysTo(nextDeadline.deadline)}</span>
+   837→              </div>
+   838→              <p className="text-xs mt-1 text-foreground/80 line-clamp-2">{nextDeadline.description}</p>
+   839→            </div>
+   840→          </div>
+   841→        )}
+   842→
+   843→        {/* Compact deadline list */}
+   844→        <div className="grid sm:grid-cols-2 gap-2">
+   845→          {sorted.slice(0, 6).map(d => {
+   846→            const days = Math.ceil((new Date(d.deadline).getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
+   847→            const isOverdue = days < 0
+   848→            const isUrgent = days >= 0 && days <= 3
+   849→            const statusConf = DEADLINE_STATUS[d.status]
+   850→            return (
+   851→              <TooltipProvider key={d.id} delayDuration={150}>
+   852→                <Tooltip>
+   853→                  <TooltipTrigger asChild>
+   854→                    <div className={`p-2.5 rounded-lg border-l-4 ${DEADLINE_IMPORTANCE[d.importance].color} cursor-help transition-all duration-200 hover:shadow-sm hover:-translate-y-0.5`}>
+   855→                      <div className="flex items-center justify-between gap-2 mb-1">
+   856→                        <div className="flex items-center gap-1.5">
+   857→                          <Badge className={`text-[9px] px-1.5 py-0 ${statusConf.badge}`}>{statusConf.label}</Badge>
+   858→                          {/* Pulsing dot for expired/urgent */}
+   859→                          {isOverdue && (
+   860→                            <span className="relative flex h-2.5 w-2.5">
+   861→                              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
+   862→                              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-700" />
+   863→                            </span>
+   864→                          )}
+   865→                          {isUrgent && !isOverdue && (
+   866→                            <span className="relative flex h-2.5 w-2.5">
+   867→                              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75" />
+   868→                              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-amber-600" />
+   869→                            </span>
+   870→                          )}
+   871→                        </div>
+   872→                        <span className={`text-[11px] font-bold tabular-nums ${isOverdue ? 'text-red-700' : isUrgent ? 'text-orange-600' : 'text-muted-foreground'}`}>
+   873→                          {daysTo(d.deadline)}
+   874→                        </span>
+   875→                      </div>
+   876→                      <p className="text-xs font-medium leading-tight line-clamp-2">{d.title}</p>
+   877→                      {/* Clickable article badge */}
+   878→                      <Badge
+   879→                        variant="outline"
+   880→                        className="text-[9px] mt-1 cursor-pointer hover:bg-muted transition-colors"
+   881→                        onClick={(e) => {
+   882→                          e.stopPropagation()
+   883→                          toast({ title: d.article, description: d.description })
+   884→                        }}
+   885→                      >
+   886→                        {d.article}
+   887→                      </Badge>
+   888→                    </div>
+   889→                  </TooltipTrigger>
+   890→                  <TooltipContent side="top" className="text-xs max-w-[260px]">
+   891→                    <p className="font-semibold">{d.title}</p>
+   892→                    <p className="text-muted-foreground mt-0.5">{d.article}</p>
+   893→                    <p className="mt-1">{fmtDate(d.deadline)}</p>
+   894→                    <Separator className="my-1" />
+   895→                    <p className="italic">{d.description}</p>
+   896→                  </TooltipContent>
+   897→                </Tooltip>
+   898→              </TooltipProvider>
+   899→            )
+   900→          })}
+   901→        </div>
+   902→
+   903→        <Separator />
+   904→        <div className="flex items-center justify-between text-xs text-muted-foreground">
+   905→          <span className="flex items-center gap-1"><History className="w-3 h-3" /> Обновлено {now.toLocaleDateString('ru-RU', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}</span>
+   906→          <span className="flex items-center gap-1.5">
+   907→            <span className="relative flex h-2.5 w-2.5"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" /><span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-700" /></span> просрочено
+   908→            <span className="relative flex h-2.5 w-2.5 ml-1"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75" /><span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-amber-600" /></span> срочно
+   909→            <span className="w-2 h-2 rounded-full bg-emerald-700 ml-1" /> запланировано
+   910→          </span>
+   911→        </div>
+   912→      </CardContent>
+   913→    </Card>
+   914→  )
+   915→}
+   916→
+   917→// ──── NEW: Recent Activity Feed ────
+   918→const ACTIVITY_CATEGORY_CONFIG: Record<string, { icon: React.ReactNode; color: string; bgColor: string }> = {
+   919→  upload: { icon: <UploadCloud className="w-3 h-3" />, color: 'text-amber-700', bgColor: 'bg-amber-700/15' },
+   920→  analysis: { icon: <BrainCircuit className="w-3 h-3" />, color: 'text-emerald-700', bgColor: 'bg-emerald-700/15' },
+   921→  edit: { icon: <PenLine className="w-3 h-3" />, color: 'text-stone-600', bgColor: 'bg-stone-600/15' },
+   922→  delete: { icon: <XCircle className="w-3 h-3" />, color: 'text-red-700', bgColor: 'bg-red-700/15' },
+   923→  search: { icon: <FileSearch className="w-3 h-3" />, color: 'text-orange-600', bgColor: 'bg-orange-600/15' },
+   924→  export: { icon: <Download className="w-3 h-3" />, color: 'text-stone-500', bgColor: 'bg-stone-500/15' },
+   925→  login: { icon: <Eye className="w-3 h-3" />, color: 'text-stone-400', bgColor: 'bg-stone-400/15' },
+   926→  system: { icon: <Activity className="w-3 h-3" />, color: 'text-stone-500', bgColor: 'bg-stone-500/15' },
+   927→}
+   928→
+   929→const SEVERITY_BADGE: Record<string, string> = {
+   930→  info: 'bg-stone-600 text-white',
+   931→  warning: 'bg-amber-600 text-white',
+   932→  critical: 'bg-red-700 text-white',
+   933→}
+   934→
+   935→function RecentActivityFeed({ activities }: { activities: AuditLogEntry[] }) {
+   936→  const latest5 = activities.slice(0, 5)
+   937→  const fmtTime = (iso: string) => {
+   938→    const d = new Date(iso)
+   939→    return d.toLocaleDateString('ru-RU', { day: '2-digit', month: 'short' }) + ' ' + d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })
+   940→  }
+   941→
+   942→  return (
+   943→    <Card className="rounded-xl shadow-sm bg-gradient-to-br from-card via-card to-muted/20 border-t-2 border-t-emerald-500 transition-shadow hover:shadow-md">
+   944→      <CardHeader className="pb-2">
+   945→        <CardTitle className="text-sm flex items-center gap-2">
+   946→          <div className="flex items-center justify-center w-7 h-7 rounded-lg bg-emerald-700/15">
+   947→            <Activity className="w-3.5 h-3.5 text-emerald-700" />
+   948→          </div>
+   949→          Последние действия
+   950→          <Badge variant="outline" className="text-xs ml-auto">{latest5.length} событий</Badge>
+   951→        </CardTitle>
+   952→      </CardHeader>
+   953→      <CardContent className="p-4">
+   954→        <div className="space-y-2 max-h-64 overflow-y-auto scrollbar-thin">
+   955→          {latest5.map((activity, i) => {
+   956→            const config = ACTIVITY_CATEGORY_CONFIG[activity.category] ?? ACTIVITY_CATEGORY_CONFIG.system
+   957→            return (
+   958→              <div key={activity.id} className={`flex items-start gap-2.5 p-2.5 rounded-lg bg-muted/40 transition-all duration-200 hover:bg-muted/70 hover:-translate-y-0.5 ${i === 0 ? 'ring-1 ring-emerald-500/30' : ''}`}>
+   959→                <div className={`flex items-center justify-center w-7 h-7 rounded-lg shrink-0 ${config.bgColor}`}>
+   960→                  <span className={config.color}>{config.icon}</span>
+   961→                </div>
+   962→                <div className="flex-1 min-w-0">
+   963→                  <div className="flex items-center gap-1.5 mb-0.5">
+   964→                    <p className="text-xs font-semibold leading-tight truncate">{activity.action}</p>
+   965→                    <Badge className={`text-[9px] px-1.5 py-0 shrink-0 ${SEVERITY_BADGE[activity.severity] ?? SEVERITY_BADGE.info}`}>{activity.severity === 'critical' ? 'Критич.' : activity.severity === 'warning' ? 'Вним.' : 'Инфо'}</Badge>
+   966→                  </div>
+   967→                  <p className="text-xs text-muted-foreground line-clamp-1">{activity.details}</p>
+   968→                  <p className="text-[10px] text-muted-foreground mt-0.5">{fmtTime(activity.timestamp)} · {activity.actor}</p>
+   969→                </div>
+   970→              </div>
+   971→            )
+   972→          })}
+   973→        </div>
+   974→      </CardContent>
+   975→    </Card>
+   976→  )
+   977→}
+   978→
+   979→// ──── Main Dashboard Component ────
+   980→export function CaseDashboard() {
+   981→  const { setActiveSection } = useCaseStore()
+   982→  const { data, isLoading } = useQuery({
+   983→    queryKey: ['dashboard'],
+   984→    queryFn: getDashboardStats,
+   985→    retry: 1,
+   986→  })
+   987→  const { data: healthData } = useQuery({
+   988→    queryKey: ['health-score'],
+   989→    queryFn: getCaseHealthScore,
+   990→    retry: 1,
+   991→  })
+   992→  const { data: timelineData } = useQuery({
+   993→    queryKey: ['evidence-timeline'],
+   994→    queryFn: getEvidenceTimeline,
+   995→    retry: 1,
+   996→  })
+   997→  const { data: briefData } = useQuery({ queryKey: ['case-brief'], queryFn: getCaseBrief, retry: 1 })
+   998→  const { data: bookmarksData } = useQuery({ queryKey: ['bookmarks'], queryFn: getBookmarks, retry: 1 })
+   999→  const { data: caseTimelineData } = useQuery({ queryKey: ['case-timeline'], queryFn: getCaseTimeline, retry: 1 })
+  1000→  const { data: auditData } = useQuery({ queryKey: ['audit-log'], queryFn: () => getAuditLog(10), retry: 1 })
+  1001→
+  1002→  const stats = data ?? mockDashboardStats
+  1003→  const healthScore = healthData ?? mockCaseHealthScore
+  1004→  const timelineEvents = timelineData ?? mockEvidenceTimeline
+  1005→  const brief = briefData ?? mockCaseBrief
+  1006→  const bookmarks = bookmarksData ?? mockBookmarks
+  1007→  const caseTimeline = caseTimelineData ?? mockCaseTimeline
+  1008→  const auditLog = auditData ?? mockAuditLog
+  1009→
+  1010→  if (isLoading) return (
+  1011→    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+  1012→      {STAT_ITEMS.map((_, i) => <Skeleton key={i} className="h-24" />)}
+  1013→    </div>
+  1014→  )
+  1015→
+  1016→  // Convert byGuiltLevel Record to chart data
+  1017→  const guiltChartData = Object.entries(stats.guiltAssessments.byGuiltLevel).map(([level, count]) => ({
+  1018→    level: GUILT_LABEL[level] ?? level,
+  1019→    count,
+  1020→    fill: GUILT_COLORS[level] ?? '#525252',
+  1021→  }))
+  1022→
+  1023→  // Convert documents.byType Record to chart data
+  1024→  const docTypeChartData = Object.entries(stats.documents.byType).map(([type, count]) => ({
+  1025→    type,
+  1026→    count,
+  1027→  }))
+  1028→
+  1029→  // Calculate compliance score
+  1030→  const compTotal = stats.complianceChecks.byStatus
+  1031→  const compCompliant = compTotal.compliant ?? 0
+  1032→  const compAll = Object.values(compTotal).reduce((a, b) => a + b, 0)
+  1033→  const complianceScore = compAll > 0 ? Math.round((compCompliant / compAll) * 100) : 0
+  1034→
+  1035→  return (
+  1036→    <div className="space-y-6">
+  1037→      {/* Case Banner */}
+  1038→      <Card className="bg-gradient-to-r from-red-900/30 to-stone-900/20 border-l-4 border-red-700 rounded-xl shadow-sm relative overflow-hidden transition-shadow hover:shadow-md">
+  1039→        <div className="absolute top-0 right-0 z-10 bg-gradient-to-r from-red-800 to-red-700 text-white text-xs font-bold px-6 py-1 shadow-md transform translate-x-3"><Flame className="w-3 h-3 inline mr-1" />ТЯЖКОЕ</div>
+  1040→        <CardContent className="p-6">
+  1041→          <div className="flex items-center gap-4">
+  1042→            <div className="flex items-center justify-center w-12 h-12 rounded-xl bg-red-700/20"><Gavel className="w-6 h-6 text-red-600" /></div>
+  1043→            <div className="flex-1 min-w-0">
+  1044→              <h2 className="text-lg font-bold">Дело № 2024-00145</h2>
+  1045→              <p className="text-sm text-muted-foreground">Уголовное дело в отношении Колесниченко Д.А. — ст. 159 ч.3, 160 ч.2 УК РФ</p>
+  1046→            </div>
+  1047→            <div className="flex items-center gap-2">
+  1048→              <Badge className="bg-red-700 text-white">Тяжкое</Badge>
+  1049→              <Badge variant="outline" className="text-xs">{stats.summary.totalDocuments} документов</Badge>
+  1050→            </div>
+  1051→          </div>
+  1052→        </CardContent>
+  1053→      </Card>
+  1054→
+  1055→      {/* Quick Stats Bar - 6 animated clickable stat tiles */}
+  1056→      <QuickStatsBar stats={stats} onNavigate={(section) => setActiveSection(section)} />
+  1057→
+  1058→      {/* Quick Actions - enhanced with gradient backgrounds */}
+  1059→      <QuickActionsCard onNavigate={(section) => setActiveSection(section)} />
+  1060→
+  1061→      {/* Case Procedure Stages */}
+  1062→      <CaseProcedureStage />
+  1063→
+  1064→      {/* Procedural Deadlines Tracker — enhanced with pulsing dots and article badges */}
+  1065→      <ProceduralDeadlinesTracker />
+  1066→
+  1067→      {/* Recent Activity Feed + Case Strength Meter */}
+  1068→      <div className="grid lg:grid-cols-2 gap-4">
+  1069→        <RecentActivityFeed activities={auditLog} />
+  1070→        <CaseStrengthMeter brief={brief} />
+  1071→      </div>
+  1072→
+  1073→      {/* Mini Timeline Preview */}
+  1074→      <MiniTimelinePreview events={caseTimeline} onNavigate={() => setActiveSection('timeline')} />
+  1075→
+  1076→      {/* Next hearing card */}
+  1077→      <Card className="rounded-xl shadow-sm border-l-4 border-emerald-700 bg-gradient-to-r from-emerald-900/10 to-transparent transition-shadow hover:shadow-md hover:-translate-y-0.5">
+  1078→        <CardContent className="p-4">
+  1079→          <div className="flex items-center gap-3">
+  1080→            <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-emerald-700/15">
+  1081→              <CalendarClock className="w-5 h-5 text-emerald-700" />
+  1082→            </div>
+  1083→            <div className="flex-1 min-w-0">
+  1084→              <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">Следующее заседание</p>
+  1085→              <p className="text-sm font-bold mt-0.5">15 августа 2024, 10:00 — Предварительное слушание</p>
+  1086→              <p className="text-xs text-muted-foreground mt-0.5">Председатель: судья Петров А.В. • Зал №305</p>
+  1087→            </div>
+  1088→            <div className="text-right shrink-0">
+  1089→              <p className="text-3xl font-bold text-emerald-700">23</p>
+  1090→              <p className="text-xs text-muted-foreground">дня до заседания</p>
+  1091→            </div>
+  1092→          </div>
+  1093→          <Separator className="my-3" />
+  1094→          <div className="grid grid-cols-3 gap-2 text-xs">
+  1095→            <div className="p-2 rounded-md bg-muted/40">
+  1096→              <p className="font-medium text-muted-foreground">Прошло с возбуждения</p>
+  1097→              <p className="text-sm font-bold mt-0.5">156 дней</p>
+  1098→            </div>
+  1099→            <div className="p-2 rounded-md bg-muted/40">
+  1100→              <p className="font-medium text-muted-foreground">Осталось по сроку (ст.162)</p>
+  1101→              <p className="text-sm font-bold mt-0.5">~29 дней</p>
+  1102→            </div>
+  1103→            <div className="p-2 rounded-md bg-muted/40">
+  1104→              <p className="font-medium text-muted-foreground">Темп дела</p>
+  1105→              <p className="text-sm font-bold mt-0.5 flex items-center gap-1">
+  1106→                <TrendingUp className="w-3 h-3 text-amber-600" />
+  1107→                Средний
+  1108→              </p>
+  1109→            </div>
+  1110→          </div>
+  1111→        </CardContent>
+  1112→      </Card>
+  1113→
+  1114→      {/* Health Score Widget — now uses speedometer gauge */}
+  1115→      <Card className="rounded-xl shadow-sm bg-gradient-to-br from-card via-card to-muted/20 border-t-2 border-t-amber-500 transition-shadow hover:shadow-md">
+  1116→        <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2"><Activity className="w-4 h-4 text-amber-600" /> Здоровье дела <Badge variant="outline" className="text-xs ml-auto">{healthScore.score}/100</Badge></CardTitle></CardHeader>
+  1117→        <CardContent className="p-4">
+  1118→          <div className="flex items-start gap-4">
+  1119→            <div className="relative shrink-0"><HealthScoreSpeedometer score={healthScore.score} /></div>
+  1120→            <div className="flex-1 space-y-2 pt-1">
+  1121→              <FactorRow factor={healthScore.factors.documentProcessing} />
+  1122→              <FactorRow factor={healthScore.factors.complianceRate} />
+  1123→              <FactorRow factor={healthScore.factors.evidenceStrength} />
+  1124→              <FactorRow factor={healthScore.factors.defenseCoverage} />
+  1125→            </div>
+  1126→          </div>
+  1127→          <Separator className="mt-3" />
+  1128→          <div className="flex flex-wrap gap-2 text-xs mt-2">
+  1129→            <Badge variant="outline"><MapPin className="w-3 h-3 mr-1" />{stats.summary.totalLocations} мест</Badge>
+  1130→            <Badge variant="outline"><AlertTriangle className="w-3 h-3 mr-1" />{stats.summary.totalCrossReferences} ссылок</Badge>
+  1131→            <Badge variant="outline"><Shield className="w-3 h-3 mr-1" />{stats.defenseLines.total} стратегий</Badge>
+  1132→            <Badge variant="outline"><CheckCircle className="w-3 h-3 mr-1 text-emerald-600" />Соответствие {complianceScore}%</Badge>
+  1133→          </div>
+  1134→        </CardContent>
+  1135→      </Card>
+  1136→
+  1137→      {/* Charts */}
+  1138→      <div className="grid md:grid-cols-2 gap-4">
+  1139→        <Card className="rounded-xl shadow-sm bg-gradient-to-br from-card via-card to-muted/20 border-t-2 border-t-emerald-500 transition-shadow hover:shadow-md">
+  1140→          <CardHeader className="pb-2"><CardTitle className="text-sm">Виновность участников</CardTitle></CardHeader>
+  1141→          <CardContent className="p-2">
+  1142→            <ChartContainer config={guiltChartConfig} className="h-52 w-full">
+  1143→              <PieChart>
+  1144→                <Pie data={guiltChartData} dataKey="count" nameKey="level" cx="50%" cy="50%" outerRadius={80} label={({ level, count }) => `${level}: ${count}`}>
+  1145→                  {guiltChartData.map((d, i) => <Cell key={i} fill={d.fill} />)}
+  1146→                </Pie>
+  1147→                <ChartTooltip content={<ChartTooltipContent />} />
+  1148→              </PieChart>
+  1149→            </ChartContainer>
+  1150→          </CardContent>
+  1151→        </Card>
+  1152→        <Card className="rounded-xl shadow-sm bg-gradient-to-br from-card via-card to-muted/20 border-t-2 border-t-stone-500 transition-shadow hover:shadow-md">
+  1153→          <CardHeader className="pb-2"><CardTitle className="text-sm">Типы документов</CardTitle></CardHeader>
+  1154→          <CardContent className="p-2">
+  1155→            <ChartContainer config={docTypeChartConfig} className="h-52 w-full">
+  1156→              <BarChart data={docTypeChartData} layout="vertical">
+  1157→                <XAxis type="number" hide />
+  1158→                <YAxis type="category" dataKey="type" width={80} tick={{ fontSize: 12 }} />
+  1159→                <Bar dataKey="count" radius={4}>
+  1160→                  {docTypeChartData.map((_, i) => <Cell key={i} fill={DOC_COLORS[i % DOC_COLORS.length]} />)}
+  1161→                </Bar>
+  1162→                <ChartTooltip content={<ChartTooltipContent />} />
+  1163→              </BarChart>
+  1164→            </ChartContainer>
+  1165→          </CardContent>
+  1166→        </Card>
+  1167→      </div>
+  1168→
+  1169→      {/* AI Case Digest */}
+  1170→      <Card className="rounded-xl shadow-sm bg-gradient-to-br from-purple-900/10 via-card to-card border-t-2 border-t-purple-500 transition-shadow hover:shadow-md">
+  1171→        <CardHeader className="pb-2">
+  1172→          <CardTitle className="text-sm font-semibold flex items-center gap-2">
+  1173→            <div className="flex items-center justify-center w-7 h-7 rounded-lg bg-purple-700/15">
+  1174→              <BrainCircuit className="w-3.5 h-3.5 text-purple-700" />
+  1175→            </div>
+  1176→            ИИ-дайджест дела
+  1177→            <Badge className="bg-purple-700 text-white text-xs ml-auto">Авто-сводка</Badge>
+  1178→          </CardTitle>
+  1179→        </CardHeader>
+  1180→        <CardContent className="p-4 space-y-3">
+  1181→          <p className="text-sm leading-relaxed text-foreground/90">
+  1182→            <span className="font-semibold">Краткое содержание:</span> Уголовное дело № 2024-00145 возбуждено в отношении Колесниченко Д.А. по признакам преступлений, предусмотренных ч.3 ст.159 и ч.2 ст.160 УК РФ. В материалах дела <span className="font-semibold text-purple-700 dark:text-purple-400">{stats.summary.totalDocuments} документа</span>, <span className="font-semibold text-purple-700 dark:text-purple-400">{stats.summary.totalEpisodes} преступных эпизода</span>, обвинение опирается на показания свидетелей и заключение финансово-экономической экспертизы.
+  1183→          </p>
+  1184→          <Separator />
+  1185→          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+  1186→            <div className="p-3 rounded-lg bg-muted/40 border-l-2 border-l-red-700">
+  1187→              <p className="text-xs font-semibold flex items-center gap-1 text-red-700 dark:text-red-400">
+  1188→                <AlertTriangle className="w-3 h-3" />Ключевые риски
+  1189→              </p>
+  1190→              <ul className="text-xs mt-1.5 space-y-0.5 text-muted-foreground">
+  1191→                <li>• Обыск без адвоката (нарушение ст.51 УПК)</li>
+  1192→                <li>• Противоречия в показаниях свидетелей</li>
+  1193→                <li>• Возможна переквалификация ст.159 ч.3 → ч.2</li>
+  1194→              </ul>
+  1195→            </div>
+  1196→            <div className="p-3 rounded-lg bg-muted/40 border-l-2 border-l-emerald-700">
+  1197→              <p className="text-xs font-semibold flex items-center gap-1 text-emerald-700 dark:text-emerald-400">
+  1198→                <ShieldCheck className="w-3 h-3" />Сильные стороны защиты
+  1199→              </p>
+  1200→              <ul className="text-xs mt-1.5 space-y-0.5 text-muted-foreground">
+  1201→                <li>• Алиби на период эпизода 1 (свидетель Козлова)</li>
+  1202→                <li>• Процессуальные нарушения при изъятии</li>
+  1203→                <li>• Отсутствие судимостей (ст.61 УК РФ)</li>
+  1204→              </ul>
+  1205→            </div>
+  1206→            <div className="p-3 rounded-lg bg-muted/40 border-l-2 border-l-amber-600">
+  1207→              <p className="text-xs font-semibold flex items-center gap-1 text-amber-700 dark:text-amber-400">
+  1208→                <TrendingUp className="w-3 h-3" />Рекомендации
+  1209→              </p>
+  1210→              <ul className="text-xs mt-1.5 space-y-0.5 text-muted-foreground">
+  1211→                <li>• Подать ходатайство об исключении доказательств</li>
+  1212→                <li>• Запросить повторную экспертизу</li>
+  1213→                <li>• Подготовить смягчающие обстоятельства</li>
+  1214→              </ul>
+  1215→            </div>
+  1216→          </div>
+  1217→          <div className="flex items-center gap-2 pt-1">
+  1218→            <Button
+  1219→              size="sm"
+  1220→              variant="outline"
+  1221→              className="rounded-lg text-xs gap-1 border-purple-300 text-purple-700 hover:bg-purple-50 dark:hover:bg-purple-950/20"
+  1222→              onClick={() => setActiveSection('qa')}
+  1223→            >
+  1224→              <MessageCircle className="w-3 h-3" />Задать вопрос ИИ
+  1225→            </Button>
+  1226→            <Button
+  1227→              size="sm"
+  1228→              variant="outline"
+  1229→              className="rounded-lg text-xs gap-1"
+  1230→              onClick={() => setActiveSection('brief')}
+  1231→            >
+  1232→              <FileText className="w-3 h-3" />Полное изложение
+  1233→            </Button>
+  1234→            <span className="text-[10px] text-muted-foreground ml-auto italic">Сгенерировано ИИ • обновлено {new Date().toLocaleDateString('ru-RU', { day: '2-digit', month: 'short' })}</span>
+  1235→          </div>
+  1236→        </CardContent>
+  1237→      </Card>
+  1238→
+  1239→      {/* Evidence Timeline */}
+  1240→      <EvidenceTimelineSection events={timelineEvents} />
+  1241→
+  1242→      {/* Processing Queue */}
+  1243→      {stats.processingQueue.inProgress.length > 0 && (
+  1244→        <Card className="rounded-xl shadow-sm bg-gradient-to-br from-card via-card to-muted/20 border-t-2 border-t-amber-500 transition-shadow hover:shadow-md">
+  1245→          <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2"><Clock className="w-4 h-4" />Очередь обработки<Badge className="bg-amber-600 text-white">{stats.processingQueue.byStatus.queued ?? 0} в очереди</Badge></CardTitle></CardHeader>
+  1246→          <CardContent className="p-4">
+  1247→            <div className="space-y-2 max-h-40 overflow-y-auto">
+  1248→              {stats.processingQueue.inProgress.map((q) => (
+  1249→                <div key={q.id} className="flex items-center gap-2 text-sm p-2 rounded-lg bg-muted/50 transition-colors hover:bg-muted">
+  1250→                  <Clock className="w-3 h-3 text-amber-500 animate-spin" /><span className="truncate flex-1">{q.originalName}</span><Badge className="bg-amber-600 text-white text-xs">обработка</Badge>
+  1251→                </div>
+  1252→              ))}
+  1253→            </div>
+  1254→          </CardContent>
+  1255→        </Card>
+  1256→      )}
+  1257→
+  1258→      {/* Recent Documents */}
+  1259→      <Card className="rounded-xl shadow-sm bg-gradient-to-br from-card via-card to-muted/20 border-t-2 border-t-stone-500 transition-shadow hover:shadow-md">
+  1260→        <CardHeader className="pb-2">
+  1261→          <CardTitle className="text-sm flex items-center gap-2">
+  1262→            <FileText className="w-4 h-4" />Последние документы
+  1263→            <Button size="sm" variant="ghost" className="ml-auto rounded-lg" onClick={() => setActiveSection('documents')}>Все документы <RefreshCw className="w-3 h-3 ml-1" /></Button>
+  1264→          </CardTitle>
+  1265→        </CardHeader>
+  1266→        <CardContent className="p-4">
+  1267→          <div className="space-y-2 max-h-48 overflow-y-auto">
+  1268→            {stats.documents.recent.map((doc) => (
+  1269→              <div key={doc.id} className="flex items-center gap-2 text-sm p-2 rounded-lg bg-muted/50 transition-colors hover:bg-muted">
+  1270→                {STATUS_ICON[doc.processingStatus]}<span className="truncate flex-1">{doc.originalName}</span>
+  1271→                <Badge className={doc.processingStatus === 'completed' ? 'bg-emerald-700 text-white' : doc.processingStatus === 'processing' ? 'bg-amber-600 text-white' : 'bg-stone-500 text-white'}>{doc.processingStatus}</Badge>
+  1272→              </div>
+  1273→            ))}
+  1274→          </div>
+  1275→          <Separator className="mt-3" /><p className="text-xs text-muted-foreground mt-2">Данные из {stats.documents.total} загруженных документов</p>
+  1276→        </CardContent>
+  1277→      </Card>
+  1278→
+  1279→      {/* Quick Bookmarks */}
+  1280→      <QuickBookmarks bookmarks={bookmarks} onNavigate={() => setActiveSection('search')} />
+  1281→    </div>
+  1282→  )
+  1283→}
+  1284→

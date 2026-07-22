@@ -1,611 +1,242 @@
-import {
-  DocumentData, PersonData, EpisodeData, DefenseLineData,
-  LegalComplianceData, ChatMessageData, DashboardStats,
-  ProcessingQueueData, SearchResultData, GuiltAssessmentData,
-  EvidenceTimelineEvent, PersonRelationship, DefenseImprovementData,
-  NotificationData, CaseHealthScore, CrossRefNode,
-  CaseBriefData, RiskAssessmentData, SentencingData, EvidenceChainData,
-  AuditLogEntry, CaseTimelineEvent, BookmarkData, WitnessStatementData,
-  AnalyticsData,
-} from './case-store'
+import { DocumentData, PersonData, EpisodeData, DefenseLineData, LegalComplianceData, ChatMessageData, DashboardStats, ProcessingQueueData, SearchResultData, GuiltAssessmentData, EvidenceTimelineEvent, PersonRelationship, DefenseImprovementData, NotificationData, CaseHealthScore, CrossRefNode, CaseBriefData, RiskAssessmentData, SentencingData, EvidenceChainData, AuditLogEntry, CaseTimelineEvent, BookmarkData, WitnessStatementData, AnalyticsData } from './case-store'
+const d=(m:number,day:number,t='08:00:00Z')=>`2024-${String(m).padStart(2,'0')}-${String(day).padStart(2,'0')}T${t}`
+const ds=(m:number,day:number)=>`2024-${String(m).padStart(2,'0')}-${String(day).padStart(2,'0')}`
 
-export const mockDocuments: DocumentData[] = [
-  { id: 'doc1', fileName: 'obvinenie_tom1.pdf', originalName: 'Обвинительное заключение - Том 1.pdf', fileSize: 2456000, mimeType: 'application/pdf', extractedText: 'Обвинительное заключение по делу № 2024-00145...', summary: 'Обвинительное заключение по делу о мошенничестве', documentDate: '2024-03-15', documentType: 'обвинение', sourceReference: 'том 1, л.д. 1-45', processingStatus: 'completed', processingError: null, uploadedAt: '2024-01-10T08:00:00Z', processedAt: '2024-01-10T08:15:00Z' },
-  { id: 'doc2', fileName: 'pokazaniya_kolesnichenko.pdf', originalName: 'Показания Колесниченко Д.А.pdf', fileSize: 1560000, mimeType: 'application/pdf', extractedText: 'Показания подозреваемого Колесниченко Д.А...', summary: 'Показания Колесниченко Д.А.', documentDate: '2024-01-15', documentType: 'показание', sourceReference: 'том 2, л.д. 10-25', processingStatus: 'completed', processingError: null, uploadedAt: '2024-01-15T10:00:00Z', processedAt: '2024-01-15T10:20:00Z' },
-  { id: 'doc3', fileName: 'protokol_obyaska.pdf', originalName: 'Протокол обыска.pdf', fileSize: 890000, mimeType: 'application/pdf', extractedText: 'Протокол обыска жилого помещения...', summary: 'Протокол обыска по месту жительства', documentDate: '2024-02-20', documentType: 'протокол', sourceReference: 'том 3, л.д. 30-35', processingStatus: 'completed', processingError: null, uploadedAt: '2024-02-20T14:00:00Z', processedAt: '2024-02-20T14:10:00Z' },
-  { id: 'doc4', fileName: 'expertiza.pdf', originalName: 'Заключение эксперта.pdf', fileSize: 3200000, mimeType: 'application/pdf', extractedText: 'Заключение финансово-экономической экспертизы...', summary: 'Финансово-экономическая экспертиза', documentDate: '2024-04-10', documentType: 'экспертиза', sourceReference: 'том 4, л.д. 5-60', processingStatus: 'processing', processingError: null, uploadedAt: '2024-04-10T09:00:00Z', processedAt: null },
-  { id: 'doc5', fileName: 'svidetel_petrov.pdf', originalName: 'Показания свидетеля Петрова.pdf', fileSize: 980000, mimeType: 'application/pdf', extractedText: 'Показания свидетеля Петрова И.В.', summary: 'Показания свидетеля', documentDate: '2024-02-05', documentType: 'показание', sourceReference: 'том 2, л.д. 40-50', processingStatus: 'pending', processingError: null, uploadedAt: '2024-05-01T11:00:00Z', processedAt: null },
-]
+// ─── Documents ───
+function mkDoc(i:number,type:string,name:string,status:DocumentData['processingStatus']):DocumentData {
+  return {id:`doc${i}`,fileName:`${type}_${i}.pdf`,originalName:`${name}.pdf`,fileSize:Math.round(5e5+i*4e5),mimeType:'application/pdf',extractedText:`${name} — материалы дела...`,summary:name,documentDate:ds(1+i,5+i*3),documentType:type,sourceReference:`том ${i}, л.д. ${i*10}-${i*10+15}`,processingStatus:status,processingError:status==='failed'?'Ошибка обработки':null,uploadedAt:d(1+i,8+i),processedAt:status==='completed'?d(1+i,8+i,'08:15:00Z'):null}
+}
+export const mockDocuments: DocumentData[] = [mkDoc(1,'обвинение','Обвинительное заключение - Том 1','completed'),mkDoc(2,'показание','Показания Колесниченко Д.А.','completed'),mkDoc(3,'протокол','Протокол обыска','completed'),mkDoc(4,'экспертиза','Заключение эксперта','processing'),mkDoc(5,'показание','Показания свидетеля Петрова','pending')]
 
-export const mockPersons: PersonData[] = [
-  { id: 'p1', fullName: 'Колесниченко Дмитрий Александрович', shortName: 'Колесниченко Д.А.', role: 'обвиняемый', status: 'задержанный', description: 'Главный обвиняемый, бывший директор ООО "ТехноПром"', birthDate: '1985-06-15', occupation: 'Директор ООО', alias: null, isKolesnichenko: true, defenseStrategy: 'Непризнание вины, алиби на период эпизода 1', guiltLevel: 'high' },
-  { id: 'p2', fullName: 'Сидоров Андрей Петрович', shortName: 'Сидоров А.П.', role: 'соучастник', status: 'активный', description: 'Соучастник, бухгалтер ООО', birthDate: '1990-03-22', occupation: 'Бухгалтер', alias: null, isKolesnichenko: false, defenseStrategy: null, guiltLevel: 'moderate' },
-  { id: 'p3', fullName: 'Петров Иван Васильевич', shortName: 'Петров И.В.', role: 'свидетель', status: 'активный', description: 'Свидетель, бывший сотрудник ООО', birthDate: '1978-11-08', occupation: 'Менеджер', alias: null, isKolesnichenko: false, defenseStrategy: null, guiltLevel: 'none' },
-  { id: 'p4', fullName: 'Иванова Мария Сергеевна', shortName: 'Иванова М.С.', role: 'потерпевшая', status: 'активный', description: 'Потерпевшая, инвестор ООО', birthDate: '1982-07-30', occupation: 'Инвестор', alias: null, isKolesnichenko: false, defenseStrategy: null, guiltLevel: 'none' },
-  { id: 'p5', fullName: 'Козлов Виктор Николаевич', shortName: 'Козлов В.Н.', role: 'свидетель', status: 'активный', description: 'Свидетель, сосед Колесниченко', birthDate: '1975-01-12', occupation: 'Пенсионер', alias: 'Козёл', isKolesnichenko: false, defenseStrategy: null, guiltLevel: 'low' },
-]
+// ─── Persons ───
+function mkP(id:string,full:string,short:string,role:string,status:string,desc:string,guilt:string,occ:string,birth:string,alias:string|null=null):PersonData {
+  return {id,fullName:full,shortName:short,role,status,description:desc,birthDate:birth,occupation:occ,alias,isKolesnichenko:id==='p1',defenseStrategy:id==='p1'?'Непризнание вины, алиби':null,guiltLevel:guilt}
+}
+export const mockPersons: PersonData[] = [mkP('p1','Колесниченко Дмитрий Александрович','Колесниченко Д.А.','обвиняемый','задержанный','Главный обвиняемый, бывший директор ООО','high','Директор ООО','1985-06-15'),mkP('p2','Сидоров Андрей Петрович','Сидоров А.П.','соучастник','активный','Соучастник, бухгалтер ООО','moderate','Бухгалтер','1990-03-22'),mkP('p3','Петров Иван Васильевич','Петров И.В.','свидетель','активный','Свидетель, бывший сотрудник ООО','none','Менеджер','1978-11-08'),mkP('p4','Иванова Мария Сергеевна','Иванова М.С.','потерпевшая','активный','Потерпевшая, инвестор ООО','none','Инвестор','1982-07-30'),mkP('p5','Козлов Виктор Николаевич','Козлов В.Н.','свидетель','активный','Свидетель, сосед Колесниченко','low','Пенсионер','1975-01-12','Козёл')]
 
+// ─── Episodes ───
+const art1={id:'art1',code:'ст. 159 ч.3 УК РФ',number:'159',codeType:'УК РФ',description:'Мошенничество, группой лиц по сговору',category:'тяжкое',punishmentMin:'до 2 лет',punishmentMax:'до 6 лет',isCurrent:true}
+const art2={id:'art2',code:'ст. 160 ч.2 УК РФ',number:'160',codeType:'УК РФ',description:'Присвоение с использованием служебного положения',category:'тяжкое',punishmentMin:'до 2 лет',punishmentMax:'до 5 лет',isCurrent:true}
+const loc1={id:'loc1',name:'ООО "ТехноПром"',address:'г. Москва, ул. Ленина, д. 10',type:'место работы',description:'Офис компании',coordinates:null}
+const loc2={id:'loc2',name:'Квартира Колесниченко',address:'г. Москва, ул. Пушкина, д. 5',type:'место жительства',description:'Место обыска',coordinates:null}
 export const mockEpisodes: EpisodeData[] = [
-  {
-    id: 'ep1', title: 'Мошенничество с инвестициями', description: 'Хищение денежных средств инвесторов путём обмана, совершённое группой лиц по предварительному сговору', date: '2023-06-01', episodeNumber: '1', severity: 'тяжкое', status: 'доказано',
-    persons: [
-      { personId: 'p1', involvement: 'организатор', person: mockPersons[0] },
-      { personId: 'p2', involvement: 'соучастник', person: mockPersons[1] },
-      { personId: 'p3', involvement: 'свидетель', person: mockPersons[2] },
-      { personId: 'p4', involvement: 'потерпевшая', person: mockPersons[3] },
-    ],
-    articles: [
-      { articleId: 'art1', article: { id: 'art1', code: 'ст. 159 ч.3 УК РФ', number: '159', codeType: 'УК РФ', description: 'Мошенничество, совершённое группой лиц по предварительному сговору', category: 'тяжкое', punishmentMin: 'до 2 лет', punishmentMax: 'до 6 лет', isCurrent: true } },
-    ],
-    locations: [
-      { locationId: 'loc1', location: { id: 'loc1', name: 'ООО "ТехноПром"', address: 'г. Москва, ул. Ленина, д. 10', type: 'место работы', description: 'Офис компании', coordinates: null }, context: 'Место совершения преступления' },
-    ],
-  },
-  {
-    id: 'ep2', title: 'Присвоение имущества ООО', description: 'Присвоение имущества организации, совершённое с использованием служебного положения', date: '2023-09-15', episodeNumber: '2', severity: 'тяжкое', status: 'расследуется',
-    persons: [
-      { personId: 'p1', involvement: 'исполнитель', person: mockPersons[0] },
-      { personId: 'p2', involvement: 'соучастник', person: mockPersons[1] },
-    ],
-    articles: [
-      { articleId: 'art2', article: { id: 'art2', code: 'ст. 160 ч.2 УК РФ', number: '160', codeType: 'УК РФ', description: 'Присвоение с использованием служебного положения', category: 'тяжкое', punishmentMin: 'до 2 лет', punishmentMax: 'до 5 лет', isCurrent: true } },
-    ],
-    locations: [
-      { locationId: 'loc2', location: { id: 'loc2', name: 'Квартира Колесниченко', address: 'г. Москва, ул. Пушкина, д. 5', type: 'место жительства', description: 'Место обыска', coordinates: null }, context: 'Место обнаружения улик' },
-    ],
-  },
-  {
-    id: 'ep3', title: 'Фальсификация документов', description: 'Подделка финансовых документов для сокрытия хищения', date: '2023-12-01', episodeNumber: '3', severity: 'средней тяжести', status: 'сомнительно',
-    persons: [
-      { personId: 'p1', involvement: 'организатор', person: mockPersons[0] },
-    ],
-    articles: [],
-    locations: [],
-  },
+  {id:'ep1',title:'Мошенничество с инвестициями',description:'Хищение средств инвесторов путём обмана, группой лиц',date:'2023-06-01',episodeNumber:'1',severity:'тяжкое',status:'доказано',persons:[{personId:'p1',involvement:'организатор',person:mockPersons[0]},{personId:'p2',involvement:'соучастник',person:mockPersons[1]},{personId:'p3',involvement:'свидетель',person:mockPersons[2]},{personId:'p4',involvement:'потерпевшая',person:mockPersons[3]}],articles:[{articleId:'art1',article:art1}],locations:[{locationId:'loc1',location:loc1,context:'Место преступления'}]},
+  {id:'ep2',title:'Присвоение имущества ООО',description:'Присвоение имущества с использованием служебного положения',date:'2023-09-15',episodeNumber:'2',severity:'тяжкое',status:'расследуется',persons:[{personId:'p1',involvement:'исполнитель',person:mockPersons[0]},{personId:'p2',involvement:'соучастник',person:mockPersons[1]}],articles:[{articleId:'art2',article:art2}],locations:[{locationId:'loc2',location:loc2,context:'Место обнаружения улик'}]},
+  {id:'ep3',title:'Фальсификация документов',description:'Подделка финансовых документов для сокрытия хищения',date:'2023-12-01',episodeNumber:'3',severity:'средней тяжести',status:'сомнительно',persons:[{personId:'p1',involvement:'организатор',person:mockPersons[0]}],articles:[],locations:[]},
 ]
 
-export const mockGuiltAssessments: GuiltAssessmentData[] = [
-  { id: 'ga1', personId: 'p1', episodeId: 'ep1', guiltLevel: 'high', evidenceStrength: 'strong', forecast: 'Обвинение вероятно', confidence: 'high', mitigating: 'Отсутствие ранее судимости', aggravating: 'Руководящая роль, групповой сговор', analysisDate: '2024-03-20T10:00:00Z', notes: 'Основной организатор' },
-  { id: 'ga2', personId: 'p1', episodeId: 'ep2', guiltLevel: 'high', evidenceStrength: 'moderate', forecast: 'Обвинение вероятно', confidence: 'moderate', mitigating: 'Сотрудничество со следствием', aggravating: 'Использование служебного положения', analysisDate: '2024-03-20T10:00:00Z', notes: null },
-  { id: 'ga3', personId: 'p2', episodeId: 'ep1', guiltLevel: 'moderate', evidenceStrength: 'moderate', forecast: 'Частичное обвинение', confidence: 'moderate', mitigating: 'Второстепенная роль', aggravating: 'Осознанное участие', analysisDate: '2024-03-20T10:00:00Z', notes: null },
-  { id: 'ga4', personId: 'p3', episodeId: 'ep1', guiltLevel: 'none', evidenceStrength: 'insufficient', forecast: 'Не причастен', confidence: 'low', mitigating: null, aggravating: null, analysisDate: '2024-03-20T10:00:00Z', notes: 'Свидетель' },
-  { id: 'ga5', personId: 'p4', episodeId: 'ep1', guiltLevel: 'none', evidenceStrength: 'insufficient', forecast: 'Потерпевшая', confidence: 'low', mitigating: null, aggravating: null, analysisDate: '2024-03-20T10:00:00Z', notes: 'Потерпевшая сторона' },
-]
+// ─── Guilt Assessments ───
+function mkGA(id:string,pid:string,eid:string,guilt:string,ev:string,fc:string,conf:string,mit:string|null=null,agg:string|null=null,notes:string|null=null):GuiltAssessmentData {
+  return {id,personId:pid,episodeId:eid,guiltLevel:guilt,evidenceStrength:ev,forecast:fc,confidence:conf,mitigating:mit,aggravating:agg,analysisDate:d(3,20),notes}
+}
+export const mockGuiltAssessments: GuiltAssessmentData[] = [mkGA('ga1','p1','ep1','high','strong','Обвинение вероятно','high','Отсутствие судимости','Руководящая роль, сговор','Организатор'),mkGA('ga2','p1','ep2','high','moderate','Обвинение вероятно','moderate','Сотрудничество со следствием','Служебное положение'),mkGA('ga3','p2','ep1','moderate','moderate','Частичное обвинение','moderate','Второстепенная роль','Осознанное участие'),mkGA('ga4','p3','ep1','none','insufficient','Не причастен','low',null,null,'Свидетель'),mkGA('ga5','p4','ep1','none','insufficient','Потерпевшая','low',null,null,'Потерпевшая')]
 
-export const mockDefenseLines: DefenseLineData[] = [
-  { id: 'dl1', personId: 'p1', strategyType: 'alibi', title: 'Алиби на период эпизода 1', description: 'Доказать, что Колесниченко не мог совершить действия эпизода 1, так как находился в другом городе', evidence: 'Свидетельские показания Козлова, билеты на поезд', strength: 'moderate', probability: 'moderate', articleReferences: 'ст. 159 ч.3 УК РФ' },
-  { id: 'dl2', personId: 'p1', strategyType: 'reclassification', title: 'Переквалификация действий', description: 'Переквалификация с ч.3 ст.159 на менее тяжкую ч.1 ст.159', evidence: 'Отсутствие существенного вреда', strength: 'weak', probability: 'low', articleReferences: 'ст. 159 ч.1, ч.3 УК РФ' },
-  { id: 'dl3', personId: 'p1', strategyType: 'procedural_violation', title: 'Процессуальные нарушения', description: 'Нарушения при задержании и обыске - отсутствие адвоката при первом допросе', evidence: 'Протокол допроса без подписи адвоката', strength: 'strong', probability: 'moderate', articleReferences: 'ст. 48, 50 УПК РФ' },
-  { id: 'dl4', personId: 'p1', strategyType: 'lack_of_evidence', title: 'Недостаточность доказательств', description: 'Доказательства не позволяют достоверно установить причастность к эпизоду 2', evidence: 'Противоречия в показаниях свидетелей', strength: 'moderate', probability: 'moderate', articleReferences: 'ст. 307 УПК РФ' },
-  { id: 'dl5', personId: 'p1', strategyType: 'mitigating', title: 'Смягчающие обстоятельства', description: 'Первое совершение преступления, положительные характеристики, сотрудничество со следствием', evidence: 'Характеристика с работы, справка о отсутствии судимости', strength: 'strong', probability: 'high', articleReferences: 'ст. 61 УК РФ' },
-]
+// ─── Defense Lines ───
+function mkDL(id:string,strategy:string,title:string,desc:string,evidence:string,strength:string,probability:string,articles:string):DefenseLineData {
+  return {id,personId:'p1',strategyType:strategy,title,description:desc,evidence,strength,probability,articleReferences:articles}
+}
+export const mockDefenseLines: DefenseLineData[] = [mkDL('dl1','alibi','Алиби на период эпизода 1','Доказать, что не мог совершить действия эпизода 1','Показания Козлова, билеты','moderate','moderate','ст. 159 ч.3'),mkDL('dl2','reclassification','Переквалификация действий','Переквалификация с ч.3 ст.159 на ч.1','Отсутствие вреда','weak','low','ст. 159 ч.1, ч.3'),mkDL('dl3','procedural_violation','Процессуальные нарушения','Нарушения при обыске — отсутствие адвоката','Протокол без подписи адвоката','strong','moderate','ст. 48, 50 УПК'),mkDL('dl4','lack_of_evidence','Недостаточность доказательств','Доказательства не устанавливают причастность к эпизоду 2','Противоречия в показаниях','moderate','moderate','ст. 307 УПК'),mkDL('dl5','mitigating','Смягчающие обстоятельства','Первое совершение, характеристики, сотрудничество','Характеристика, справка','strong','high','ст. 61 УК')]
 
-export const mockComplianceChecks: LegalComplianceData[] = [
-  { id: 'lc1', documentId: 'doc1', checkType: 'article_applicability', status: 'warning', description: 'Статья 159 ч.3 может быть переквалифицирована на ч.2', recommendation: 'Рекомендуется проверка актуальности квалификации', legalBasis: 'ФЗ № 207 от 03.07.2024', checkedAt: '2024-05-15T10:00:00Z' },
-  { id: 'lc2', documentId: 'doc3', checkType: 'procedure_compliance', status: 'violation', description: 'Обыск произведён без участия адвоката подозреваемого', recommendation: 'Результаты обыска могут быть признаны недопустимым доказательством', legalBasis: 'ст. 48, 182 УПК РФ', checkedAt: '2024-05-15T10:00:00Z' },
-  { id: 'lc3', documentId: 'doc1', checkType: 'evidence_admissibility', status: 'compliant', description: 'Доказательства получены законным способом', recommendation: null, legalBasis: 'ст. 75 УПК РФ', checkedAt: '2024-05-15T10:00:00Z' },
-  { id: 'lc4', documentId: 'doc1', checkType: 'statute_limitations', status: 'compliant', description: 'Срок давности не истёк', recommendation: null, legalBasis: 'ст. 78 УК РФ', checkedAt: '2024-05-15T10:00:00Z' },
-]
+// ─── Compliance Checks ───
+function mkLC(id:string,docId:string,checkType:string,status:string,desc:string,rec:string|null,basis:string):LegalComplianceData {
+  return {id,documentId:docId,articleId:null,checkType,status,description:desc,recommendation:rec,legalBasis:basis,checkedAt:d(5,15)}
+}
+export const mockComplianceChecks: LegalComplianceData[] = [mkLC('lc1','doc1','article_applicability','warning','Ст. 159 ч.3 может быть переквалифицирована','Проверка актуальности','ФЗ № 207 от 03.07.2024'),mkLC('lc2','doc3','procedure_compliance','violation','Обыск без участия адвоката','Недопустимое доказательство','ст. 48, 182 УПК'),mkLC('lc3','doc1','evidence_admissibility','compliant','Доказательства получены законным способом',null,'ст. 75 УПК'),mkLC('lc4','doc1','statute_limitations','compliant','Срок давности не истёк',null,'ст. 78 УК')]
 
-export const mockChatMessages: ChatMessageData[] = [
-  { id: 'chat1', question: 'Какие статьи предъявлены Колесниченко?', answer: 'Колесниченко Д.А. обвиняется по ст. 159 ч.3 (мошенничество, совершённое группой лиц по предварительному сговору) и ст. 160 ч.2 (присвоение с использованием служебного положения) УК РФ.', contextType: 'person_specific', contextId: 'p1', createdAt: '2024-05-20T10:00:00Z', referencedDocuments: ['doc1'], referencedPersons: ['p1'], referencedArticles: ['ст. 159 ч.3 УК РФ', 'ст. 160 ч.2 УК РФ'] },
-  { id: 'chat2', question: 'Какие нарушения есть в материалах дела?', answer: 'Основное нарушение: обыск произведён без участия адвоката (ст. 48 УПК РФ). Также есть противоречия в показаниях свидетелей Петрова и Козлова относительно даты событий.', contextType: 'general', contextId: null, createdAt: '2024-05-20T10:05:00Z', referencedDocuments: ['doc3'], referencedPersons: ['p3', 'p5'], referencedArticles: ['ст. 48 УПК РФ'] },
-]
+// ─── Chat Messages ───
+export const mockChatMessages: ChatMessageData[] = [{id:'chat1',question:'Какие статьи предъявлены Колесниченко?',answer:'Колесниченко Д.А. обвиняется по ст. 159 ч.3 (мошенничество) и ст. 160 ч.2 (присвоение) УК РФ.',contextType:'person_specific',contextId:'p1',createdAt:d(5,20,'10:00:00Z'),referencedDocuments:['doc1'],referencedPersons:['p1'],referencedArticles:['ст. 159 ч.3 УК РФ','ст. 160 ч.2 УК РФ']},{id:'chat2',question:'Какие нарушения есть в материалах дела?',answer:'Основное нарушение: обыск без адвоката (ст. 48 УПК). Также противоречия в показаниях.',contextType:'general',contextId:null,createdAt:d(5,20,'10:05:00Z'),referencedDocuments:['doc3'],referencedPersons:['p3','p5'],referencedArticles:['ст. 48 УПК РФ']}]
 
-export const mockProcessingQueue: ProcessingQueueData[] = [
-  { id: 'q1', documentId: 'doc5', queuePosition: 1, status: 'queued', startedAt: null, completedAt: null, error: null, priority: 5 },
-  { id: 'q2', documentId: 'doc4', queuePosition: 0, status: 'processing', startedAt: '2024-04-10T09:00:00Z', completedAt: null, error: null, priority: 3 },
-]
+// ─── Processing Queue ───
+export const mockProcessingQueue: ProcessingQueueData[] = [{id:'q1',documentId:'doc5',queuePosition:1,status:'queued',startedAt:null,completedAt:null,error:null,priority:5},{id:'q2',documentId:'doc4',queuePosition:0,status:'processing',startedAt:d(4,10,'09:00:00Z'),completedAt:null,error:null,priority:3}]
 
+// ─── Dashboard Stats ───
 export const mockDashboardStats: DashboardStats = {
-  summary: {
-    totalDocuments: 5,
-    totalPersons: 5,
-    totalEpisodes: 3,
-    totalArticles: 2,
-    totalLocations: 3,
-    totalCrossReferences: 4,
-    totalChatMessages: 2,
-    totalComplianceChecks: 4,
-    totalDefenseLines: 5,
-    totalGuiltAssessments: 5,
-  },
-  documents: {
-    total: 5,
-    byStatus: { completed: 3, processing: 1, pending: 1 },
-    byType: { обвинение: 1, показание: 2, протокол: 1, экспертиза: 1 },
-    recent: mockDocuments.slice(0, 3),
-  },
-  persons: {
-    total: 5,
-    byRole: { обвиняемый: 1, соучастник: 1, свидетель: 2, потерпевшая: 1 },
-    kolesnichenko: { id: 'p1', fullName: 'Колесниченко Дмитрий Александрович', role: 'обвиняемый', status: 'задержанный', defenseStrategy: 'Непризнание вины, алиби на период эпизода 1' },
-  },
-  episodes: {
-    total: 3,
-    bySeverity: { тяжкое: 2, 'средней тяжести': 1 },
-    byStatus: { доказано: 1, расследуется: 1, сомнительно: 1 },
-  },
-  processingQueue: {
-    byStatus: { queued: 1, processing: 1 },
-    inProgress: [
-      { id: 'q2', documentId: 'doc4', originalName: 'Заключение эксперта.pdf', queuePosition: 0, startedAt: '2024-04-10T09:00:00Z' },
-    ],
-  },
-  guiltAssessments: {
-    total: 5,
-    byGuiltLevel: { high: 2, moderate: 1, none: 2 },
-    byEvidenceStrength: { strong: 1, moderate: 2, insufficient: 2 },
-    details: [
-      { id: 'ga1', personFullName: 'Колесниченко Д.А.', personRole: 'обвиняемый', isKolesnichenko: true, episodeTitle: 'Мошенничество с инвестициями', guiltLevel: 'high', evidenceStrength: 'strong', forecast: 'Обвинение вероятно', confidence: 'high' },
-      { id: 'ga3', personFullName: 'Сидоров А.П.', personRole: 'соучастник', isKolesnichenko: false, episodeTitle: 'Мошенничество с инвестициями', guiltLevel: 'moderate', evidenceStrength: 'moderate', forecast: 'Частичное обвинение', confidence: 'moderate' },
-    ],
-  },
-  defenseLines: {
-    total: 5,
-    byType: { alibi: 1, reclassification: 1, procedural_violation: 1, lack_of_evidence: 1, mitigating: 1 },
-    byStrength: { strong: 2, moderate: 2, weak: 1 },
-    details: mockDefenseLines.map(dl => ({ id: dl.id, strategyType: dl.strategyType, title: dl.title, description: dl.description, strength: dl.strength, probability: dl.probability })),
-  },
-  complianceChecks: {
-    total: 4,
-    byStatus: { compliant: 2, warning: 1, violation: 1 },
-    byType: { article_applicability: 1, procedure_compliance: 1, evidence_admissibility: 1, statute_limitations: 1 },
-    details: [
-      { id: 'lc1', documentOriginalName: 'Обвинительное заключение', checkType: 'article_applicability', status: 'warning', description: 'Статья 159 ч.3 может быть переквалифицирована', recommendation: 'Проверка актуальности квалификации', articleCode: '159 УК РФ' },
-      { id: 'lc2', documentOriginalName: 'Протокол обыска', checkType: 'procedure_compliance', status: 'violation', description: 'Обыск без участия адвоката', recommendation: 'Недопустимое доказательство', articleCode: null },
-    ],
-  },
+  summary:{totalDocuments:5,totalPersons:5,totalEpisodes:3,totalArticles:2,totalLocations:3,totalCrossReferences:4,totalChatMessages:2,totalComplianceChecks:4,totalDefenseLines:5,totalGuiltAssessments:5},
+  documents:{total:mockDocuments.length,byStatus:{completed:3,processing:1,pending:1},byType:{обвинение:1,показание:2,протокол:1,экспертиза:1},recent:mockDocuments.slice(0,3)},
+  persons:{total:mockPersons.length,byRole:{обвиняемый:1,соучастник:1,свидетель:2,потерпевшая:1},kolesnichenko:{id:'p1',fullName:'Колесниченко Дмитрий Александрович',role:'обвиняемый',status:'задержанный',defenseStrategy:'Непризнание вины, алиби'}},
+  episodes:{total:mockEpisodes.length,bySeverity:{тяжкое:2,'средней тяжести':1},byStatus:{доказано:1,расследуется:1,сомнительно:1}},
+  processingQueue:{byStatus:{queued:1,processing:1},inProgress:[{id:'q2',documentId:'doc4',originalName:'Заключение эксперта.pdf',queuePosition:0,startedAt:d(4,10,'09:00:00Z')}]},
+  guiltAssessments:{total:5,byGuiltLevel:{high:2,moderate:1,none:2},byEvidenceStrength:{strong:1,moderate:2,insufficient:2},details:[{id:'ga1',personFullName:'Колесниченко Д.А.',personRole:'обвиняемый',isKolesnichenko:true,episodeTitle:'Мошенничество с инвестициями',guiltLevel:'high',evidenceStrength:'strong',forecast:'Обвинение вероятно',confidence:'high'},{id:'ga3',personFullName:'Сидоров А.П.',personRole:'соучастник',isKolesnichenko:false,episodeTitle:'Мошенничество с инвестициями',guiltLevel:'moderate',evidenceStrength:'moderate',forecast:'Частичное обвинение',confidence:'moderate'}]},
+  defenseLines:{total:mockDefenseLines.length,byType:{alibi:1,reclassification:1,procedural_violation:1,lack_of_evidence:1,mitigating:1},byStrength:{strong:2,moderate:2,weak:1},details:mockDefenseLines.map(dl=>({id:dl.id,strategyType:dl.strategyType,title:dl.title,description:dl.description,strength:dl.strength,probability:dl.probability}))},
+  complianceChecks:{total:4,byStatus:{compliant:2,warning:1,violation:1},byType:{article_applicability:1,procedure_compliance:1,evidence_admissibility:1,statute_limitations:1},details:[{id:'lc1',documentOriginalName:'Обвинительное заключение',checkType:'article_applicability',status:'warning',description:'Ст. 159 ч.3 переквалификация',recommendation:'Проверка актуальности',articleCode:'159 УК РФ'},{id:'lc2',documentOriginalName:'Протокол обыска',checkType:'procedure_compliance',status:'violation',description:'Обыск без адвоката',recommendation:'Недопустимое доказательство',articleCode:null}]},
 }
 
-// Structured search results matching SearchResultData interface
-export const mockSearchResults: SearchResultData = {
-  documents: [mockDocuments[0]],
-  persons: [mockPersons[0]],
-  episodes: [mockEpisodes[0]],
-  crossReferences: [
-    { id: 'cr1', referenceText: 'Обвинение ссылается на показания Колесниченко', referenceType: 'доказательство', sourceDocument: mockDocuments[0], targetDocument: mockDocuments[1] },
-    { id: 'cr2', referenceText: 'Протокол обыска подтверждает обвинение', referenceType: 'подтверждение', sourceDocument: mockDocuments[2], targetDocument: mockDocuments[0] },
-  ],
+// ─── Search Results ───
+export const mockSearchResults: SearchResultData = {documents:[mockDocuments[0]],persons:[mockPersons[0]],episodes:[mockEpisodes[0]],crossReferences:[{id:'cr1',referenceText:'Обвинение ссылается на показания Колесниченко',referenceType:'доказательство',sourceDocument:mockDocuments[0],targetDocument:mockDocuments[1]},{id:'cr2',referenceText:'Протокол обыска подтверждает обвинение',referenceType:'подтверждение',sourceDocument:mockDocuments[2],targetDocument:mockDocuments[0]}]}
+
+// ─── Case Health Score ───
+export const mockCaseHealthScore: CaseHealthScore = {score:62,factors:{documentProcessing:{value:60,label:'Обработка документов',tooltip:'Процент завершённых обработок'},complianceRate:{value:50,label:'Соответствие нормам',tooltip:'Доля проверок с полным соответствием'},evidenceStrength:{value:55,label:'Сила доказательств',tooltip:'Средняя оценка силы доказательств'},defenseCoverage:{value:80,label:'Покрытие защиты',tooltip:'Процент эпизодов со стратегией'}}}
+
+// ─── Evidence Timeline ───
+function mkET(id:string,date:string,eventType:EvidenceTimelineEvent['eventType'],desc:string,eid?:string,en?:string):EvidenceTimelineEvent {
+  return {id,date,eventType,description:desc,relatedEntityId:eid,relatedEntityName:en}
 }
+export const mockEvidenceTimeline: EvidenceTimelineEvent[] = [mkET('et1',d(1,10),'document_upload','Загружено: Обвинительное заключение','doc1','Обвинительное заключение'),mkET('et2',d(1,10,'08:15:00Z'),'analysis_complete','Анализ завершён: Обвинительное заключение','doc1','Обвинительное заключение'),mkET('et3',d(1,15,'10:00:00Z'),'document_upload','Загружено: Показания Колесниченко','doc2','Показания Колесниченко'),mkET('et4',d(1,15,'10:20:00Z'),'analysis_complete','Анализ: Показания Колесниченко','doc2','Показания Колесниченко'),mkET('et5',d(2,20,'14:00:00Z'),'document_upload','Загружено: Протокол обыска','doc3','Протокол обыска'),mkET('et6',d(2,20,'14:10:00Z'),'analysis_complete','Анализ: Протокол обыска','doc3','Протокол обыска'),mkET('et7',d(3,20),'episode_found','Выявлен эпизод: Мошенничество','ep1','Мошенничество с инвестициями'),mkET('et8',d(4,10,'09:00:00Z'),'document_upload','Загружено: Заключение эксперта','doc4','Заключение эксперта'),mkET('et9',d(5,15),'compliance_check','Проверка: Нарушение — обыск без адвоката','lc2','Правовая проверка'),mkET('et10',d(5,15,'10:30:00Z'),'compliance_check','Предупреждение — переквалификация ст. 159','lc1','Правовая проверка'),mkET('et11',d(5,20,'09:00:00Z'),'defense_update','Обновлена стратегия: Процессуальные нарушения','dl3','Процессуальные нарушения')]
 
-// Case Health Score
-export const mockCaseHealthScore: CaseHealthScore = {
-  score: 62,
-  factors: {
-    documentProcessing: { value: 60, label: 'Обработка документов', tooltip: 'Процент завершённых обработок документов из общего числа загруженных' },
-    complianceRate: { value: 50, label: 'Соответствие нормам', tooltip: 'Доля проверок, показавших полное соответствие правовым нормам РФ' },
-    evidenceStrength: { value: 55, label: 'Сила доказательств', tooltip: 'Средняя оценка силы доказательств по всем эпизодам дела' },
-    defenseCoverage: { value: 80, label: 'Покрытие линии защиты', tooltip: 'Процент эпизодов, для которых разработана стратегия защиты' },
-  },
+// ─── Person Relationships ───
+function mkPR(id:string,src:string,tgt:string,type:string,desc:string,srcN:string,tgtN:string):PersonRelationship {
+  return {id,sourcePersonId:src,targetPersonId:tgt,relationshipType:type,description:desc,sourcePersonName:srcN,targetPersonName:tgtN}
 }
+export const mockPersonRelationships: PersonRelationship[] = [mkPR('pr1','p1','p2','соучастники','Колесниченко и Сидоров — соучастники','Колесниченко Д.А.','Сидоров А.П.'),mkPR('pr2','p1','p4','обвиняемый-потерпевшая','Мошенничество против Ивановой','Колесниченко Д.А.','Иванова М.С.'),mkPR('pr3','p1','p3','обвиняемый-свидетель','Петров — свидетель','Колесниченко Д.А.','Петров И.В.'),mkPR('pr4','p1','p5','обвиняемый-свидетель','Козлов — свидетель алиби','Колесниченко Д.А.','Козлов В.Н.'),mkPR('pr5','p2','p4','соучастник-потерпевшая','Сидоров — соучастник хищения','Сидоров А.П.','Иванова М.С.'),mkPR('pr6','p1','p2','организатор-соучастник','Колесниченко — организатор, Сидоров — соучастник','Колесниченко Д.А.','Сидоров А.П.')]
 
-// Evidence Timeline Events
-export const mockEvidenceTimeline: EvidenceTimelineEvent[] = [
-  { id: 'et1', date: '2024-01-10T08:00:00Z', eventType: 'document_upload', description: 'Загружено: Обвинительное заключение - Том 1', relatedEntityId: 'doc1', relatedEntityName: 'Обвинительное заключение' },
-  { id: 'et2', date: '2024-01-10T08:15:00Z', eventType: 'analysis_complete', description: 'Анализ завершён: Обвинительное заключение', relatedEntityId: 'doc1', relatedEntityName: 'Обвинительное заключение' },
-  { id: 'et3', date: '2024-01-15T10:00:00Z', eventType: 'document_upload', description: 'Загружено: Показания Колесниченко Д.А.', relatedEntityId: 'doc2', relatedEntityName: 'Показания Колесниченко' },
-  { id: 'et4', date: '2024-01-15T10:20:00Z', eventType: 'analysis_complete', description: 'Анализ завершён: Показания Колесниченко', relatedEntityId: 'doc2', relatedEntityName: 'Показания Колесниченко' },
-  { id: 'et5', date: '2024-02-20T14:00:00Z', eventType: 'document_upload', description: 'Загружено: Протокол обыска', relatedEntityId: 'doc3', relatedEntityName: 'Протокол обыска' },
-  { id: 'et6', date: '2024-02-20T14:10:00Z', eventType: 'analysis_complete', description: 'Анализ завершён: Протокол обыска', relatedEntityId: 'doc3', relatedEntityName: 'Протокол обыска' },
-  { id: 'et7', date: '2024-03-20T10:00:00Z', eventType: 'episode_found', description: 'Выявлен эпизод: Мошенничество с инвестициями', relatedEntityId: 'ep1', relatedEntityName: 'Мошенничество с инвестициями' },
-  { id: 'et8', date: '2024-04-10T09:00:00Z', eventType: 'document_upload', description: 'Загружено: Заключение эксперта', relatedEntityId: 'doc4', relatedEntityName: 'Заключение эксперта' },
-  { id: 'et9', date: '2024-05-15T10:00:00Z', eventType: 'compliance_check', description: 'Правовая проверка: Обнаружено нарушение — обыск без адвоката', relatedEntityId: 'lc2', relatedEntityName: 'Правовая проверка' },
-  { id: 'et10', date: '2024-05-15T10:30:00Z', eventType: 'compliance_check', description: 'Правовая проверка: Предупреждение — возможна переквалификация ст. 159', relatedEntityId: 'lc1', relatedEntityName: 'Правовая проверка' },
-  { id: 'et11', date: '2024-05-20T09:00:00Z', eventType: 'defense_update', description: 'Обновлена стратегия защиты: Процессуальные нарушения', relatedEntityId: 'dl3', relatedEntityName: 'Процессуальные нарушения' },
-]
-
-// Person Relationships
-export const mockPersonRelationships: PersonRelationship[] = [
-  { id: 'pr1', sourcePersonId: 'p1', targetPersonId: 'p2', relationshipType: 'соучастники', description: 'Колесниченко и Сидоров — соучастники по эпизоду 1', sourcePersonName: 'Колесниченко Д.А.', targetPersonName: 'Сидоров А.П.' },
-  { id: 'pr2', sourcePersonId: 'p1', targetPersonId: 'p4', relationshipType: 'обвиняемый-потерпевшая', description: 'Колесниченко обвиняется в мошенничестве против Иванова', sourcePersonName: 'Колесниченко Д.А.', targetPersonName: 'Иванова М.С.' },
-  { id: 'pr3', sourcePersonId: 'p1', targetPersonId: 'p3', relationshipType: 'обвиняемый-свидетель', description: 'Петров — свидетель по делу Колесниченко', sourcePersonName: 'Колесниченко Д.А.', targetPersonName: 'Петров И.В.' },
-  { id: 'pr4', sourcePersonId: 'p1', targetPersonId: 'p5', relationshipType: 'обвиняемый-свидетель', description: 'Козлов — свидетель алиби Колесниченко', sourcePersonName: 'Колесниченко Д.А.', targetPersonName: 'Козлов В.Н.' },
-  { id: 'pr5', sourcePersonId: 'p2', targetPersonId: 'p4', relationshipType: 'соучастник-потерпевшая', description: 'Сидоров — соучастник хищения средств Ивановой', sourcePersonName: 'Сидоров А.П.', targetPersonName: 'Иванова М.С.' },
-  { id: 'pr6', sourcePersonId: 'p1', targetPersonId: 'p2', relationshipType: 'организатор-соучастник', description: 'Колесниченко — организатор, Сидоров — соучастник', sourcePersonName: 'Колесниченко Д.А.', targetPersonName: 'Сидоров А.П.' },
-]
-
-// Defense Improvement Suggestions
-export const mockDefenseImprovements: DefenseImprovementData[] = [
-  { id: 'di1', defenseLineId: 'dl1', suggestion: 'Представить дополнительные доказательства алиби: видео с камер наблюдения, электронные билеты', expectedImpact: 'Усиление алиби', probabilityChange: '+15%', difficulty: 'moderate', category: 'доказательства' },
-  { id: 'di2', defenseLineId: 'dl2', suggestion: 'Собрать доказательства отсутствия значительного вреда для переквалификации на ч.1 ст. 159', expectedImpact: 'Успешная переквалификация', probabilityChange: '+20%', difficulty: 'hard', category: 'переквалификация' },
-  { id: 'di3', defenseLineId: 'dl3', suggestion: 'Подать ходатайство о признании результатов обыска недопустимым доказательством', expectedImpact: 'Исключение ключевого доказательства', probabilityChange: '+25%', difficulty: 'easy', category: 'процессуальные' },
-  { id: 'di4', defenseLineId: 'dl4', suggestion: 'Выявить дополнительные противоречия в показаниях свидетелей Петрова и Козлова', expectedImpact: 'Ослабление обвинения', probabilityChange: '+10%', difficulty: 'moderate', category: 'доказательства' },
-  { id: 'di5', defenseLineId: 'dl5', suggestion: 'Получить положительные характеристики от дополнительных источников (соседи, бывшие коллеги)', expectedImpact: 'Усиление смягчающих', probabilityChange: '+5%', difficulty: 'easy', category: 'характеристика' },
-]
-
-// Notifications
-export const mockNotifications: NotificationData[] = [
-  { id: 'n1', type: 'processing', title: 'Документ в обработке', description: 'Заключение эксперта — обработка запущена', timestamp: '2024-04-10T09:00:00Z', isRead: false, relatedSection: 'documents', relatedEntityId: 'doc4' },
-  { id: 'n2', type: 'compliance', title: 'Нарушение выявлено', description: 'Обыск без участия адвоката — ст. 48 УПК РФ', timestamp: '2024-05-15T10:00:00Z', isRead: false, relatedSection: 'legal-check', relatedEntityId: 'lc2' },
-  { id: 'n3', type: 'compliance', title: 'Предупреждение', description: 'Ст. 159 ч.3 может быть переквалифицирована', timestamp: '2024-05-15T10:30:00Z', isRead: false, relatedSection: 'legal-check', relatedEntityId: 'lc1' },
-  { id: 'n4', type: 'processing', title: 'Документ в очереди', description: 'Показания свидетеля Петрова — ожидает обработки', timestamp: '2024-05-01T11:00:00Z', isRead: true, relatedSection: 'documents', relatedEntityId: 'doc5' },
-  { id: 'n5', type: 'defense', title: 'Стратегия обновлена', description: 'Процессуальные нарушения — сильная позиция', timestamp: '2024-05-20T09:00:00Z', isRead: true, relatedSection: 'defense', relatedEntityId: 'dl3' },
-]
-
-// Cross-reference Graph Nodes
-export const mockCrossRefNodes: CrossRefNode[] = [
-  {
-    documentId: 'doc1', documentName: 'Обвинительное заключение', documentType: 'обвинение',
-    linkedDocuments: [
-      { id: 'doc2', name: 'Показания Колесниченко', type: 'показание', refType: 'доказательство' },
-      { id: 'doc3', name: 'Протокол обыска', type: 'протокол', refType: 'подтверждение' },
-    ],
-  },
-  {
-    documentId: 'doc2', documentName: 'Показания Колесниченко', documentType: 'показание',
-    linkedDocuments: [
-      { id: 'doc1', name: 'Обвинительное заключение', type: 'обвинение', refType: 'цитата' },
-    ],
-  },
-  {
-    documentId: 'doc3', documentName: 'Протокол обыска', documentType: 'протокол',
-    linkedDocuments: [
-      { id: 'doc1', name: 'Обвинительное заключение', type: 'обвинение', refType: 'подтверждение' },
-      { id: 'doc2', name: 'Показания Колесниченко', type: 'показание', refType: 'упоминание' },
-    ],
-  },
-  {
-    documentId: 'doc4', documentName: 'Заключение эксперта', documentType: 'экспертиза',
-    linkedDocuments: [
-      { id: 'doc1', name: 'Обвинительное заключение', type: 'обвинение', refType: 'доказательство' },
-    ],
-  },
-]
-
-// === NEW: Case Brief / Executive Summary ===
-export const mockCaseBrief: CaseBriefData = {
-  caseNumber: '2024-00145',
-  caseTitle: 'Уголовное дело в отношении Колесниченко Д.А. и Сидорова А.П.',
-  summary: 'Уголовное дело возбуждено по признакам преступлений, предусмотренных ч.3 ст.159 и ч.2 ст.160 УК РФ. Обвиняемые — Колесниченко Д.А. (организатор) и Сидоров А.П. (соучастник), бывшие руководство ООО "ТехноПром". Эпизоды включают мошенничество с инвестициями граждан и присвоение имущества организации. Общая сумма ущерба — 12,5 млн рублей. Дело содержит 5 томов материалов, 4 ключевых документа прошли AI-анализ.',
-  keyDefendants: [
-    { name: 'Колесниченко Дмитрий Александрович', role: 'организатор', articles: ['ст. 159 ч.3 УК РФ', 'ст. 160 ч.2 УК РФ'], guiltLevel: 'high' },
-    { name: 'Сидоров Андрей Петрович', role: 'соучастник', articles: ['ст. 159 ч.3 УК РФ'], guiltLevel: 'moderate' },
-  ],
-  keyEpisodes: [
-    { title: 'Мошенничество с инвестициями', date: '2023-06-01', severity: 'тяжкое', status: 'доказано' },
-    { title: 'Присвоение имущества ООО', date: '2023-09-15', severity: 'тяжкое', status: 'расследуется' },
-    { title: 'Фальсификация документов', date: '2023-12-01', severity: 'средней тяжести', status: 'сомнительно' },
-  ],
-  keyEvidence: [
-    { description: 'Финансово-экономическая экспертиза', source: 'Заключение эксперта', strength: 'strong' },
-    { description: 'Показания свидетеля Петрова И.В.', source: 'Протокол допроса', strength: 'moderate' },
-    { description: 'Видеозапись с камер наблюдения', source: 'Приложение к протоколу обыска', strength: 'strong' },
-    { description: 'Бухгалтерские документы ООО', source: 'Изъятие при обыске', strength: 'moderate' },
-  ],
-  keyViolations: [
-    { description: 'Обыск без участия адвоката', legalBasis: 'ст. 48, 182 УПК РФ', severity: 'critical' },
-    { description: 'Возможна переквалификация ст. 159', legalBasis: 'ФЗ № 207 от 03.07.2024', severity: 'major' },
-    { description: 'Противоречия в показаниях свидетелей', legalBasis: 'ст. 87 УПК РФ', severity: 'minor' },
-  ],
-  defenseSummary: 'Основная линия защиты Колесниченко — непризнание вины и алиби на период эпизода 1, а также заявление о процессуальных нарушениях при обыске (отсутствие адвоката). Дополнительно — ходатайство о переквалификации и смягчающие обстоятельства (первая судимость, сотрудничество).',
-  prosecutionSummary: 'Обвинение опирается на заключение финансовой экспертизы, показания свидетелей, изъятые при обыске документы. Ущерб подтверждён показаниями потерпевшей Ивановой М.С. и материалами бухгалтерской экспертизы.',
-  predictedOutcome: [
-    { scenario: 'Полное обвинение по всем эпизодам', probability: 45, description: 'Суд признает вину по ст. 159 ч.3 и 160 ч.2 с назначением реального лишения свободы 4-6 лет' },
-    { scenario: 'Частичное обвинение (переквалификация)', probability: 30, description: 'Переквалификация на ч.2 ст.159, наказание 2-4 года условно' },
-    { scenario: 'Исключение ключевых доказательств', probability: 15, description: 'Признание обыска недопустимым → прекращение дела за недоказанностью' },
-    { scenario: 'Прекращение дела', probability: 10, description: 'Прекращение за примирением сторон или по иным основаниям' },
-  ],
-  generatedAt: '2024-05-22T10:00:00Z',
-  aiConfidence: 78,
+// ─── Defense Improvements ───
+function mkDI(id:string,dlId:string,suggestion:string,impact:string,prob:string,diff:DefenseImprovementData['difficulty'],cat:string):DefenseImprovementData {
+  return {id,defenseLineId:dlId,suggestion,expectedImpact:impact,probabilityChange:prob,difficulty:diff,category:cat}
 }
+export const mockDefenseImprovements: DefenseImprovementData[] = [mkDI('di1','dl1','Представить доп. доказательства алиби','Усиление алиби','+15%','moderate','доказательства'),mkDI('di2','dl2','Собрать доказательства отсутствия вреда','Успешная переквалификация','+20%','hard','переквалификация'),mkDI('di3','dl3','Подать ходатайство о признании обыска недопустимым','Исключение доказательства','+25%','easy','процессуальные'),mkDI('di4','dl4','Выявить противоречия в показаниях','Ослабление обвинения','+10%','moderate','доказательства'),mkDI('di5','dl5','Получить положительные характеристики','Усиление смягчающих','+5%','easy','характеристика')]
 
-// === NEW: Risk Assessment Matrix ===
-export const mockRiskAssessment: RiskAssessmentData = {
-  overallRisk: 68,
-  riskLevel: 'high',
-  factors: {
-    evidenceRisk: { score: 72, label: 'Риск доказательственной базы', description: 'Сила доказательств обвинения высокая, но есть процессуальные нарушения' },
-    proceduralRisk: { score: 80, label: 'Процессуальный риск', description: 'Обыск без адвоката — основание для исключения доказательств' },
-    defenseRisk: { score: 45, label: 'Риск линии защиты', description: 'Алиби умеренно сильное, но требует дополнительных доказательств' },
-    complianceRisk: { score: 50, label: 'Риск несоответствия нормам', description: 'Возможна переквалификация, есть нарушения УПК' },
-    timelineRisk: { score: 60, label: 'Риск по срокам', description: 'Сроки расследования близки к предельным, возможны нарушения' },
-  },
-  matrix: [
-    { likelihood: 75, impact: 85, category: 'Осуждение по ст. 159 ч.3' },
-    { likelihood: 60, impact: 70, category: 'Осуждение по ст. 160 ч.2' },
-    { likelihood: 40, impact: 90, category: 'Исключение доказательств' },
-    { likelihood: 30, impact: 50, category: 'Переквалификация' },
-    { likelihood: 20, impact: 95, category: 'Прекращение дела' },
-  ],
-  mitigationStrategies: [
-    { strategy: 'Подать ходатайство об исключении результатов обыска', riskReduction: 25, priority: 'high' },
-    { strategy: 'Собрать дополнительные доказательства алиби', riskReduction: 15, priority: 'high' },
-    { strategy: 'Подготовить смягчающие обстоятельства', riskReduction: 10, priority: 'medium' },
-    { strategy: 'Выявить противоречия в показаниях свидетелей', riskReduction: 12, priority: 'medium' },
-    { strategy: 'Ходатайствовать о переквалификации', riskReduction: 8, priority: 'low' },
-  ],
+// ─── Notifications ───
+function mkN(id:string,type:NotificationData['type'],title:string,desc:string,ts:string,isRead:boolean,section?:NotificationData['relatedSection'],eid?:string):NotificationData {
+  return {id,type,title,description:desc,timestamp:ts,isRead,relatedSection:section,relatedEntityId:eid}
 }
+export const mockNotifications: NotificationData[] = [mkN('n1','processing','Документ в обработке','Заключение эксперта — обработка',d(4,10,'09:00:00Z'),false,'documents','doc4'),mkN('n2','compliance','Нарушение выявлено','Обыск без адвоката — ст. 48 УПК',d(5,15),false,'legal-check','lc2'),mkN('n3','compliance','Предупреждение','Ст. 159 ч.3 может быть переквалифицирована',d(5,15,'10:30:00Z'),false,'legal-check','lc1'),mkN('n4','processing','Документ в очереди','Показания Петрова — ожидает обработки',d(5,1,'11:00:00Z'),true,'documents','doc5'),mkN('n5','defense','Стратегия обновлена','Процессуальные нарушения — сильная позиция',d(5,20,'09:00:00Z'),true,'defense','dl3')]
 
-// === NEW: Sentencing Calculator ===
+// ─── Cross Reference Nodes ───
+function mkCR(docId:string,name:string,type:string,links:CrossRefNode['linkedDocuments']):CrossRefNode {
+  return {documentId:docId,documentName:name,documentType:type,linkedDocuments:links}
+}
+export const mockCrossRefNodes: CrossRefNode[] = [mkCR('doc1','Обвинительное заключение','обвинение',[{id:'doc2',name:'Показания Колесниченко',type:'показание',refType:'доказательство'},{id:'doc3',name:'Протокол обыска',type:'протокол',refType:'подтверждение'}]),mkCR('doc2','Показания Колесниченко','показание',[{id:'doc1',name:'Обвинительное заключение',type:'обвинение',refType:'цитата'}]),mkCR('doc3','Протокол обыска','протокол',[{id:'doc1',name:'Обвинительное заключение',type:'обвинение',refType:'подтверждение'},{id:'doc2',name:'Показания Колесниченко',type:'показание',refType:'упоминание'}]),mkCR('doc4','Заключение эксперта','экспертиза',[{id:'doc1',name:'Обвинительное заключение',type:'обвинение',refType:'доказательство'}])]
+
+// ─── Case Brief ───
+export const mockCaseBrief: CaseBriefData = {caseNumber:'2024-00145',caseTitle:'Уголовное дело в отношении Колесниченко Д.А. и Сидорова А.П.',summary:'Дело по ч.3 ст.159 и ч.2 ст.160 УК РФ. Обвиняемые — Колесниченко (организатор) и Сидоров (соучастник). Ущерб — 12,5 млн руб.',keyDefendants:[{name:'Колесниченко Дмитрий Александрович',role:'организатор',articles:['ст. 159 ч.3 УК РФ','ст. 160 ч.2 УК РФ'],guiltLevel:'high'},{name:'Сидоров Андрей Петрович',role:'соучастник',articles:['ст. 159 ч.3 УК РФ'],guiltLevel:'moderate'}],keyEpisodes:[{title:'Мошенничество с инвестициями',date:'2023-06-01',severity:'тяжкое',status:'доказано'},{title:'Присвоение имущества ООО',date:'2023-09-15',severity:'тяжкое',status:'расследуется'},{title:'Фальсификация документов',date:'2023-12-01',severity:'средней тяжести',status:'сомнительно'}],keyEvidence:[{description:'Финансово-экономическая экспертиза',source:'Заключение эксперта',strength:'strong'},{description:'Показания свидетеля Петрова',source:'Протокол допроса',strength:'moderate'},{description:'Видеозапись с камер наблюдения',source:'Приложение к протоколу',strength:'strong'},{description:'Бухгалтерские документы ООО',source:'Изъятие при обыске',strength:'moderate'}],keyViolations:[{description:'Обыск без участия адвоката',legalBasis:'ст. 48, 182 УПК РФ',severity:'critical'},{description:'Возможна переквалификация ст. 159',legalBasis:'ФЗ № 207 от 03.07.2024',severity:'major'},{description:'Противоречия в показаниях свидетелей',legalBasis:'ст. 87 УПК РФ',severity:'minor'}],defenseSummary:'Непризнание вины, алиби, процессуальные нарушения, переквалификация, смягчающие обстоятельства.',prosecutionSummary:'Обвинение опирается на экспертизу, показания свидетелей, изъятые документы.',predictedOutcome:[{scenario:'Полное обвинение',probability:45,description:'Признание вины, 4-6 лет'},{scenario:'Частичное обвинение',probability:30,description:'Переквалификация, 2-4 года условно'},{scenario:'Исключение доказательств',probability:15,description:'Признание обыска недопустимым'},{scenario:'Прекращение дела',probability:10,description:'Прекращение за примирением'}],generatedAt:d(5,22,'10:00:00Z'),aiConfidence:78}
+
+// ─── Risk Assessment ───
+export const mockRiskAssessment: RiskAssessmentData = {overallRisk:68,riskLevel:'high',factors:{evidenceRisk:{score:72,label:'Риск доказательств',description:'Сила доказательств высокая, но есть нарушения'},proceduralRisk:{score:80,label:'Процессуальный риск',description:'Обыск без адвоката — основание для исключения'},defenseRisk:{score:45,label:'Риск линии защиты',description:'Алиби умеренно сильное'},complianceRisk:{score:50,label:'Риск несоответствия',description:'Возможна переквалификация'},timelineRisk:{score:60,label:'Риск по срокам',description:'Сроки близки к предельным'}},matrix:[{likelihood:75,impact:85,category:'Осуждение по ст. 159 ч.3'},{likelihood:60,impact:70,category:'Осуждение по ст. 160 ч.2'},{likelihood:40,impact:90,category:'Исключение доказательств'},{likelihood:30,impact:50,category:'Переквалификация'},{likelihood:20,impact:95,category:'Прекращение дела'}],mitigationStrategies:[{strategy:'Ходатайство об исключении обыска',riskReduction:25,priority:'high'},{strategy:'Доп. доказательства алиби',riskReduction:15,priority:'high'},{strategy:'Смягчающие обстоятельства',riskReduction:10,priority:'medium'},{strategy:'Противоречия в показаниях',riskReduction:12,priority:'medium'},{strategy:'Ходатайство о переквалификации',riskReduction:8,priority:'low'}]}
+
+// ─── Sentencing ───
+const mkMF=(f:string,r:number,a:boolean)=>({factor:f,reduction:r,applies:a})
+const mkAF=(f:string,i:number,a:boolean)=>({factor:f,increase:i,applies:a})
+const mkPC=(cn:string,s:number,d:string)=>({caseNumber:cn,sentence:s,description:d})
 export const mockSentencing: SentencingData[] = [
-  {
-    articleCode: 'ст. 159 ч.3 УК РФ',
-    description: 'Мошенничество, совершённое группой лиц по предварительному сговору',
-    punishmentMin: 2,
-    punishmentMax: 6,
-    baseSentence: 4,
-    mitigatingFactors: [
-      { factor: 'Первое совершение преступления', reduction: 1, applies: true },
-      { factor: 'Положительные характеристики', reduction: 0.5, applies: true },
-      { factor: 'Сотрудничество со следствием', reduction: 0.5, applies: true },
-      { factor: 'Наличие малолетних детей', reduction: 0.5, applies: false },
-      { factor: 'Возмещение ущерба', reduction: 1, applies: false },
-    ],
-    aggravatingFactors: [
-      { factor: 'Руководящая роль в преступлении', increase: 1, applies: true },
-      { factor: 'Особо крупный размер', increase: 1, applies: true },
-      { factor: 'Совершение в группе', increase: 0.5, applies: true },
-      { factor: 'Использование служебного положения', increase: 0.5, applies: true },
-    ],
-    estimatedSentence: 4,
-    estimatedFine: 500000,
-    additionalSanctions: ['Лишение права занимать руководящие должности на 3 года', 'Возмещение ущерба 12,5 млн руб.'],
-    precedentCases: [
-      { caseNumber: '1-12/2023', sentence: 4.5, description: 'Аналогичное дело, мошенничество группой лиц, реальное лишение свободы' },
-      { caseNumber: '1-45/2023', sentence: 3, description: 'Мошенничество с переквалификацией на ч.2, условный срок' },
-      { caseNumber: '1-78/2022', sentence: 5, description: 'Мошенничество в особо крупном размере, реальный срок' },
-    ],
-  },
-  {
-    articleCode: 'ст. 160 ч.2 УК РФ',
-    description: 'Присвоение с использованием служебного положения',
-    punishmentMin: 2,
-    punishmentMax: 5,
-    baseSentence: 3.5,
-    mitigatingFactors: [
-      { factor: 'Первое совершение преступления', reduction: 1, applies: true },
-      { factor: 'Положительные характеристики', reduction: 0.5, applies: true },
-      { factor: 'Сотрудничество со следствием', reduction: 0.5, applies: true },
-    ],
-    aggravatingFactors: [
-      { factor: 'Использование служебного положения', increase: 1, applies: true },
-      { factor: 'Особо крупный размер', increase: 1, applies: false },
-    ],
-    estimatedSentence: 3,
-    estimatedFine: 300000,
-    additionalSanctions: ['Лишение права занимать бухгалтерские должности на 2 года'],
-    precedentCases: [
-      { caseNumber: '1-23/2023', sentence: 3, description: 'Присвоение средств главным бухгалтером, условный срок' },
-      { caseNumber: '1-67/2022', sentence: 4, description: 'Присвоение директором ООО, реальный срок' },
-    ],
-  },
+  {articleCode:'ст. 159 ч.3 УК РФ',description:'Мошенничество, группой лиц по сговору',punishmentMin:2,punishmentMax:6,baseSentence:4,estimatedSentence:4,estimatedFine:500000,mitigatingFactors:[mkMF('Первое совершение',1,true),mkMF('Положительные характеристики',.5,true),mkMF('Сотрудничество со следствием',.5,true),mkMF('Наличие малолетних детей',.5,false),mkMF('Возмещение ущерба',1,false)],aggravatingFactors:[mkAF('Руководящая роль',1,true),mkAF('Особо крупный размер',1,true),mkAF('Совершение в группе',.5,true),mkAF('Служебное положение',.5,true)],additionalSanctions:['Лишение права занимать руководящие должности на 3 года','Возмещение 12,5 млн руб.'],precedentCases:[mkPC('1-12/2023',4.5,'Мошенничество группой, реальный срок'),mkPC('1-45/2023',3,'Переквалификация, условный срок'),mkPC('1-78/2022',5,'Особо крупный размер')]},
+  {articleCode:'ст. 160 ч.2 УК РФ',description:'Присвоение с использованием служебного положения',punishmentMin:2,punishmentMax:5,baseSentence:3.5,estimatedSentence:3,estimatedFine:300000,mitigatingFactors:[mkMF('Первое совершение',1,true),mkMF('Положительные характеристики',.5,true),mkMF('Сотрудничество со следствием',.5,true)],aggravatingFactors:[mkAF('Служебное положение',1,true),mkAF('Особо крупный размер',1,false)],additionalSanctions:['Лишение права занимать бухгалтерские должности на 2 года'],precedentCases:[mkPC('1-23/2023',3,'Присвоение бухгалтером, условный срок'),mkPC('1-67/2022',4,'Присвоение директором, реальный срок')]},
 ]
 
-// === NEW: Evidence Chain of Custody ===
+// ─── Evidence Chain ───
+const mkCS=(id:string,ts:string,action:string,actor:string,notes:string,status:EvidenceChainData['chainSteps'][0]['status']):EvidenceChainData['chainSteps'][0]=>({id,timestamp:ts,action,actor,notes,status})
 export const mockEvidenceChain: EvidenceChainData[] = [
-  {
-    evidenceId: 'ev1',
-    evidenceName: 'Бухгалтерские документы ООО "ТехноПром"',
-    evidenceType: 'документы',
-    collectedAt: '2024-02-20T14:00:00Z',
-    collectedBy: 'Ст. следователь Иванов И.И.',
-    location: 'Офис ООО "ТехноПром", г. Москва, ул. Ленина, д. 10',
-    chainSteps: [
-      { id: 'cs1', timestamp: '2024-02-20T14:00:00Z', action: 'Изъятие при обыске', actor: 'Следователь Иванов И.И.', notes: 'Изъято 45 листов документов', status: 'intact' },
-      { id: 'cs2', timestamp: '2024-02-20T16:30:00Z', action: 'Передача в ОВД', actor: 'Понятой Смирнов А.А.', notes: 'Передача упаковки с документами', status: 'transferred' },
-      { id: 'cs3', timestamp: '2024-02-21T09:00:00Z', action: 'Передача на экспертизу', actor: 'Эксперт Кузнецова Е.В.', notes: 'Назначена финансово-экономическая экспертиза', status: 'transferred' },
-      { id: 'cs4', timestamp: '2024-04-10T17:00:00Z', action: 'Возврат с экспертизы', actor: 'Эксперт Кузнецова Е.В.', notes: 'Заключение эксперта приобщено к делу', status: 'analyzed' },
-    ],
-    integrityScore: 65,
-    admissibility: 'questionable',
-    challenges: [
-      { description: 'Обыск без участия адвоката подозреваемого', severity: 'high' },
-      { description: 'Отсутствие видеофиксации изъятия документов', severity: 'medium' },
-      { description: 'Задержка в передаче на экспертизу (1 день)', severity: 'low' },
-    ],
-  },
-  {
-    evidenceId: 'ev2',
-    evidenceName: 'Электронные носители (ноутбук, флеш-накопители)',
-    evidenceType: 'электронные доказательства',
-    collectedAt: '2024-02-20T14:30:00Z',
-    collectedBy: 'Ст. следователь Иванов И.И.',
-    location: 'Квартира Колесниченко, г. Москва, ул. Пушкина, д. 5',
-    chainSteps: [
-      { id: 'cs5', timestamp: '2024-02-20T14:30:00Z', action: 'Изъятие при обыске', actor: 'Следователь Иванов И.И.', notes: 'Изъято: 1 ноутбук, 3 флеш-накопителя', status: 'intact' },
-      { id: 'cs6', timestamp: '2024-02-20T17:00:00Z', action: 'Передача специалисту', actor: 'Специалист Петров П.П.', notes: 'Создание образов дисков', status: 'transferred' },
-      { id: 'cs7', timestamp: '2024-03-01T10:00:00Z', action: 'Компьютерно-техническая экспертиза', actor: 'Эксперт Соколов Д.А.', notes: 'Анализ содержимого', status: 'analyzed' },
-    ],
-    integrityScore: 80,
-    admissibility: 'admissible',
-    challenges: [
-      { description: 'Отсутствие протокола точного времени изъятия', severity: 'low' },
-    ],
-  },
-  {
-    evidenceId: 'ev3',
-    evidenceName: 'Показания свидетеля Петрова И.В.',
-    evidenceType: 'показания',
-    collectedAt: '2024-02-05T11:00:00Z',
-    collectedBy: 'Следователь Сидоров С.С.',
-    location: 'ОВД по району',
-    chainSteps: [
-      { id: 'cs8', timestamp: '2024-02-05T11:00:00Z', action: 'Допрос свидетеля', actor: 'Следователь Сидоров С.С.', notes: 'Протокол допроса 10 листов', status: 'intact' },
-      { id: 'cs9', timestamp: '2024-04-15T14:00:00Z', action: 'Повторный допрос', actor: 'Следователь Сидоров С.С.', notes: 'Уточнения по обстоятельствам', status: 'questioned' },
-    ],
-    integrityScore: 55,
-    admissibility: 'questionable',
-    challenges: [
-      { description: 'Противоречия с показаниями свидетеля Козлова В.Н.', severity: 'high' },
-      { description: 'Изменение показаний между допросами', severity: 'medium' },
-    ],
-  },
+  {evidenceId:'ev1',evidenceName:'Бухгалтерские документы ООО',evidenceType:'документы',collectedAt:d(2,20,'14:00:00Z'),collectedBy:'Ст. следователь Иванов',location:'Офис ООО',chainSteps:[mkCS('cs1',d(2,20,'14:00:00Z'),'Изъятие при обыске','Следователь Иванов','45 листов','intact'),mkCS('cs2',d(2,20,'16:30:00Z'),'Передача в ОВД','Понятой Смирнов','Передача упаковки','transferred'),mkCS('cs3',d(2,21,'09:00:00Z'),'На экспертизу','Эксперт Кузнецова','Назначена экспертиза','transferred'),mkCS('cs4',d(4,10,'17:00:00Z'),'Возврат с экспертизы','Эксперт Кузнецова','Заключение приобщено','analyzed')],integrityScore:65,admissibility:'questionable',challenges:[{description:'Обыск без адвоката',severity:'high'},{description:'Нет видеофиксации изъятия',severity:'medium'},{description:'Задержка передачи на экспертизу',severity:'low'}]},
+  {evidenceId:'ev2',evidenceName:'Электронные носители',evidenceType:'электронные доказательства',collectedAt:d(2,20,'14:30:00Z'),collectedBy:'Ст. следователь Иванов',location:'Квартира Колесниченко',chainSteps:[mkCS('cs5',d(2,20,'14:30:00Z'),'Изъятие при обыске','Следователь Иванов','1 ноутбук, 3 флешки','intact'),mkCS('cs6',d(2,20,'17:00:00Z'),'Передача специалисту','Специалист Петров','Создание образов','transferred'),mkCS('cs7',d(3,1,'10:00:00Z'),'КТ-экспертиза','Эксперт Соколов','Анализ содержимого','analyzed')],integrityScore:80,admissibility:'admissible',challenges:[{description:'Нет протокола точного времени изъятия',severity:'low'}]},
+  {evidenceId:'ev3',evidenceName:'Показания свидетеля Петрова',evidenceType:'показания',collectedAt:d(2,5,'11:00:00Z'),collectedBy:'Следователь Сидоров',location:'ОВД по району',chainSteps:[mkCS('cs8',d(2,5,'11:00:00Z'),'Допрос свидетеля','Следователь Сидоров','Протокол 10 листов','intact'),mkCS('cs9',d(4,15,'14:00:00Z'),'Повторный допрос','Следователь Сидоров','Уточнения','questioned')],integrityScore:55,admissibility:'questionable',challenges:[{description:'Противоречия с Козловым',severity:'high'},{description:'Изменение показаний',severity:'medium'}]},
 ]
 
-// === NEW: Audit Log ===
-export const mockAuditLog: AuditLogEntry[] = [
-  { id: 'al1', timestamp: '2024-05-22T09:30:00Z', action: 'Вход в систему', category: 'login', actor: 'Адвокат Петров А.В.', details: 'Успешная авторизация', severity: 'info' },
-  { id: 'al2', timestamp: '2024-05-22T09:35:00Z', action: 'Просмотр документов', category: 'system', actor: 'Адвокат Петров А.В.', details: 'Открыт раздел "Документы"', severity: 'info' },
-  { id: 'al3', timestamp: '2024-05-22T09:42:00Z', action: 'Загрузка документа', category: 'upload', actor: 'Адвокат Петров А.В.', details: 'Загружен: Ходатайство о признании доказательств.pdf', entityId: 'doc6', entityType: 'document', severity: 'info' },
-  { id: 'al4', timestamp: '2024-05-22T09:45:00Z', action: 'AI-анализ документа', category: 'analysis', actor: 'Система ИИ', details: 'Запущен AI-анализ документа doc6', entityId: 'doc6', entityType: 'document', severity: 'info' },
-  { id: 'al5', timestamp: '2024-05-22T10:00:00Z', action: 'Поиск по делу', category: 'search', actor: 'Адвокат Петров А.В.', details: 'Поиск: "алиби Колесниченко"', severity: 'info' },
-  { id: 'al6', timestamp: '2024-05-22T10:15:00Z', action: 'Экспорт данных', category: 'export', actor: 'Адвокат Петров А.В.', details: 'Экспортирован список документов в CSV', severity: 'warning' },
-  { id: 'al7', timestamp: '2024-05-22T10:30:00Z', action: 'Вопрос ИИ', category: 'analysis', actor: 'Адвокат Петров А.В.', details: 'Вопрос: "Какие нарушения есть в материалах дела?"', severity: 'info' },
-  { id: 'al8', timestamp: '2024-05-22T11:00:00Z', action: 'Удаление черновика', category: 'delete', actor: 'Адвокат Петров А.В.', details: 'Удалён черновик документа doc_draft_1', severity: 'warning' },
-  { id: 'al9', timestamp: '2024-05-22T11:20:00Z', action: 'Изменение линии защиты', category: 'edit', actor: 'Адвокат Петров А.В.', details: 'Обновлена стратегия "Процессуальные нарушения"', entityId: 'dl3', entityType: 'defense', severity: 'info' },
-  { id: 'al10', timestamp: '2024-05-22T11:45:00Z', action: 'Правовая проверка', category: 'analysis', actor: 'Система ИИ', details: 'Запущена правовая проверка по ст. 48 УПК РФ', severity: 'info' },
-  { id: 'al11', timestamp: '2024-05-22T12:00:00Z', action: 'Критическое нарушение', category: 'system', actor: 'Система ИИ', details: 'Обнаружено критическое нарушение: обыск без адвоката', entityId: 'lc2', entityType: 'compliance', severity: 'critical' },
-]
-
-// === NEW: Case Timeline (overall chronology) ===
-export const mockCaseTimeline: CaseTimelineEvent[] = [
-  { id: 'ct1', date: '2023-06-01', title: 'Совершение эпизода 1 — Мошенничество', description: 'Хищение денежных средств инвесторов путём обмана, совершённое группой лиц по предварительному сговору', category: 'crime', importance: 'critical', relatedPersons: ['p1', 'p2'], relatedEpisodes: ['ep1'], status: 'completed' },
-  { id: 'ct2', date: '2023-09-15', title: 'Совершение эпизода 2 — Присвоение', description: 'Присвоение имущества организации с использованием служебного положения', category: 'crime', importance: 'critical', relatedPersons: ['p1', 'p2'], relatedEpisodes: ['ep2'], status: 'completed' },
-  { id: 'ct3', date: '2023-12-01', title: 'Совершение эпизода 3 — Фальсификация', description: 'Подделка финансовых документов для сокрытия хищения', category: 'crime', importance: 'high', relatedPersons: ['p1'], relatedEpisodes: ['ep3'], status: 'completed' },
-  { id: 'ct4', date: '2024-01-05', title: 'Заявление в полицию', description: 'Потерпевшая Иванова М.С. подала заявление о мошенничестве', category: 'investigation', importance: 'high', relatedPersons: ['p4'], status: 'completed' },
-  { id: 'ct5', date: '2024-01-08', title: 'Возбуждение уголовного дела', description: 'Следственным отделом возбуждено уголовное дело № 2024-00145', category: 'legal', importance: 'critical', status: 'completed' },
-  { id: 'ct6', date: '2024-01-10', title: 'Загрузка обвинительного заключения', description: 'Загружен Том 1 — Обвинительное заключение', category: 'evidence', importance: 'high', relatedDocuments: ['doc1'], status: 'completed' },
-  { id: 'ct7', date: '2024-01-15', title: 'Допрос Колесниченко', description: 'Допрос подозреваемого Колесниченко Д.А.', category: 'investigation', importance: 'critical', relatedPersons: ['p1'], relatedDocuments: ['doc2'], status: 'completed' },
-  { id: 'ct8', date: '2024-02-05', title: 'Допрос свидетеля Петрова', description: 'Допрос свидетеля Петрова И.В.', category: 'investigation', importance: 'high', relatedPersons: ['p3'], relatedDocuments: ['doc5'], status: 'completed' },
-  { id: 'ct9', date: '2024-02-20', title: 'Обыск по месту жительства', description: 'Обыск в квартире Колесниченко — изъяты документы и электронные носители', category: 'investigation', importance: 'critical', relatedPersons: ['p1'], relatedDocuments: ['doc3'], status: 'completed' },
-  { id: 'ct10', date: '2024-03-15', title: 'Предъявление обвинения', description: 'Колесниченко предъявлено обвинение по ст. 159 ч.3, 160 ч.2 УК РФ', category: 'legal', importance: 'critical', relatedPersons: ['p1'], status: 'completed' },
-  { id: 'ct11', date: '2024-03-20', title: 'Анализ виновности', description: 'AI-анализ определил высокую вероятность виновности Колесниченко', category: 'evidence', importance: 'high', relatedPersons: ['p1'], status: 'completed' },
-  { id: 'ct12', date: '2024-04-10', title: 'Назначение экспертизы', description: 'Назначена финансово-экономическая экспертиза', category: 'investigation', importance: 'high', relatedDocuments: ['doc4'], status: 'ongoing' },
-  { id: 'ct13', date: '2024-05-15', title: 'Правовая проверка', description: 'AI-анализ выявил нарушения УПК при обыске', category: 'legal', importance: 'critical', status: 'completed' },
-  { id: 'ct14', date: '2024-05-20', title: 'Корректировка линии защиты', description: 'Добавлена стратегия: процессуальные нарушения (ст. 48 УПК)', category: 'defense', importance: 'high', relatedPersons: ['p1'], status: 'completed' },
-  { id: 'ct15', date: '2024-06-15', title: 'Предстоящее судебное заседание', description: 'Предварительное слушание по ходатайству об исключении доказательств', category: 'hearing', importance: 'critical', status: 'planned' },
-  { id: 'ct16', date: '2024-07-01', title: 'Основное судебное разбирательство', description: 'Начало основного судебного разбирательства по существу дела', category: 'hearing', importance: 'critical', status: 'planned' },
-]
-
-// === NEW: Bookmarks ===
-export const mockBookmarks: BookmarkData[] = [
-  { id: 'bm1', entityType: 'document', entityId: 'doc1', entityName: 'Обвинительное заключение - Том 1', note: 'Главный документ обвинения — изучить детально', color: 'red', createdAt: '2024-05-22T10:00:00Z' },
-  { id: 'bm2', entityType: 'person', entityId: 'p1', entityName: 'Колесниченко Дмитрий Александрович', note: 'Основной клиент — приоритет защиты', color: 'red', createdAt: '2024-05-22T10:05:00Z' },
-  { id: 'bm3', entityType: 'episode', entityId: 'ep1', entityName: 'Мошенничество с инвестициями', note: 'Главный эпизод — нужна переквалификация', color: 'amber', createdAt: '2024-05-22T10:10:00Z' },
-  { id: 'bm4', entityType: 'document', entityId: 'doc3', entityName: 'Протокол обыска', note: 'Нарушение ст. 48 УПК — основание для исключения', color: 'emerald', createdAt: '2024-05-22T10:15:00Z' },
-  { id: 'bm5', entityType: 'search', entityId: 'search_alibi', entityName: 'Поиск: алиби Колесниченко', note: 'Сохранённый поиск по алиби', color: 'stone', createdAt: '2024-05-22T10:20:00Z' },
-]
-
-// === NEW: Witness Statements ===
-export const mockWitnessStatements: WitnessStatementData[] = [
-  {
-    id: 'ws1', witnessId: 'p3', witnessName: 'Петров Иван Васильевич',
-    statementDate: '2024-02-05T11:00:00Z', statementType: 'initial',
-    summary: 'Подтвердил факт работы в ООО "ТехноПром" и знание о финансовых операциях компании. Указал на подпись Колесниченко на приказах о переводе средств.',
-    keyPoints: [
-      'Работал в ООО "ТехноПром" с 2020 по 2023 год',
-      'Знал о переводах средств на подставные компании',
-      'Видел подпись Колесниченко на приказах',
-      'Подтвердил передачу денег от Ивановой М.С.',
-    ],
-    contradictions: [{ withStatementId: 'ws3', description: 'Расхождение в дате подписания приказов: Петров указывает июнь 2023, Козлов — май 2023' }],
-    reliability: 'moderate',
-    verifiedBy: ['Бухгалтерские документы ООО', 'Приказы с подписью Колесниченко'],
-  },
-  {
-    id: 'ws2', witnessId: 'p5', witnessName: 'Козлов Виктор Николаевич',
-    statementDate: '2024-02-08T10:00:00Z', statementType: 'initial',
-    summary: 'Сосед Колесниченко. Подтвердил, что Колесниченко был дома в день предполагаемого совершения эпизода 1 (1 июня 2023).',
-    keyPoints: [
-      'Живёт по соседству с Колесниченко 5 лет',
-      'Видел Колесниченко 1 июня 2023 во дворе дома',
-      'Подтверждает алиби на период эпизода 1',
-      'Не помнит точного времени встречи',
-    ],
-    contradictions: [{ withStatementId: 'ws1', description: 'Козлов утверждает, что видел Колесниченко 1 июня, но финансовые документы подписаны Колесниченко в этот день' }],
-    reliability: 'low',
-    verifiedBy: [],
-  },
-  {
-    id: 'ws3', witnessId: 'p3', witnessName: 'Петров Иван Васильевич',
-    statementDate: '2024-04-15T14:00:00Z', statementType: 'clarification',
-    summary: 'Уточнил ранее данные показания — указал, что приказы могли быть подписаны в мае 2023, а не в июне.',
-    keyPoints: [
-      'Уточнил дату подписания приказов — май 2023',
-      'Подтвердил ранее данные показания',
-      'Указал на возможную ошибку в первоначальных показаниях',
-    ],
-    contradictions: [{ withStatementId: 'ws1', description: 'Изменение даты подписания приказов с июня на май 2023' }],
-    reliability: 'moderate',
-    verifiedBy: ['Бухгалтерские документы с датой май 2023'],
-  },
-]
-
-// === NEW: Mock Analytics Data ===
-export const mockAnalytics: AnalyticsData = {
-  processingTrend: [
-    { date: 'Янв', processed: 1, pending: 0, failed: 0 },
-    { date: 'Фев', processed: 2, pending: 0, failed: 0 },
-    { date: 'Мар', processed: 1, pending: 0, failed: 0 },
-    { date: 'Апр', processed: 0, pending: 1, failed: 0 },
-    { date: 'Май', processed: 0, pending: 1, failed: 0 },
-  ],
-  episodeMatrix: [
-    { severity: 'особо тяжкое', proven: 0, investigating: 0, doubtful: 0, total: 0 },
-    { severity: 'тяжкое', proven: 1, investigating: 1, doubtful: 0, total: 2 },
-    { severity: 'средней тяжести', proven: 0, investigating: 0, doubtful: 1, total: 1 },
-    { severity: 'небольшой', proven: 0, investigating: 0, doubtful: 0, total: 0 },
-  ],
-  personInvolvement: [
-    { name: 'Колесниченко Д.А.', episodes: 3, documents: 2, relationships: 4 },
-    { name: 'Сидоров А.П.', episodes: 2, documents: 1, relationships: 3 },
-    { name: 'Петров И.В.', episodes: 1, documents: 1, relationships: 1 },
-    { name: 'Иванова М.С.', episodes: 1, documents: 0, relationships: 1 },
-    { name: 'Козлов В.Н.', episodes: 1, documents: 0, relationships: 1 },
-  ],
-  articleCharges: [
-    { code: 'ст. 159 ч.3 УК РФ', description: 'Мошенничество с использованием служебного положения', count: 2, severity: 'тяжкое' },
-    { code: 'ст. 159 ч.4 УК РФ', description: 'Мошенничество в особо крупном размере', count: 1, severity: 'особо тяжкое' },
-    { code: 'ст. 160 ч.3 УК РФ', description: 'Присвоение или растрата', count: 1, severity: 'тяжкое' },
-    { code: 'ст. 33 УК РФ', description: 'Соучастие в преступлении', count: 1, severity: 'тяжкое' },
-  ],
-  complexity: {
-    overallScore: 72,
-    factors: [
-      { name: 'Объём документов', score: 65, benchmark: 50 },
-      { name: 'Количество участников', score: 70, benchmark: 40 },
-      { name: 'Количество эпизодов', score: 55, benchmark: 35 },
-      { name: 'Сложность статей', score: 85, benchmark: 60 },
-      { name: 'Перекрёстных ссылок', score: 60, benchmark: 45 },
-      { name: 'Экспертиз', score: 80, benchmark: 30 },
-    ],
-    rating: 'high',
-  },
-  documentTypes: [
-    { type: 'Обвинение', count: 1, percentage: 20 },
-    { type: 'Показание', count: 2, percentage: 40 },
-    { type: 'Протокол', count: 1, percentage: 20 },
-    { type: 'Экспертиза', count: 1, percentage: 20 },
-  ],
-  insights: [
-    {
-      type: 'critical',
-      title: 'Противоречия в показаниях свидетелей',
-      description: 'Обнаружены 3 противоречия в показаниях свидетелей по дате подписания приказов. Рекомендуется дополнительный допрос.',
-      confidence: 88,
-    },
-    {
-      type: 'warning',
-      title: 'Истекает срок давности по эпизоду 2',
-      description: 'По эпизоду 2 (средней тяжести) срок давности истекает через 14 месяцев. Необходимо ускорить рассмотрение.',
-      confidence: 95,
-    },
-    {
-      type: 'positive',
-      title: 'Сильная доказательственная база по эпизоду 1',
-      description: 'Эпизод 1 подтверждён 4 независимыми источниками. Вероятность доказанности в суде — 87%.',
-      confidence: 92,
-    },
-    {
-      type: 'info',
-      title: 'Рекомендуется дополнительная экспертиза',
-      description: 'Для полного доказывания по эпизоду 3 рекомендуется назначение почерковедческой экспертизы.',
-      confidence: 78,
-    },
-  ],
-  outcomePrediction: [
-    { scenario: 'Полное признание вины по всем эпизодам', probability: 35, rationale: 'Сильная доказательная база по эп. 1, но есть противоречия' },
-    { scenario: 'Частичное признание (эп. 1, оправдание эп. 2-3)', probability: 45, rationale: 'Алиби по эп. 1 опровергается, но по эп. 2-3 есть основания' },
-    { scenario: 'Оправдание по всем эпизодам', probability: 12, rationale: 'Маловероятно при текущей доказательной базе' },
-    { scenario: 'Возврат дела прокурору (нарушения)', probability: 8, rationale: 'Возможно при обнаружении процессуальных нарушений' },
-  ],
-  workloadByMonth: [
-    { month: 'Янв', documents: 1, actions: 5, hearings: 0 },
-    { month: 'Фев', documents: 2, actions: 8, hearings: 1 },
-    { month: 'Мар', documents: 1, actions: 6, hearings: 1 },
-    { month: 'Апр', documents: 1, actions: 9, hearings: 2 },
-    { month: 'Май', documents: 1, actions: 7, hearings: 1 },
-    { month: 'Июн', documents: 0, actions: 4, hearings: 1 },
-  ],
+// ─── Audit Log ───
+function mkAL(id:string,ts:string,action:string,cat:AuditLogEntry['category'],actor:string,details:string,sev:AuditLogEntry['severity'],eid?:string,etype?:string):AuditLogEntry {
+  return {id,timestamp:ts,action,category:cat,actor,details,entityId:eid,entityType:etype,severity:sev}
 }
+export const mockAuditLog: AuditLogEntry[] = [mkAL('al1',d(5,22,'09:30:00Z'),'Вход в систему','login','Адвокат Петров','Успешная авторизация','info'),mkAL('al2',d(5,22,'09:35:00Z'),'Просмотр документов','system','Адвокат Петров','Открыт раздел "Документы"','info'),mkAL('al3',d(5,22,'09:42:00Z'),'Загрузка документа','upload','Адвокат Петров','Загружен: Ходатайство.pdf','info','doc6','document'),mkAL('al4',d(5,22,'09:45:00Z'),'AI-анализ','analysis','Система ИИ','Запущен AI-анализ doc6','info','doc6','document'),mkAL('al5',d(5,22,'10:00:00Z'),'Поиск по делу','search','Адвокат Петров','Поиск: "алиби Колесниченко"','info'),mkAL('al6',d(5,22,'10:15:00Z'),'Экспорт данных','export','Адвокат Петров','Экспорт документов в CSV','warning'),mkAL('al7',d(5,22,'10:30:00Z'),'Вопрос ИИ','analysis','Адвокат Петров','Вопрос: "Какие нарушения в деле?"','info'),mkAL('al8',d(5,22,'11:00:00Z'),'Удаление черновика','delete','Адвокат Петров','Удалён черновик','warning'),mkAL('al9',d(5,22,'11:20:00Z'),'Изменение линии защиты','edit','Адвокат Петров','Обновлена стратегия','info','dl3','defense'),mkAL('al10',d(5,22,'11:45:00Z'),'Правовая проверка','analysis','Система ИИ','Проверка по ст. 48 УПК','info'),mkAL('al11',d(5,22,'12:00:00Z'),'Критическое нарушение','system','Система ИИ','Обыск без адвоката','critical','lc2','compliance')]
+
+// ─── Case Timeline ───
+function mkCT(id:string,date:string,title:string,desc:string,cat:CaseTimelineEvent['category'],imp:CaseTimelineEvent['importance'],status:CaseTimelineEvent['status'],persons?:string[],docs?:string[],episodes?:string[]):CaseTimelineEvent {
+  return {id,date,title,description:desc,category:cat,importance:imp,relatedPersons:persons,relatedDocuments:docs,relatedEpisodes:episodes,status}
+}
+export const mockCaseTimeline: CaseTimelineEvent[] = [mkCT('ct1','2023-06-01','Эпизод 1 — Мошенничество','Хищение средств инвесторов','crime','critical','completed',['p1','p2'],undefined,['ep1']),mkCT('ct2','2023-09-15','Эпизод 2 — Присвоение','Присвоение имущества с использованием служебного положения','crime','critical','completed',['p1','p2'],undefined,['ep2']),mkCT('ct3','2023-12-01','Эпизод 3 — Фальсификация','Подделка финансовых документов','crime','high','completed',['p1'],undefined,['ep3']),mkCT('ct4','2024-01-05','Заявление в полицию','Иванова подала заявление','investigation','high','completed',['p4']),mkCT('ct5','2024-01-08','Возбуждение уголовного дела','Дело № 2024-00145','legal','critical','completed'),mkCT('ct6','2024-01-10','Загрузка обвинительного заключения','Загружен Том 1','evidence','high','completed',undefined,['doc1']),mkCT('ct7','2024-01-15','Допрос Колесниченко','Допрос подозреваемого','investigation','critical','completed',['p1'],['doc2']),mkCT('ct8','2024-02-05','Допрос Петрова','Допрос свидетеля','investigation','high','completed',['p3'],['doc5']),mkCT('ct9','2024-02-20','Обыск по месту жительства','Обыск в квартире Колесниченко','investigation','critical','completed',['p1'],['doc3']),mkCT('ct10','2024-03-15','Предъявление обвинения','Обвинение по ст. 159 ч.3, 160 ч.2','legal','critical','completed',['p1']),mkCT('ct11','2024-03-20','Анализ виновности','AI: высокая вероятность','evidence','high','completed',['p1']),mkCT('ct12','2024-04-10','Назначение экспертизы','Финансово-экономическая экспертиза','investigation','high','ongoing',undefined,['doc4']),mkCT('ct13','2024-05-15','Правовая проверка','AI выявил нарушения УПК','legal','critical','completed'),mkCT('ct14','2024-05-20','Корректировка защиты','Добавлена стратегия: процессуальные нарушения','defense','high','completed',['p1']),mkCT('ct15','2024-06-15','Предстоящее заседание','Предварительное слушание','hearing','critical','planned'),mkCT('ct16','2024-07-01','Основное разбирательство','Начало основного разбирательства','hearing','critical','planned')]
+
+// ─── Bookmarks ───
+function mkBM(id:string,et:BookmarkData['entityType'],eid:string,en:string,note:string,col:BookmarkData['color']):BookmarkData {
+  return {id,entityType:et,entityId:eid,entityName:en,note,color:col,createdAt:d(5,22)}
+}
+export const mockBookmarks: BookmarkData[] = [mkBM('bm1','document','doc1','Обвинительное заключение - Том 1','Главный документ','red'),mkBM('bm2','person','p1','Колесниченко Д.А.','Основной клиент','red'),mkBM('bm3','episode','ep1','Мошенничество с инвестициями','Нужна переквалификация','amber'),mkBM('bm4','document','doc3','Протокол обыска','Нарушение ст. 48 УПК','emerald'),mkBM('bm5','search','search_alibi','Поиск: алиби','Сохранённый поиск','stone')]
+
+// ─── Witness Statements ───
+function mkWS(id:string,wid:string,wname:string,date:string,type:WitnessStatementData['statementType'],summary:string,kp:string[],contr:WitnessStatementData['contradictions'],rel:WitnessStatementData['reliability'],vb:string[]):WitnessStatementData {
+  return {id,witnessId:wid,witnessName:wname,statementDate:date,statementType:type,summary,keyPoints:kp,contradictions:contr,reliability:rel,verifiedBy:vb}
+}
+export const mockWitnessStatements: WitnessStatementData[] = [mkWS('ws1','p3','Петров Иван Васильевич',d(2,5,'11:00:00Z'),'initial','Подтвердил работу в ООО и знание о финансовых операциях.',['Работал в ООО с 2020-2023','Знал о переводах на подставные компании','Видел подпись Колесниченко на приказах','Подтвердил передачу денег от Ивановой'],[{withStatementId:'ws3',description:'Расхождение в дате подписания приказов'}],'moderate',['Бухгалтерские документы','Приказы с подписью']),mkWS('ws2','p5','Козлов Виктор Николаевич',d(2,8,'10:00:00Z'),'initial','Сосед Колесниченко. Подтвердил алиби на 1 июня 2023.',['Живёт по соседству 5 лет','Видел Колесниченко 1 июня','Подтверждает алиби','Не помнит точного времени'],[{withStatementId:'ws1',description:'Козлов видел Колесниченко 1 июня, но документы подписаны в этот день'}],'low',[]),mkWS('ws3','p3','Петров Иван Васильевич',d(4,15,'14:00:00Z'),'clarification','Уточнил: приказы подписаны в мае 2023, а не июне.',['Уточнил дату — май 2023','Подтвердил ранее данные показания','Указал на возможную ошибку'],[{withStatementId:'ws1',description:'Изменение даты с июня на май'}],'moderate',['Документы с датой май 2023'])]
+
+// ─── Analytics ───
+export const mockAnalytics: AnalyticsData = {processingTrend:[{date:'Янв',processed:1,pending:0,failed:0},{date:'Фев',processed:2,pending:0,failed:0},{date:'Мар',processed:1,pending:0,failed:0},{date:'Апр',processed:0,pending:1,failed:0},{date:'Май',processed:0,pending:1,failed:0}],episodeMatrix:[{severity:'особо тяжкое',proven:0,investigating:0,doubtful:0,total:0},{severity:'тяжкое',proven:1,investigating:1,doubtful:0,total:2},{severity:'средней тяжести',proven:0,investigating:0,doubtful:1,total:1},{severity:'небольшой',proven:0,investigating:0,doubtful:0,total:0}],personInvolvement:[{name:'Колесниченко Д.А.',episodes:3,documents:2,relationships:4},{name:'Сидоров А.П.',episodes:2,documents:1,relationships:3},{name:'Петров И.В.',episodes:1,documents:1,relationships:1},{name:'Иванова М.С.',episodes:1,documents:0,relationships:1},{name:'Козлов В.Н.',episodes:1,documents:0,relationships:1}],articleCharges:[{code:'ст. 159 ч.3 УК РФ',description:'Мошенничество с использованием служебного положения',count:2,severity:'тяжкое'},{code:'ст. 159 ч.4 УК РФ',description:'Мошенничество в особо крупном размере',count:1,severity:'особо тяжкое'},{code:'ст. 160 ч.3 УК РФ',description:'Присвоение или растрата',count:1,severity:'тяжкое'},{code:'ст. 33 УК РФ',description:'Соучастие в преступлении',count:1,severity:'тяжкое'}],complexity:{overallScore:72,factors:[{name:'Объём документов',score:65,benchmark:50},{name:'Количество участников',score:70,benchmark:40},{name:'Количество эпизодов',score:55,benchmark:35},{name:'Сложность статей',score:85,benchmark:60},{name:'Перекрёстных ссылок',score:60,benchmark:45},{name:'Экспертиз',score:80,benchmark:30}],rating:'high'},documentTypes:[{type:'Обвинение',count:1,percentage:20},{type:'Показание',count:2,percentage:40},{type:'Протокол',count:1,percentage:20},{type:'Экспертиза',count:1,percentage:20}],insights:[{type:'critical',title:'Противоречия в показаниях',description:'3 противоречия по дате подписания приказов',confidence:88,relatedEntities:[{type:'person',name:'Сидоров А.П.',id:'p2'},{type:'person',name:'Петров И.В.',id:'p3'},{type:'episode',name:'Эпизод 1',id:'ep1'},{type:'document',name:'Показания Сидоров',id:'doc3'}],actionRecommendation:'Назначить повторный допрос'},{type:'warning',title:'Истекает срок давности',description:'Срок давности по эпизоду 2 истекает через 14 месяцев',confidence:95,relatedEntities:[{type:'episode',name:'Эпизод 2',id:'ep2'},{type:'article',name:'ст. 159 ч.3 УК РФ',id:'art1'}],actionRecommendation:'Подать ходатайство об ускорении'},{type:'positive',title:'Сильная база по эпизоду 1',description:'Эпизод 1 подтверждён 4 источниками',confidence:92,relatedEntities:[{type:'episode',name:'Эпизод 1',id:'ep1'},{type:'document',name:'Обвинительное заключение',id:'doc1'},{type:'document',name:'Показания Колесниченко',id:'doc2'}],actionRecommendation:'Использовать для обоснования позиции'},{type:'info',title:'Рекомендуется экспертиза',description:'Для эпизода 3 нужна почерковедческая экспертиза',confidence:78,relatedEntities:[{type:'episode',name:'Эпизод 3',id:'ep3'},{type:'article',name:'ст. 160 ч.3 УК РФ',id:'art3'}],actionRecommendation:'Подать ходатайство о назначении'}],outcomePrediction:[{scenario:'Полное признание вины',probability:35,riskAdjustedProbability:28,rationale:'Сильная база по эп. 1',defenseImpact:'Слабая позиция по эпизоду 1',isMostLikely:false},{scenario:'Частичное признание',probability:45,riskAdjustedProbability:42,rationale:'Алиби по эп. 2-3 есть основания',defenseImpact:'Алиби частично компенсирует',isMostLikely:true},{scenario:'Оправдание',probability:12,riskAdjustedProbability:8,rationale:'Маловероятно при текущей базе',defenseImpact:'База обвинения значительно сильнее',isMostLikely:false},{scenario:'Возврат дела прокурору',probability:8,riskAdjustedProbability:15,rationale:'Возможно при обнаружении нарушений',defenseImpact:'Нарушения УПК могут стать основанием',isMostLikely:false}],workloadByMonth:[{month:'Янв',documents:1,actions:5,hearings:0},{month:'Фев',documents:2,actions:8,hearings:1},{month:'Мар',documents:1,actions:6,hearings:1},{month:'Апр',documents:1,actions:9,hearings:2},{month:'Май',documents:1,actions:7,hearings:1},{month:'Июн',documents:0,actions:4,hearings:1}]}
+
+// ── Risk / Plea Bargaining data ──
+export type ArticleCategory = 'тяжкое' | 'особо тяжкое' | 'средней тяжести'
+export interface PleaArticle { code: string; name: string; category: ArticleCategory; punishmentMin: number; punishmentMax: number; baseSentence: number; fineMin: number; fineMax: number }
+export interface MitFactorDef { id: string; label: string; reduction: number }
+export interface AggFactorDef { id: string; label: string; increase: number }
+export type PleaRec = 'recommended' | 'possible' | 'not-recommended'
+export interface PleaScenario { id: 'denial' | 'special-order' | 'pretrial-agreement'; title: string; subtitle: string; lawRef: string; sentenceMin: number; sentenceMax: number; reductionFromMax: number; acquittalProbability: number; maxSentenceRisk: number; pros: string[]; cons: string[]; recommendation: PleaRec }
+export interface RadarAxis { key: string; label: string; current: number; target: number }
+
+export const PLEA_ARTICLES: PleaArticle[] = [
+  { code: 'ст. 159 ч.3', name: 'Мошенничество с использованием служебного положения, в крупном размере', category: 'тяжкое', punishmentMin: 2, punishmentMax: 6, baseSentence: 4.5, fineMin: 100_000, fineMax: 500_000 },
+  { code: 'ст. 159 ч.4', name: 'Мошенничество, совершённое в особо крупном размере', category: 'тяжкое', punishmentMin: 5, punishmentMax: 10, baseSentence: 7.5, fineMin: 1_000_000, fineMax: 5_000_000 },
+  { code: 'ст. 160 ч.2', name: 'Присвоение или растрата группой лиц по предварительному сговору', category: 'средней тяжести', punishmentMin: 0, punishmentMax: 5, baseSentence: 3.0, fineMin: 100_000, fineMax: 500_000 },
+  { code: 'ст. 160 ч.3', name: 'Присвоение с использованием служебного положения, в крупном размере', category: 'тяжкое', punishmentMin: 2, punishmentMax: 6, baseSentence: 4.0, fineMin: 100_000, fineMax: 500_000 },
+]
+export const PLEA_MITIGATING: MitFactorDef[] = [
+  { id: 'first-offense', label: 'Первое преступление (ст. 61 ч.1 п. «а»)', reduction: 0.5 },
+  { id: 'minor-children', label: 'Несовершеннолетние дети', reduction: 0.5 },
+  { id: 'positive-character', label: 'Положительные характеристики', reduction: 0.3 },
+  { id: 'cooperation', label: 'Сотрудничество со следствием (ст. 61 ч.1 п. «и»)', reduction: 1.0 },
+  { id: 'guilt-plea', label: 'Полное признание вины', reduction: 1.0 },
+  { id: 'damage-compensation', label: 'Возмещение ущерба (ст. 61 ч.1 п. «к»)', reduction: 1.5 },
+  { id: 'active-assistance', label: 'Активное способствование раскрытию', reduction: 0.8 },
+  { id: 'health-condition', label: 'Состояние здоровья', reduction: 0.5 },
+  { id: 'elderly-age', label: 'Пожилой возраст', reduction: 0.3 },
+  { id: 'pregnancy', label: 'Беременность (ст. 61 ч.1 п. «в»)', reduction: 1.0 },
+  { id: 'desperation', label: 'Доведение до отчаяния (ст. 61 ч.1 п. «д»)', reduction: 0.8 },
+  { id: 'victim-immoral', label: 'Аморальное поведение потерпевшего', reduction: 0.5 },
+]
+export const PLEA_AGGRAVATING: AggFactorDef[] = [
+  { id: 'recidivism', label: 'Рецидив (ст. 63 ч.1 п. «а»)', increase: 2.0 },
+  { id: 'group-conspiracy', label: 'Группа лиц по сговору (ст. 63 ч.1 п. «в»)', increase: 1.5 },
+  { id: 'large-scale', label: 'Особо крупный размер', increase: 1.5 },
+  { id: 'official-position', label: 'Использование служебного положения', increase: 1.0 },
+  { id: 'severe-consequences', label: 'С особо тяжкими последствиями', increase: 2.0 },
+  { id: 'against-minors', label: 'Преступление против несовершеннолетнего', increase: 2.0 },
+  { id: 'intoxication', label: 'Состояние опьянения', increase: 0.8 },
+  { id: 'trace-concealment', label: 'Сокрытие следов', increase: 0.7 },
+]
+export const PLEA_SCENARIOS: PleaScenario[] = [
+  { id: 'denial', title: 'Полное отрицание вины', subtitle: 'Текущая стратегия защиты', lawRef: 'Общий порядок', sentenceMin: 5, sentenceMax: 8, reductionFromMax: 10, acquittalProbability: 8, maxSentenceRisk: 65, pros: ['Сохранение шанса на оправдательный приговор', 'Отсутствие признательных показаний', 'Возможность оспаривания доказательств в суде', 'Право на пересмотр при появлении новых улик'], cons: ['Высокий риск максимального наказания', 'Длительный судебный процесс (6–12 мес.)', 'Психологическое давление на обвиняемого', 'Риск усиления обвинения при новых уликах'], recommendation: 'not-recommended' },
+  { id: 'special-order', title: 'Особый порядок', subtitle: 'Сделка с правосудием без судебного разбирательства', lawRef: 'ст. 314 УПК РФ', sentenceMin: 4, sentenceMax: 6.5, reductionFromMax: 35, acquittalProbability: 0, maxSentenceRisk: 25, pros: ['Сокращение срока до 2/3 от максимального', 'Ускоренное рассмотрение дела', 'Снижение судебных издержек', 'Меньше стресса для обвиняемого', 'Гарантия непревышения 2/3 максимума'], cons: ['Невозможность оправдания', 'Отказ от оспаривания доказательств', 'Приговор без полноценного исследования', 'Необходимость полного признания вины'], recommendation: 'possible' },
+  { id: 'pretrial-agreement', title: 'Досудебное соглашение', subtitle: 'Соглашение о сотрудничестве со следствием', lawRef: 'ст. 317.1 УПК РФ', sentenceMin: 3, sentenceMax: 5, reductionFromMax: 50, acquittalProbability: 0, maxSentenceRisk: 10, pros: ['Максимальное снижение наказания (до 1/2 от максимума)', 'Возможность освобождения от наказания (ст. 64 УК РФ)', 'Защита от усиления обвинения', 'Гарантии безопасности для обвиняемого', 'Применение особых условий отбывания'], cons: ['Необходимость давать показания против соучастников', 'Риск мести со стороны соучастников', 'Невозможность изменения показаний', 'Публичность соглашения в приговоре'], recommendation: 'recommended' },
+]
+export const DEFENSE_RADAR: RadarAxis[] = [
+  { key: 'prosecution', label: 'Сила доказательств обвинения', current: 75, target: 30 },
+  { key: 'alibi', label: 'Сила алиби', current: 30, target: 80 },
+  { key: 'procedural', label: 'Процессуальные нарушения', current: 55, target: 85 },
+  { key: 'witnesses', label: 'Свидетельская поддержка', current: 40, target: 75 },
+  { key: 'mitigation', label: 'Смягчающие обстоятельства', current: 65, target: 90 },
+  { key: 'defense-quality', label: 'Качество защиты', current: 70, target: 95 },
+]
+
+// ─── Procedure Stages & Deadlines (for Dashboard) ───
+export const PROCEDURE_STAGES = [
+  { id: 'investigation', label: 'Предварительное следствие', lawRef: 'ст. 162 УПК РФ', description: 'Срок следствия до 2 месяцев' },
+  { id: 'familiarization', label: 'Ознакомление с материалами', lawRef: 'ст. 217 УПК РФ', description: 'Право обвиняемого изучить дело' },
+  { id: 'indictment', label: 'Передача дела в суд', lawRef: 'ст. 222 УПК РФ', description: 'Прокурор утверждает обвинение' },
+  { id: 'pretrial-hearing', label: 'Предварительное слушание', lawRef: 'ст. 234 УПК РФ', description: 'Решение ходатайств до суда' },
+  { id: 'trial', label: 'Судебное разбирательство', lawRef: 'ст. 240 УПК РФ', description: 'Основной судебный процесс' },
+  { id: 'verdict', label: 'Вынесение приговора', lawRef: 'ст. 299 УПК РФ', description: 'Решение суда по делу' },
+]
+export const PROCEDURE_CURRENT_INDEX = 2
+
+export const PROCEDURAL_DEADLINES = [
+  { id: 'd1', deadline: '2024-07-01', title: 'Срок обжалования действий следователя', article: 'ст. 124 УПК РФ', status: 'overdue', importance: 'critical', description: 'Просрочен на 2 дн.' },
+  { id: 'd2', deadline: '2024-07-03', title: 'Подача ходатайства об исключении доказательств', article: 'ст. 235 УПК РФ', status: 'urgent', importance: 'high', description: 'Через 3 дн.' },
+  { id: 'd3', deadline: '2024-07-05', title: 'Ознакомление обвиняемого с материалами дела', article: 'ст. 217 УПК РФ', status: 'upcoming', importance: 'medium', description: 'Через 5 дн.' },
+  { id: 'd4', deadline: '2024-07-25', title: 'Предварительное слушание', article: 'ст. 234 УПК РФ', status: 'upcoming', importance: 'medium', description: 'Через 23 дн.' },
+  { id: 'd5', deadline: '2024-08-01', title: 'Срок следствия по тяжкому преступлению', article: 'ст. 162 ч.1 УПК РФ', status: 'warning', importance: 'high', description: 'Через 29 дн.' },
+  { id: 'd6', deadline: '2024-08-19', title: 'Срок содержания под стражей', article: 'ст. 109 УПК РФ', status: 'upcoming', importance: 'low', description: 'Через 47 дн.' },
+]
+
+// ─── Witness Matrix Data ───
+interface WitnessData { id: string; fullName: string; shortName: string; role: string; reliability: 'high' | 'moderate' | 'low'; positions: Record<string, { agrees: boolean; contradictsOthers: boolean; details: string }> }
+interface FactData { id: string; description: string; category: string; importance: 'critical' | 'high' | 'medium' }
+
+export const mockFacts: FactData[] = [
+  { id: 'f1', description: 'Факт хищения денежных средств', category: 'finance', importance: 'critical' },
+  { id: 'f2', description: 'Подписание договоров без согласия', category: 'document', importance: 'high' },
+  { id: 'f3', description: 'Использование служебного положения', category: 'authority', importance: 'critical' },
+  { id: 'f4', description: 'Создание фиктивных организаций', category: 'organization', importance: 'high' },
+  { id: 'f5', description: 'Перевод средств на личные счета', category: 'finance', importance: 'medium' },
+  { id: 'f6', description: 'Сокрытие следов преступления', category: 'evidence', importance: 'high' },
+]
+
+export const mockWitnesses: WitnessData[] = [
+  { id: 'w1', fullName: 'Колесниченко Д.А.', shortName: 'К.Д.', role: 'обвиняемый', reliability: 'moderate', positions: { f1: { agrees: false, contradictsOthers: true, details: 'Отрицает хищение' }, f2: { agrees: false, contradictsOthers: true, details: 'Утверждает о согласовании' }, f3: { agrees: true, contradictsOthers: false, details: 'Признаёт использование' }, f4: { agrees: false, contradictsOthers: true, details: 'Отрицает создание' }, f5: { agrees: false, contradictsOthers: false, details: 'Отрицает переводы' }, f6: { agrees: false, contradictsOthers: true, details: 'Отрицает сокрытие' } } },
+  { id: 'w2', fullName: 'Петров И.С.', shortName: 'П.И.', role: 'свидетель', reliability: 'high', positions: { f1: { agrees: true, contradictsOthers: false, details: 'Подтверждает хищение' }, f2: { agrees: true, contradictsOthers: false, details: 'Видел подписи' }, f3: { agrees: true, contradictsOthers: false, details: 'Подтверждает факт' }, f4: { agrees: true, contradictsOthers: false, details: 'Знал об организациях' }, f5: { agrees: true, contradictsOthers: false, details: 'Подтверждает переводы' }, f6: { agrees: false, contradictsOthers: false, details: 'Не видел сокрытия' } } },
+  { id: 'w3', fullName: 'Сидоров А.П.', shortName: 'С.А.', role: 'соучастник', reliability: 'low', positions: { f1: { agrees: true, contradictsOthers: false, details: 'Признаёт хищение' }, f2: { agrees: false, contradictsOthers: true, details: 'Утверждает о согласии' }, f3: { agrees: true, contradictsOthers: false, details: 'Признаёт' }, f4: { agrees: true, contradictsOthers: false, details: 'Признаёт создание' }, f5: { agrees: true, contradictsOthers: true, details: 'Подтверждает частично' }, f6: { agrees: true, contradictsOthers: false, details: 'Признаёт сокрытие' } } },
+  { id: 'w4', fullName: 'Козлова Е.В.', shortName: 'К.Е.', role: 'потерпевшая', reliability: 'high', positions: { f1: { agrees: true, contradictsOthers: false, details: 'Подтверждает ущерб' }, f2: { agrees: true, contradictsOthers: false, details: 'Подтверждает' }, f3: { agrees: true, contradictsOthers: false, details: 'Подтверждает' }, f4: { agrees: false, contradictsOthers: false, details: 'Не знала' }, f5: { agrees: true, contradictsOthers: false, details: 'Подтверждает' }, f6: { agrees: false, contradictsOthers: false, details: 'Не знала' } } },
+  { id: 'w5', fullName: 'Морозова А.Н.', shortName: 'М.А.', role: 'свидетель', reliability: 'moderate', positions: { f1: { agrees: true, contradictsOthers: false, details: 'Частично подтверждает' }, f2: { agrees: false, contradictsOthers: false, details: 'Не помнит' }, f3: { agrees: false, contradictsOthers: false, details: 'Не знает' }, f4: { agrees: false, contradictsOthers: false, details: 'Не знала' }, f5: { agrees: true, contradictsOthers: true, details: 'Подтверждает частично' }, f6: { agrees: false, contradictsOthers: false, details: 'Не знает' } } },
+]

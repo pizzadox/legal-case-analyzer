@@ -366,9 +366,18 @@ export interface AnalyticsData {
     title: string
     description: string
     confidence: number
+    relatedEntities: { type: 'document' | 'person' | 'episode' | 'article'; name: string; id: string }[]
+    actionRecommendation: string
   }[]
   // Predicted case outcome probabilities
-  outcomePrediction: { scenario: string; probability: number; rationale: string }[]
+  outcomePrediction: {
+    scenario: string
+    probability: number
+    riskAdjustedProbability: number
+    rationale: string
+    defenseImpact: string
+    isMostLikely: boolean
+  }[]
   // Workload by month (for resource planning)
   workloadByMonth: { month: string; documents: number; actions: number; hearings: number }[]
 }

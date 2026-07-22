@@ -1,413 +1,69 @@
 'use client'
 
+import { useState, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Separator } from '@/components/ui/separator'
 import { Progress } from '@/components/ui/progress'
+import { Button } from '@/components/ui/button'
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from '@/components/ui/chart'
-import {
-  Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, Line, LineChart,
-  Pie, PieChart, PolarAngleAxis, PolarGrid, PolarRadiusAxis, Radar, RadarChart,
-  XAxis, YAxis, Legend, ComposedChart,
-} from 'recharts'
-import {
-  BarChart3, TrendingUp, Brain, Target, AlertTriangle, CheckCircle,
-  Info, Sparkles, Activity, Layers, Award, Zap, Clock,
-} from 'lucide-react'
+import { Area, AreaChart, Bar, BarChart, Cell, Pie, PieChart, XAxis, YAxis, Radar, RadarChart, PolarAngleAxis, PolarGrid, PolarRadiusAxis } from 'recharts'
+import { BarChart3, TrendingUp, AlertTriangle, CheckCircle, XCircle, Info, Sparkles, Activity, Layers, Award, Zap, Clock, ChevronDown, ChevronUp, FileText, Users, BookOpen, Shield, ArrowRight, Gauge, Flame, Target, Brain } from 'lucide-react'
 import { mockAnalytics } from '@/lib/mock-data'
 import { getAnalytics } from '@/lib/case-api'
 import type { AnalyticsData } from '@/lib/case-store'
 
-const SEVERITY_COLOR: Record<string, string> = {
-  'особо тяжкое': '#7f1d1d',
-  'тяжкое': '#dc2626',
-  'средней тяжести': '#ea580c',
-  'небольшой': '#ca8a04',
-}
-
-const STATUS_COLOR: Record<string, string> = {
-  proven: '#059669',
-  investigating: '#d97706',
-  doubtful: '#dc2626',
-}
-
-const INSIGHT_STYLE: Record<string, { bg: string; border: string; icon: React.ReactNode; label: string }> = {
-  positive: { bg: 'bg-emerald-50/50 dark:bg-emerald-950/20', border: 'border-emerald-200 dark:border-emerald-900', icon: <CheckCircle className="w-4 h-4 text-emerald-600" />, label: 'Положительный' },
-  warning: { bg: 'bg-amber-50/50 dark:bg-amber-950/20', border: 'border-amber-200 dark:border-amber-900', icon: <AlertTriangle className="w-4 h-4 text-amber-600" />, label: 'Предупреждение' },
-  critical: { bg: 'bg-red-50/50 dark:bg-red-950/20', border: 'border-red-200 dark:border-red-900', icon: <AlertTriangle className="w-4 h-4 text-red-600" />, label: 'Критический' },
-  info: { bg: 'bg-stone-50/50 dark:bg-stone-900/20', border: 'border-stone-200 dark:border-stone-800', icon: <Info className="w-4 h-4 text-stone-600" />, label: 'Информация' },
-}
-
-const COMPLEXITY_RATING: Record<string, { label: string; color: string; bg: string }> = {
-  low: { label: 'Низкая', color: 'text-emerald-700', bg: 'bg-emerald-100 dark:bg-emerald-950/40' },
-  moderate: { label: 'Умеренная', color: 'text-amber-700', bg: 'bg-amber-100 dark:bg-amber-950/40' },
-  high: { label: 'Высокая', color: 'text-orange-700', bg: 'bg-orange-100 dark:bg-orange-950/40' },
-  extreme: { label: 'Экстремальная', color: 'text-red-700', bg: 'bg-red-100 dark:bg-red-950/40' },
-}
-
-const DOC_TYPE_COLORS = ['#dc2626', '#ea580c', '#ca8a04', '#78716c', '#7f1d1d', '#a16207']
-
-const trendChartConfig = {
-  processed: { label: 'Обработано', color: '#059669' },
-  pending: { label: 'В очереди', color: '#d97706' },
-  failed: { label: 'Ошибки', color: '#dc2626' },
-}
-
-const docTypeChartConfig = Object.fromEntries(
-  mockAnalytics.documentTypes.map((d, i) => [d.type, { label: d.type, color: DOC_TYPE_COLORS[i % DOC_TYPE_COLORS.length] }])
-)
+const SEV_C: Record<string, string> = { 'особо тяжкое': '#7f1d1d', 'тяжкое': '#dc2626', 'средней тяжести': '#ea580c', 'небольшой': '#ca8a04' }
+const SEV_B: Record<string, string> = { 'особо тяжкое': 'bg-red-900/20', 'тяжкое': 'bg-red-700/20', 'средней тяжести': 'bg-orange-600/20', 'небольшой': 'bg-amber-600/20' }
+const INS_CFG: Record<string, { icon: typeof AlertTriangle; color: string; bg: string; label: string }> = { positive: { icon: CheckCircle, color: 'text-emerald-700', bg: 'bg-emerald-700/15', label: 'Позитив' }, warning: { icon: AlertTriangle, color: 'text-amber-600', bg: 'bg-amber-600/15', label: 'Предупреждение' }, critical: { icon: XCircle, color: 'text-red-700', bg: 'bg-red-700/15', label: 'Критическое' }, info: { icon: Info, color: 'text-stone-500', bg: 'bg-stone-500/15', label: 'Информация' } }
+const COMP_R: Record<string, { color: string; bg: string; icon: typeof Activity }> = { low: { color: 'text-emerald-700', bg: 'bg-emerald-700/15', icon: Activity }, moderate: { color: 'text-amber-600', bg: 'bg-amber-600/15', icon: Zap }, high: { color: 'text-orange-600', bg: 'bg-orange-600/15', icon: Flame }, extreme: { color: 'text-red-700', bg: 'bg-red-700/15', icon: AlertTriangle } }
+const DOC_C: Record<string, string> = { Обвинение: '#dc2626', Показание: '#ea580c', Протокол: '#ca8a04', Экспертиза: '#78716c' }
+const DOC_CFG = { Обвинение: { label: 'Обвинение', color: '#dc2626' }, Показание: { label: 'Показание', color: '#ea580c' }, Протокол: { label: 'Протокол', color: '#ca8a04' }, Экспертиза: { label: 'Экспертиза', color: '#78716c' } }
 
 export function CaseAnalytics() {
-  const { data, isLoading } = useQuery({
-    queryKey: ['analytics'],
-    queryFn: getAnalytics,
-    retry: 1,
-  })
+  const [expandedInsight, setExpandedInsight] = useState<string | null>(null)
+  const { data, isLoading } = useQuery({ queryKey: ['analytics'], queryFn: getAnalytics, retry: 1 })
+  const a = data ?? mockAnalytics
+  if (isLoading) return <div className="grid grid-cols-2 md:grid-cols-4 gap-4">{[0,1,2,3].map(i => <Skeleton key={i} className="h-24" />)}</div>
 
-  const analytics = data ?? mockAnalytics
+  const compCfg = COMP_R[a.complexity.rating] ?? COMP_R.moderate
+  const procCfg = { processed: { label: 'Обработано', color: '#059669' }, pending: { label: 'В очереди', color: '#d97706' }, failed: { label: 'Ошибка', color: '#dc2626' } }
 
-  if (isLoading) {
-    return (
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {[1, 2, 3, 4].map(i => <Skeleton key={i} className="h-64" />)}
-      </div>
-    )
-  }
+  return (<div className="space-y-6">
+    <Card className="bg-gradient-to-r from-red-900/30 to-stone-900/20 border-l-4 border-red-700 rounded-xl shadow-sm"><CardContent className="p-6"><div className="flex items-center gap-4"><div className="flex items-center justify-center w-12 h-12 rounded-xl bg-red-700/20 shrink-0"><BarChart3 className="w-6 h-6 text-red-700" /></div><div className="flex-1 min-w-0"><h2 className="text-lg font-bold">Аналитика дела</h2><p className="text-sm text-muted-foreground">Обработка, эпизоды, участники, статьи, прогнозы исхода • Дело № 2024-00145</p></div><Badge className={compCfg.color.includes('red') ? 'bg-red-700 text-white' : compCfg.color.includes('amber') ? 'bg-amber-600 text-white' : compCfg.color.includes('orange') ? 'bg-orange-600 text-white' : 'bg-emerald-700 text-white'}>Сложность: {a.complexity.rating}</Badge></div></CardContent></Card>
 
-  const complexityRating = COMPLEXITY_RATING[analytics.complexity.rating] ?? COMPLEXITY_RATING.moderate
-
-  // Convert person involvement to radar data - use surname only for axis labels
-  const radarData = analytics.personInvolvement.map(p => {
-    // Extract just the last name (Russian names: "Фамилия И.О." -> "Фамилия")
-    const parts = p.name.split(' ')
-    return {
-      name: parts[0],
-      Эпизоды: p.episodes,
-      Документы: p.documents,
-      Связи: p.relationships,
-    }
-  })
-
-  return (
-    <div className="space-y-6">
-      {/* Header */}
-      <Card className="bg-gradient-to-r from-purple-900/20 via-red-900/15 to-stone-900/10 rounded-xl shadow-sm border-l-4 border-purple-600 border-t-2 border-t-purple-500 transition-shadow hover:shadow-md">
-        <CardContent className="p-4">
-          <div className="flex items-center gap-3">
-            <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-purple-600/20">
-              <BarChart3 className="w-5 h-5 text-purple-600" />
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="font-semibold text-sm">Аналитика дела</p>
-              <p className="text-xs text-muted-foreground">Глубокий анализ данных, прогнозы и AI-инсайты</p>
-            </div>
-            <Badge className="bg-purple-600 text-white text-xs">12 метрик</Badge>
-            <Badge className="bg-emerald-700 text-white text-xs">Реальное время</Badge>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Top row: Complexity + Outcome Prediction */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {/* Case Complexity Card */}
-        <Card className="rounded-xl shadow-sm bg-gradient-to-br from-card via-card to-muted/20 border-t-2 border-t-purple-500 transition-all duration-200 hover:shadow-md hover:-translate-y-0.5">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm flex items-center gap-2">
-              <Layers className="w-4 h-4 text-purple-600" /> Сложность дела
-              <Badge className={`${complexityRating.bg} ${complexityRating.color} text-xs`}>
-                {complexityRating.label}
-              </Badge>
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="p-4 space-y-3">
-            <div className="flex items-center gap-4">
-              <div className="relative">
-                <svg width="100" height="100" className="transform -rotate-90">
-                  <circle cx="50" cy="50" r="42" stroke="#e5e7eb" strokeWidth="6" fill="none" className="dark:stroke-stone-700" />
-                  <circle
-                    cx="50" cy="50" r="42"
-                    stroke={analytics.complexity.overallScore >= 80 ? '#dc2626' : analytics.complexity.overallScore >= 60 ? '#ea580c' : analytics.complexity.overallScore >= 40 ? '#ca8a04' : '#059669'}
-                    strokeWidth="6" fill="none"
-                    strokeDasharray={2 * Math.PI * 42}
-                    strokeDashoffset={2 * Math.PI * 42 - (analytics.complexity.overallScore / 100) * 2 * Math.PI * 42}
-                    strokeLinecap="round"
-                    className="transition-all duration-700"
-                  />
-                </svg>
-                <div className="absolute inset-0 flex flex-col items-center justify-center">
-                  <span className="text-2xl font-bold">{analytics.complexity.overallScore}</span>
-                  <span className="text-[10px] text-muted-foreground">из 100</span>
-                </div>
-              </div>
-              <div className="flex-1 space-y-2">
-                {analytics.complexity.factors.slice(0, 4).map(factor => (
-                  <div key={factor.name} className="space-y-1">
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="text-muted-foreground truncate flex-1 min-w-0">{factor.name}</span>
-                      <span className="font-semibold ml-2">{factor.score}</span>
-                    </div>
-                    <div className="relative h-1.5 rounded-full bg-muted overflow-hidden">
-                      <div
-                        className={`absolute h-full rounded-full transition-all duration-700 ${
-                          factor.score >= 70 ? 'bg-red-600' : factor.score >= 50 ? 'bg-amber-500' : 'bg-emerald-600'
-                        }`}
-                        style={{ width: `${factor.score}%` }}
-                      />
-                      {/* Benchmark line */}
-                      <div
-                        className="absolute top-0 h-full w-0.5 bg-stone-900 dark:bg-white opacity-40"
-                        style={{ left: `${factor.benchmark}%` }}
-                      />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-            <Separator />
-            <p className="text-xs text-muted-foreground flex items-center gap-1">
-              <Info className="w-3 h-3" />
-              Вертикальная линия — средний показатель по категории дел
-            </p>
-          </CardContent>
-        </Card>
-
-        {/* Outcome Prediction Card */}
-        <Card className="rounded-xl shadow-sm bg-gradient-to-br from-card via-card to-muted/20 border-t-2 border-t-red-500 transition-all duration-200 hover:shadow-md hover:-translate-y-0.5">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm flex items-center gap-2">
-              <Target className="w-4 h-4 text-red-700" /> Прогноз исхода дела
-              <Badge variant="outline" className="text-xs">AI-прогноз</Badge>
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="p-4 space-y-2">
-            {analytics.outcomePrediction.map((outcome, i) => {
-              const color = outcome.probability >= 40 ? 'bg-red-700' : outcome.probability >= 20 ? 'bg-amber-600' : 'bg-stone-500'
-              return (
-                <div key={i} className="p-3 rounded-lg bg-muted/30 hover:bg-muted/50 transition-colors">
-                  <div className="flex items-center justify-between mb-1.5">
-                    <p className="text-xs font-semibold flex-1 min-w-0 truncate">{outcome.scenario}</p>
-                    <Badge className={`${color} text-white text-xs ml-2`}>{outcome.probability}%</Badge>
-                  </div>
-                  <div className="h-1.5 rounded-full bg-muted overflow-hidden mb-1.5">
-                    <div
-                      className={`h-full rounded-full transition-all duration-700 ${color}`}
-                      style={{ width: `${outcome.probability}%` }}
-                    />
-                  </div>
-                  <p className="text-xs text-muted-foreground">{outcome.rationale}</p>
-                </div>
-              )
-            })}
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Processing Trend - Area Chart */}
-      <Card className="rounded-xl shadow-sm bg-gradient-to-br from-card via-card to-muted/20 border-t-2 border-t-emerald-500 transition-all duration-200 hover:shadow-md hover:-translate-y-0.5">
-        <CardHeader className="pb-2">
-          <CardTitle className="text-sm flex items-center gap-2">
-            <Activity className="w-4 h-4 text-emerald-600" /> Тренд обработки документов
-            <Badge variant="outline" className="text-xs">{analytics.processingTrend.length} месяцев</Badge>
-            <div className="ml-auto flex items-center gap-3 text-xs text-muted-foreground">
-              <div className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-emerald-600" /> Обработано</div>
-              <div className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-amber-600" /> Ожидает</div>
-            </div>
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="p-4">
-          <ChartContainer config={trendChartConfig} className="h-[300px] w-full">
-            <AreaChart data={analytics.processingTrend} margin={{ top: 10, right: 20, left: 10, bottom: 30 }}>
-              <defs>
-                <linearGradient id="colorProcessed" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#059669" stopOpacity={0.6}/>
-                  <stop offset="95%" stopColor="#059669" stopOpacity={0}/>
-                </linearGradient>
-                <linearGradient id="colorPending" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#d97706" stopOpacity={0.6}/>
-                  <stop offset="95%" stopColor="#d97706" stopOpacity={0}/>
-                </linearGradient>
-              </defs>
-              <CartesianGrid strokeDasharray="3 3" className="stroke-muted" vertical={false} />
-              <XAxis dataKey="date" tick={{ fontSize: 11 }} tickLine={false} axisLine={false} angle={-15} textAnchor="end" height={50} interval={0} />
-              <YAxis tick={{ fontSize: 11 }} tickLine={false} axisLine={false} width={28} />
-              <ChartTooltip content={<ChartTooltipContent />} />
-              <Area type="monotone" dataKey="processed" stroke="#059669" fill="url(#colorProcessed)" strokeWidth={2.5} name="Обработано" />
-              <Area type="monotone" dataKey="pending" stroke="#d97706" fill="url(#colorPending)" strokeWidth={2.5} name="Ожидает" />
-            </AreaChart>
-          </ChartContainer>
-        </CardContent>
-      </Card>
-
-      {/* Mid row: Episode Matrix + Article Charges */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {/* Episode Severity × Status Matrix */}
-        <Card className="rounded-xl shadow-sm bg-gradient-to-br from-card via-card to-muted/20 border-t-2 border-t-amber-500 transition-all duration-200 hover:shadow-md hover:-translate-y-0.5">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm flex items-center gap-2">
-              <BarChart3 className="w-4 h-4 text-amber-600" /> Матрица: тяжесть × статус
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="p-4">
-            <ChartContainer config={{ proven: { label: 'Доказано', color: '#059669' }, investigating: { label: 'Расследуется', color: '#d97706' }, doubtful: { label: 'Сомнительно', color: '#dc2626' } }} className="h-48 w-full">
-              <BarChart data={analytics.episodeMatrix}>
-                <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-                <XAxis dataKey="severity" tick={{ fontSize: 10 }} />
-                <YAxis tick={{ fontSize: 12 }} />
-                <ChartTooltip content={<ChartTooltipContent />} />
-                <Bar dataKey="proven" stackId="a" fill="#059669" radius={[0, 0, 0, 0]} />
-                <Bar dataKey="investigating" stackId="a" fill="#d97706" radius={[0, 0, 0, 0]} />
-                <Bar dataKey="doubtful" stackId="a" fill="#dc2626" radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ChartContainer>
-            <div className="flex items-center justify-center gap-3 mt-2 text-xs">
-              <span className="flex items-center gap-1"><span className="w-2 h-2 rounded bg-emerald-600" />Доказано</span>
-              <span className="flex items-center gap-1"><span className="w-2 h-2 rounded bg-amber-500" />Расследуется</span>
-              <span className="flex items-center gap-1"><span className="w-2 h-2 rounded bg-red-600" />Сомнительно</span>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Article Charges Donut */}
-        <Card className="rounded-xl shadow-sm bg-gradient-to-br from-card via-card to-muted/20 border-t-2 border-t-stone-500 transition-all duration-200 hover:shadow-md hover:-translate-y-0.5">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm flex items-center gap-2">
-              <Award className="w-4 h-4 text-red-700" /> Распределение обвинений
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="p-4">
-            <ChartContainer config={docTypeChartConfig} className="h-48 w-full">
-              <PieChart>
-                <Pie
-                  data={analytics.articleCharges}
-                  dataKey="count"
-                  nameKey="code"
-                  cx="50%"
-                  cy="50%"
-                  innerRadius={50}
-                  outerRadius={75}
-                  paddingAngle={2}
-                >
-                  {analytics.articleCharges.map((entry, i) => (
-                    <Cell key={i} fill={DOC_TYPE_COLORS[i % DOC_TYPE_COLORS.length]} />
-                  ))}
-                </Pie>
-                <ChartTooltip content={<ChartTooltipContent />} />
-              </PieChart>
-            </ChartContainer>
-            <div className="space-y-1 mt-2">
-              {analytics.articleCharges.map((article, i) => (
-                <div key={i} className="flex items-center gap-2 text-xs">
-                  <span className="w-2 h-2 rounded shrink-0" style={{ backgroundColor: DOC_TYPE_COLORS[i % DOC_TYPE_COLORS.length] }} />
-                  <span className="font-mono text-xs flex-1 min-w-0 truncate">{article.code}</span>
-                  <Badge variant="outline" className="text-xs shrink-0">{article.count}</Badge>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Person Involvement Radar */}
-      <Card className="rounded-xl shadow-sm bg-gradient-to-br from-card via-card to-muted/20 border-t-2 border-t-emerald-500 transition-all duration-200 hover:shadow-md hover:-translate-y-0.5">
-        <CardHeader className="pb-2">
-          <CardTitle className="text-sm flex items-center gap-2">
-            <Sparkles className="w-4 h-4 text-purple-600" /> Вовлечённость участников
-            <Badge variant="outline" className="text-xs">{analytics.personInvolvement.length} участников</Badge>
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="p-4">
-          <ChartContainer config={{
-            Эпизоды: { label: 'Эпизоды', color: '#dc2626' },
-            Документы: { label: 'Документы', color: '#ea580c' },
-            Связи: { label: 'Связи', color: '#ca8a04' },
-          }} className="h-64 w-full">
-            <RadarChart data={radarData}>
-              <PolarGrid className="stroke-muted" />
-              <PolarAngleAxis dataKey="name" tick={{ fontSize: 11 }} />
-              <PolarRadiusAxis tick={{ fontSize: 10 }} />
-              <Radar name="Эпизоды" dataKey="Эпизоды" stroke="#dc2626" fill="#dc2626" fillOpacity={0.3} />
-              <Radar name="Документы" dataKey="Документы" stroke="#ea580c" fill="#ea580c" fillOpacity={0.3} />
-              <Radar name="Связи" dataKey="Связи" stroke="#ca8a04" fill="#ca8a04" fillOpacity={0.3} />
-              <Legend wrapperStyle={{ fontSize: 12 }} />
-              <ChartTooltip content={<ChartTooltipContent />} />
-            </RadarChart>
-          </ChartContainer>
-        </CardContent>
-      </Card>
-
-      {/* Workload by Month - Composed Chart */}
-      <Card className="rounded-xl shadow-sm bg-gradient-to-br from-card via-card to-muted/20 border-t-2 border-t-amber-500 transition-all duration-200 hover:shadow-md hover:-translate-y-0.5">
-        <CardHeader className="pb-2">
-          <CardTitle className="text-sm flex items-center gap-2">
-            <Clock className="w-4 h-4 text-amber-600" /> Рабочая нагрузка по месяцам
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="p-4">
-          <ChartContainer config={{
-            documents: { label: 'Документы', color: '#dc2626' },
-            actions: { label: 'Действия', color: '#ea580c' },
-            hearings: { label: 'Заседания', color: '#7f1d1d' },
-          }} className="h-48 w-full">
-            <ComposedChart data={analytics.workloadByMonth}>
-              <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-              <XAxis dataKey="month" tick={{ fontSize: 12 }} />
-              <YAxis tick={{ fontSize: 12 }} />
-              <ChartTooltip content={<ChartTooltipContent />} />
-              <Legend wrapperStyle={{ fontSize: 12 }} />
-              <Bar name="Документы" dataKey="documents" fill="#dc2626" radius={[4, 4, 0, 0]} />
-              <Bar name="Действия" dataKey="actions" fill="#ea580c" radius={[4, 4, 0, 0]} />
-              <Line name="Заседания" type="monotone" dataKey="hearings" stroke="#7f1d1d" strokeWidth={2} dot={{ r: 4 }} />
-            </ComposedChart>
-          </ChartContainer>
-        </CardContent>
-      </Card>
-
-      {/* AI Insights - the showcase card */}
-      <Card className="rounded-xl shadow-sm border-l-4 border-purple-600 bg-gradient-to-br from-card via-card to-purple-500/5 border-t-2 border-t-purple-500 transition-all duration-200 hover:shadow-md hover:-translate-y-0.5">
-        <CardHeader className="pb-2">
-          <CardTitle className="text-sm flex items-center gap-2">
-            <Brain className="w-4 h-4 text-purple-600" /> AI-инсайты по делу
-            <Badge className="bg-purple-600 text-white text-xs">{analytics.insights.length} инсайтов</Badge>
-            <Badge variant="outline" className="text-xs">Авто-генерация</Badge>
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="p-4 space-y-2">
-          {analytics.insights.map((insight, i) => {
-            const style = INSIGHT_STYLE[insight.type] ?? INSIGHT_STYLE.info
-            return (
-              <div key={i} className={`p-3 rounded-lg border ${style.bg} ${style.border}`}>
-                <div className="flex items-start gap-2">
-                  <div className="shrink-0 mt-0.5">{style.icon}</div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between mb-1">
-                      <p className="text-sm font-semibold">{insight.title}</p>
-                      <div className="flex items-center gap-2 shrink-0 ml-2">
-                        <Badge variant="outline" className={`text-xs ${style.label.includes('Предупреждение') ? 'text-amber-700' : style.label.includes('Критический') ? 'text-red-700' : style.label.includes('Положительный') ? 'text-emerald-700' : 'text-stone-600'}`}>
-                          {style.label}
-                        </Badge>
-                        <span className="text-xs text-muted-foreground">
-                          {insight.confidence}% уверенность
-                        </span>
-                      </div>
-                    </div>
-                    <p className="text-xs text-muted-foreground">{insight.description}</p>
-                    <div className="mt-2 h-1 rounded-full bg-muted overflow-hidden">
-                      <div
-                        className={`h-full rounded-full transition-all duration-700 ${
-                          insight.confidence >= 80 ? 'bg-emerald-600' : insight.confidence >= 60 ? 'bg-amber-500' : 'bg-stone-500'
-                        }`}
-                        style={{ width: `${insight.confidence}%` }}
-                      />
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )
-          })}
-        </CardContent>
-      </Card>
+    <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
+      <Card className="rounded-xl shadow-sm border-l-4 border-l-emerald-700 hover:shadow-md transition-shadow"><CardContent className="p-4"><div className="flex items-center gap-3"><div className={`flex items-center justify-center w-9 h-9 rounded-lg shrink-0 ${compCfg.bg}`}><Gauge className={`w-5 h-5 ${compCfg.color}`} /></div><div><p className="text-xs text-muted-foreground">Сложность дела</p><p className="text-xl font-bold">{a.complexity.overallScore}/100</p></div></div></CardContent></Card>
+      <Card className="rounded-xl shadow-sm border-l-4 border-l-amber-600 hover:shadow-md transition-shadow"><CardContent className="p-4"><div className="flex items-center gap-3"><div className="flex items-center justify-center w-9 h-9 rounded-lg shrink-0 bg-amber-600/15"><Layers className="w-5 h-5 text-amber-600" /></div><div><p className="text-xs text-muted-foreground">Эпизоды</p><p className="text-xl font-bold">{a.episodeMatrix.reduce((s, e) => s + e.total, 0)}</p></div></div></CardContent></Card>
+      <Card className="rounded-xl shadow-sm border-l-4 border-l-red-700 hover:shadow-md transition-shadow"><CardContent className="p-4"><div className="flex items-center gap-3"><div className="flex items-center justify-center w-9 h-9 rounded-lg shrink-0 bg-red-700/15"><Award className="w-5 h-5 text-red-700" /></div><div><p className="text-xs text-muted-foreground">Статьи</p><p className="text-xl font-bold">{a.articleCharges.length}</p></div></div></CardContent></Card>
+      <Card className="rounded-xl shadow-sm border-l-4 border-l-stone-600 hover:shadow-md transition-shadow"><CardContent className="p-4"><div className="flex items-center gap-3"><div className="flex items-center justify-center w-9 h-9 rounded-lg shrink-0 bg-stone-600/15"><Brain className="w-5 h-5 text-stone-600" /></div><div><p className="text-xs text-muted-foreground">ИИ-инсайты</p><p className="text-xl font-bold">{a.insights.length}</p></div></div></CardContent></Card>
     </div>
-  )
+
+    <div className="grid lg:grid-cols-2 gap-4">
+      <Card className="rounded-xl shadow-sm bg-gradient-to-br from-card via-card to-muted/20 border-t-2 border-t-emerald-500"><CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2"><Activity className="w-4 h-4 text-emerald-600" /> Тренд обработки</CardTitle></CardHeader><CardContent className="p-2"><ChartContainer config={procCfg} className="h-48 w-full"><AreaChart data={a.processingTrend}><XAxis dataKey="date" tick={{ fontSize: 11 }} /><YAxis hide /><Area type="monotone" dataKey="processed" stroke="#059669" fill="#059669" fillOpacity={0.3} /><Area type="monotone" dataKey="pending" stroke="#d97706" fill="#d97706" fillOpacity={0.2} /><Area type="monotone" dataKey="failed" stroke="#dc2626" fill="#dc2626" fillOpacity={0.1} /><ChartTooltip content={<ChartTooltipContent />} /></AreaChart></ChartContainer></CardContent></Card>
+      <Card className="rounded-xl shadow-sm bg-gradient-to-br from-card via-card to-muted/20 border-t-2 border-t-amber-500"><CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2"><Layers className="w-4 h-4 text-amber-600" /> Статьи обвинения</CardTitle></CardHeader><CardContent className="p-2"><ChartContainer config={DOC_CFG} className="h-48 w-full"><BarChart data={a.articleCharges}><XAxis dataKey="code" tick={{ fontSize: 9 }} /><YAxis hide /><Bar dataKey="count" radius={4}>{a.articleCharges.map((_, i) => <Cell key={i} fill={SEV_C[a.articleCharges[i].severity] ?? '#78716c'} />)}</Bar><ChartTooltip content={<ChartTooltipContent />} /></BarChart></ChartContainer></CardContent></Card>
+    </div>
+
+    <div className="grid lg:grid-cols-2 gap-4">
+      <Card className="rounded-xl shadow-sm bg-gradient-to-br from-card via-card to-muted/20 border-t-2 border-t-stone-500"><CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2"><FileText className="w-4 h-4" /> Типы документов</CardTitle></CardHeader><CardContent className="p-2"><ChartContainer config={DOC_CFG} className="h-48 w-full"><PieChart><Pie data={a.documentTypes} dataKey="percentage" nameKey="type" cx="50%" cy="50%" outerRadius={70} label={({ type, percentage }) => `${type}: ${percentage}%`}>{a.documentTypes.map((_, i) => <Cell key={i} fill={DOC_C[a.documentTypes[i].type] ?? '#78716c'} />)}</Pie><ChartTooltip content={<ChartTooltipContent />} /></PieChart></ChartContainer></CardContent></Card>
+      <Card className="rounded-xl shadow-sm bg-gradient-to-br from-card via-card to-muted/20 border-t-2 border-t-purple-500"><CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2"><Gauge className="w-4 h-4 text-purple-600" /> Сложность дела</CardTitle></CardHeader><CardContent className="p-4 space-y-2">{a.complexity.factors.map(f => { const progCls = f.score >= 70 ? '[&>div]:bg-red-700' : f.score >= 50 ? '[&>div]:bg-amber-600' : '[&>div]:bg-emerald-700'; return (<div key={f.name} className="flex items-center gap-2"><span className="text-xs font-medium min-w-[100px]">{f.name}</span><Progress value={f.score} className={`h-2 flex-1 ${progCls}`} /><Badge variant="outline" className="text-xs shrink-0">{f.score}/{f.benchmark}</Badge></div>) })}</CardContent></Card>
+    </div>
+
+    <Card className="rounded-xl shadow-sm bg-gradient-to-br from-card via-card to-muted/20 border-t-2 border-t-red-500"><CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2"><Target className="w-4 h-4 text-red-600" /> Прогноз исхода дела</CardTitle></CardHeader>
+    <CardContent className="p-4"><div className="space-y-2">{a.outcomePrediction.map(o => (<div key={o.scenario} className={`p-3 rounded-lg border-l-4 ${o.isMostLikely ? 'border-l-amber-600 bg-amber-50/50 dark:bg-amber-950/20' : 'border-l-stone-400 bg-muted/40'} transition-all hover:bg-muted/70`}>
+      <div className="flex items-center justify-between gap-2 mb-1"><p className="text-xs font-semibold">{o.scenario}</p><Badge className={o.isMostLikely ? 'bg-amber-600 text-white text-xs' : 'bg-stone-500 text-white text-xs'}>{o.probability}%</Badge></div><p className="text-xs text-muted-foreground">{o.rationale}</p></div>))}</div></CardContent></Card>
+
+    <Card className="rounded-xl shadow-sm bg-gradient-to-br from-card via-card to-muted/20 border-t-2 border-t-emerald-500"><CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2"><Sparkles className="w-4 h-4 text-emerald-600" /> ИИ-инсайты<Badge variant="outline" className="text-xs ml-auto">{a.insights.length} рекомендаций</Badge></CardTitle></CardHeader>
+    <CardContent className="p-4"><div className="space-y-2 max-h-[640px] overflow-y-auto scrollbar-thin">{a.insights.map(ins => { const cfg = INS_CFG[ins.type] ?? INS_CFG.info; const Ic = cfg.icon; const isExp = expandedInsight === ins.title; return (<Collapsible key={ins.title} open={isExp} onOpenChange={() => setExpandedInsight(isExp ? null : ins.title)}>
+      <Card className={`rounded-lg shadow-sm transition-all ${isExp ? 'ring-1 ring-emerald-500/30' : ''} border-l-4 ${ins.type === 'critical' ? 'border-l-red-700' : ins.type === 'warning' ? 'border-l-amber-600' : ins.type === 'positive' ? 'border-l-emerald-700' : 'border-l-stone-500'}`}>
+      <CardContent className="p-3"><CollapsibleTrigger asChild><button className="w-full text-left"><div className="flex items-center justify-between gap-2"><div className="flex items-center gap-2"><Badge className={`${cfg.color === 'text-emerald-700' ? 'bg-emerald-700 text-white' : cfg.color === 'text-amber-600' ? 'bg-amber-600 text-white' : cfg.color === 'text-red-700' ? 'bg-red-700 text-white' : 'bg-stone-500 text-white'} text-xs shrink-0 gap-1`}><Ic className="w-3 h-3" />{cfg.label}</Badge><span className="text-xs font-semibold">{ins.title}</span></div><div className="flex items-center gap-1"><Badge variant="outline" className="text-[10px]">{ins.confidence}%</Badge>{isExp ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}</div></div></button></CollapsibleTrigger>
+      <CollapsibleContent><div className="mt-2 space-y-1.5 text-xs"><p className="text-muted-foreground">{ins.description}</p><p className="font-medium text-amber-700 flex items-center gap-1"><ArrowRight className="w-3 h-3" />{ins.actionRecommendation}</p>{ins.relatedEntities.length > 0 && <div className="flex flex-wrap gap-1.5">{ins.relatedEntities.map(re => <Badge key={re.id} variant="outline" className="text-[10px]">{re.type}: {re.name}</Badge>)}</div>}</div></CollapsibleContent>
+      </CardContent></Card>
+    </Collapsible>) })}</div></CardContent></Card>
+
+    <Separator /><p className="text-xs text-muted-foreground">Аналитика дела • Дело № 2024-00145 • Колесниченко Д.А. и другие</p>
+  </div>)
 }

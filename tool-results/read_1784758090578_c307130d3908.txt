@@ -1,0 +1,602 @@
+   600→                  </Button>
+   601→                </TooltipTrigger>
+   602→                <TooltipContent>Уменьшить масштаб графа</TooltipContent>
+   603→              </Tooltip>
+   604→              <Tooltip>
+   605→                <TooltipTrigger asChild>
+   606→                  <Button size="sm" variant="outline" className="h-7 px-2 rounded-lg gap-1" onClick={resetZoom} aria-label="Сбросить масштаб">
+   607→                    <RotateCcw className="w-3.5 h-3.5" /> Сброс
+   608→                  </Button>
+   609→                </TooltipTrigger>
+   610→                <TooltipContent>Вернуть исходный масштаб</TooltipContent>
+   611→              </Tooltip>
+   612→            </TooltipProvider>
+   613→            <Separator orientation="vertical" className="h-5 mx-2" />
+   614→            <span className="text-xs text-muted-foreground">
+   615→              Наведите курсор для подсветки связей · нажмите на узел для подробной информации
+   616→            </span>
+   617→          </div>
+   618→
+   619→          {/* SVG graph */}
+   620→          <div className="relative w-full max-w-2xl mx-auto rounded-xl bg-gradient-to-br from-muted/30 to-muted/10 border border-stone-200/60 dark:border-stone-800/60 overflow-hidden">
+   621→            <svg
+   622→              viewBox={`${viewBox.x} ${viewBox.y} ${viewBox.w} ${viewBox.h}`}
+   623→              preserveAspectRatio="xMidYMid meet"
+   624→              className="w-full block"
+   625→              style={{ height: '420px' }}
+   626→              role="img"
+   627→              aria-label="Граф связей участников уголовного дела"
+   628→            >
+   629→              <defs>
+   630→                {/* Arrow markers per edge color */}
+   631→                {Object.entries(REL_EDGE_COLOR).map(([type, color]) => (
+   632→                  <marker
+   633→                    key={type}
+   634→                    id={`arrow-${type}`}
+   635→                    viewBox="0 0 10 10"
+   636→                    refX={9}
+   637→                    refY={5}
+   638→                    markerWidth={6}
+   639→                    markerHeight={6}
+   640→                    orient="auto-start-reverse"
+   641→                  >
+   642→                    <path d="M 0 0 L 10 5 L 0 10 z" fill={color} />
+   643→                  </marker>
+   644→                ))}
+   645→                {/* Default arrow for fallback */}
+   646→                <marker id="arrow-default" viewBox="0 0 10 10" refX={9} refY={5} markerWidth={6} markerHeight={6} orient="auto-start-reverse">
+   647→                  <path d="M 0 0 L 10 5 L 0 10 z" fill="#a8a29e" />
+   648→                </marker>
+   649→                {/* Active arrow (amber) */}
+   650→                <marker id="arrow-active" viewBox="0 0 10 10" refX={9} refY={5} markerWidth={6} markerHeight={6} orient="auto-start-reverse">
+   651→                  <path d="M 0 0 L 10 5 L 0 10 z" fill="#ea580c" />
+   652→                </marker>
+   653→              </defs>
+   654→
+   655→              {/* Edges (colored by relationship type) */}
+   656→              {GRAPH_EDGES.map((e, i) => {
+   657→                const src = positions[e.source]
+   658→                const tgt = positions[e.target]
+   659→                if (!src || !tgt) return null
+   660→                const highlighted = isEdgeHighlighted(e)
+   661→                const dimmed = isEdgeDimmed(e)
+   662→                const dx = tgt.x - src.x
+   663→                const dy = tgt.y - src.y
+   664→                const dist = Math.max(1, Math.sqrt(dx * dx + dy * dy))
+   665→                const srcNode = GRAPH_NODES.find(n => n.id === e.source)
+   666→                const tgtNode = GRAPH_NODES.find(n => n.id === e.target)
+   667→                const srcR = srcNode?.isKolesnichenko ? 30 : 24
+   668→                const tgtR = tgtNode?.isKolesnichenko ? 30 : 24
+   669→                const x1 = src.x + (dx / dist) * srcR
+   670→                const y1 = src.y + (dy / dist) * srcR
+   671→                const x2 = tgt.x - (dx / dist) * (tgtR + 6)
+   672→                const y2 = tgt.y - (dy / dist) * (tgtR + 6)
+   673→                const midX = (x1 + x2) / 2
+   674→                const midY = (y1 + y2) / 2
+   675→                const edgeColor = highlighted ? '#ea580c' : REL_EDGE_COLOR[e.label] ?? '#a8a29e'
+   676→                const markerId = highlighted ? 'arrow-active' : `arrow-${e.label}` ?? 'arrow-default'
+   677→                const labelW = Math.max(80, e.label.length * 6 + 18)
+   678→                const labelH = 20
+   679→                const isHovered = hoveredEdge === i
+   680→                return (
+   681→                  <g
+   682→                    key={`edge-${i}`}
+   683→                    style={{ opacity: dimmed ? 0.2 : 1, transition: 'opacity 200ms ease' }}
+   684→                    onMouseEnter={() => setHoveredEdge(i)}
+   685→                    onMouseLeave={() => setHoveredEdge(null)}
+   686→                  >
+   687→                    <line
+   688→                      x1={x1} y1={y1} x2={x2} y2={y2}
+   689→                      stroke={edgeColor}
+   690→                      strokeWidth={highlighted || isHovered ? 2.5 : 1.5}
+   691→                      markerEnd={`url(#${markerId})`}
+   692→                    />
+   693→                    {/* Edge label background */}
+   694→                    <rect
+   695→                      x={midX - labelW / 2}
+   696→                      y={midY - labelH / 2}
+   697→                      width={labelW}
+   698→                      height={labelH}
+   699→                      rx={4}
+   700→                      fill="white"
+   701→                      stroke={highlighted || isHovered ? '#ea580c' : edgeColor}
+   702→                      strokeWidth={0.6}
+   703→                      opacity={0.96}
+   704→                      className="dark:fill-stone-900"
+   705→                      style={{ filter: 'drop-shadow(0 1px 1px rgba(0,0,0,0.12))' } as React.CSSProperties}
+   706→                    />
+   707→                    <text
+   708→                      x={midX}
+   709→                      y={midY}
+   710→                      fontSize={9}
+   711→                      textAnchor="middle"
+   712→                      dominantBaseline="middle"
+   713→                      fill={highlighted || isHovered ? '#ea580c' : '#44403c'}
+   714→                      className="font-medium dark:fill-stone-200"
+   715→                      style={{ pointerEvents: 'none' } as React.CSSProperties}
+   716→                    >
+   717→                      {e.label}
+   718→                    </text>
+   719→                    {/* Tooltip detail on hover */}
+   720→                    {isHovered && !dimmed && (() => {
+   721→                      const category = REL_EDGE_CATEGORY[e.label] ?? 'professional'
+   722→                      const catColor = REL_CATEGORY_COLOR[category]?.color ?? '#78716c'
+   723→                      return (
+   724→                        <g style={{ pointerEvents: 'none' }}>
+   725→                          <rect
+   726→                            x={midX - 60}
+   727→                            y={midY + 12}
+   728→                            width={120}
+   729→                            height={18}
+   730→                            rx={4}
+   731→                            fill="white"
+   732→                            stroke={catColor}
+   733→                            strokeWidth={0.8}
+   734→                            opacity={0.95}
+   735→                            className="dark:fill-stone-900"
+   736→                          />
+   737→                          <text
+   738→                            x={midX}
+   739→                            y={midY + 21}
+   740→                            fontSize={8}
+   741→                            textAnchor="middle"
+   742→                            dominantBaseline="middle"
+   743→                            fill={catColor}
+   744→                            className="font-medium dark:fill-stone-100"
+   745→                          >
+   746→                            {REL_CATEGORY_COLOR[category]?.label ?? category}
+   747→                          </text>
+   748→                        </g>
+   749→                      )
+   750→                    })()}
+   751→                  </g>
+   752→                )
+   753→              })}
+   754→
+   755→              {/* Nodes */}
+   756→              {GRAPH_NODES.map(node => {
+   757→                const pos = positions[node.id]
+   758→                if (!pos) return null
+   759→                const r = node.isKolesnichenko ? 28 : 22
+   760→                const color = ROLE_COLOR[node.role]
+   761→                const dimmed = isNodeDimmed(node.id)
+   762→                const isSelected = selectedNode === node.id
+   763→                const initials = node.name
+   764→                  .replace(/\(.*?\)/g, '')
+   765→                  .split(/\s+/)
+   766→                  .filter(Boolean)
+   767→                  .slice(0, 2)
+   768→                  .map(p => p[0])
+   769→                  .join('')
+   770→                const nameParts = node.name.replace(/\(.*?\)/g, '').trim().split(/\s+/)
+   771→                const surname = nameParts[0] ?? ''
+   772→                const initialsRest = nameParts.slice(1).map(p => p[0] ? `${p[0]}.` : '').join(' ')
+   773→                const line1 = surname
+   774→                const line2 = initialsRest || ''
+   775→                return (
+   776→                  <g
+   777→                    key={node.id}
+   778→                    style={{
+   779→                      opacity: dimmed ? 0.3 : 1,
+   780→                      transition: 'opacity 200ms ease',
+   781→                      cursor: 'pointer',
+   782→                    }}
+   783→                    onMouseEnter={() => setHoveredNode(node.id)}
+   784→                    onMouseLeave={() => setHoveredNode(null)}
+   785→                    onClick={() => setSelectedNode(isSelected ? null : node.id)}
+   786→                  >
+   787→                    {/* Gold glow for Kolesnichenko */}
+   788→                    {node.isKolesnichenko && (
+   789→                      <>
+   790→                        <circle cx={pos.x} cy={pos.y} r={r + 10} fill="none" stroke="#f59e0b" strokeWidth={2} opacity={0.35} />
+   791→                        <circle cx={pos.x} cy={pos.y} r={r + 5} fill="none" stroke="#f59e0b" strokeWidth={1.5} opacity={0.65} />
+   792→                      </>
+   793→                    )}
+   794→                    {/* Selection ring */}
+   795→                    {isSelected && (
+   796→                      <circle cx={pos.x} cy={pos.y} r={r + 7} fill="none" stroke="#ea580c" strokeWidth={2} strokeDasharray="4 2">
+   797→                        <animateTransform attributeName="transform" attributeType="XML" type="rotate" from={`0 ${pos.x} ${pos.y}`} to={`360 ${pos.x} ${pos.y}`} dur="8s" repeatCount="indefinite" />
+   798→                      </circle>
+   799→                    )}
+   800→                    {/* Shadow */}
+   801→                    <circle cx={pos.x + 1} cy={pos.y + 2} r={r} fill="black" opacity={0.15} />
+   802→                    {/* Main circle */}
+   803→                    <circle
+   804→                      cx={pos.x}
+   805→                      cy={pos.y}
+   806→                      r={r}
+   807→                      fill={color}
+   808→                      stroke={node.isKolesnichenko ? '#f59e0b' : '#ffffff'}
+   809→                      strokeWidth={node.isKolesnichenko ? 3 : 2}
+   810→                    />
+   811→                    {/* Star icon for Kolesnichenko */}
+   812→                    {node.isKolesnichenko && (
+   813→                      <text
+   814→                        x={pos.x + r - 6}
+   815→                        y={pos.y - r + 6}
+   816→                        fontSize={8}
+   817→                        textAnchor="middle"
+   818→                        fill="#f59e0b"
+   819→                        fontWeight={700}
+   820→                        style={{ pointerEvents: 'none' } as React.CSSProperties}
+   821→                      >
+   822→                        ★
+   823→                      </text>
+   824→                    )}
+   825→                    {/* Initials inside circle */}
+   826→                    <text
+   827→                      x={pos.x}
+   828→                      y={pos.y}
+   829→                      fontSize={node.isKolesnichenko ? 13 : 11}
+   830→                      fontWeight={700}
+   831→                      textAnchor="middle"
+   832→                      dominantBaseline="middle"
+   833→                      fill="white"
+   834→                      style={{ pointerEvents: 'none', userSelect: 'none' } as React.CSSProperties}
+   835→                    >
+   836→                      {initials}
+   837→                    </text>
+   838→                    {/* Name label */}
+   839→                    {(() => {
+   840→                      const labelW = Math.max(70, Math.max(line1.length, line2.length) * 6.5 + 12)
+   841→                      const labelH = line2 ? 30 : 16
+   842→                      return (
+   843→                        <>
+   844→                          <rect x={pos.x - labelW / 2} y={pos.y + r + 6} width={labelW} height={labelH} rx={5} fill="white" stroke="#e7e5e4" strokeWidth={0.6} opacity={0.92} className="dark:fill-stone-900 dark:stroke-stone-700" />
+   845→                          <text x={pos.x} y={pos.y + r + 17} fontSize={11} fontWeight={700} textAnchor="middle" className="fill-stone-800 dark:fill-stone-100" style={{ pointerEvents: 'none', userSelect: 'none' } as React.CSSProperties}>{line1}</text>
+   846→                          {line2 && (
+   847→                            <text x={pos.x} y={pos.y + r + 30} fontSize={9.5} textAnchor="middle" className="fill-stone-700 dark:fill-stone-200 font-medium" style={{ pointerEvents: 'none', userSelect: 'none' } as React.CSSProperties}>{line2}</text>
+   848→                          )}
+   849→                        </>
+   850→                      )
+   851→                    })()}
+   852→                  </g>
+   853→                )
+   854→              })}
+   855→            </svg>
+   856→
+   857→            {/* Pop-up on node click */}
+   858→            {selected && (
+   859→              <div className="absolute top-3 right-3 w-[230px] z-10 animate-in fade-in-0 zoom-in-95 duration-200">
+   860→                <Card className="rounded-lg shadow-md border border-amber-300/60 dark:border-amber-700/60">
+   861→                  <CardContent className="p-3 space-y-2">
+   862→                    <div className="flex items-start justify-between gap-2">
+   863→                      <p className="text-xs font-semibold leading-tight">{selected.name}</p>
+   864→                      <Button size="icon" variant="ghost" className="h-5 w-5 shrink-0" onClick={() => setSelectedNode(null)} aria-label="Закрыть">
+   865→                        <X className="w-3 h-3" />
+   866→                      </Button>
+   867→                    </div>
+   868→                    <div className="flex items-center gap-1 flex-wrap">
+   869→                      <Badge className="text-[10px] text-white" style={{ backgroundColor: ROLE_COLOR[selected.role] }}>{ROLE_LABEL_RU[selected.role]}</Badge>
+   870→                      <Badge variant="outline" className="text-[10px]">{selected.status}</Badge>
+   871→                      {selected.isKolesnichenko && (
+   872→                        <Badge className="bg-amber-600 text-white text-[10px] flex items-center gap-1"><Star className="w-3 h-3" />Главный</Badge>
+   873→                      )}
+   874→                    </div>
+   875→                    {selected.occupation && (
+   876→                      <p className="text-[10px] text-muted-foreground"><span className="font-medium">Должность:</span> {selected.occupation}</p>
+   877→                    )}
+   878→                    <p className="text-[10px] leading-relaxed">{selected.description}</p>
+   879→                  </CardContent>
+   880→                </Card>
+   881→              </div>
+   882→            )}
+   883→          </div>
+   884→
+   885→          {/* Legend: role colors + edge relationship types */}
+   886→          <div className="flex flex-wrap items-center gap-x-4 gap-y-2 p-3 rounded-lg bg-muted/30 border border-stone-200/50 dark:border-stone-800/50">
+   887→            <span className="text-xs font-semibold text-muted-foreground flex items-center gap-1">
+   888→              <Network className="w-3 h-3" /> Легенда ролей:
+   889→            </span>
+   890→            {(Object.keys(ROLE_COLOR) as GraphRole[]).map(role => (
+   891→              <TooltipProvider key={role}>
+   892→                <Tooltip>
+   893→                  <TooltipTrigger asChild>
+   894→                    <div className="flex items-center gap-1.5 cursor-help">
+   895→                      <span className="inline-block w-3 h-3 rounded-full ring-2 ring-white/70 dark:ring-stone-900/70" style={{ backgroundColor: ROLE_COLOR[role] }} />
+   896→                      <span className="text-xs">{ROLE_LABEL_RU[role]}</span>
+   897→                    </div>
+   898→                  </TooltipTrigger>
+   899→                  <TooltipContent>Роль: {ROLE_LABEL_RU[role]}</TooltipContent>
+   900→                </Tooltip>
+   901→              </TooltipProvider>
+   902→            ))}
+   903→            <Separator orientation="vertical" className="h-4 mx-2" />
+   904→            <span className="text-xs font-semibold text-muted-foreground">Связи:</span>
+   905→            {Object.entries(REL_CATEGORY_COLOR).map(([cat, cfg]) => (
+   906→              <div key={cat} className="flex items-center gap-1.5">
+   907→                <span className="inline-block w-5 h-1 rounded-full" style={{ backgroundColor: cfg.color }} />
+   908→                <span className="text-xs">{cfg.label}</span>
+   909→              </div>
+   910→            ))}
+   911→            <div className="flex items-center gap-1.5 ml-2 pl-2 border-l border-stone-300/60 dark:border-stone-700/60">
+   912→              <Star className="w-3 h-3 text-amber-500" />
+   913→              <span className="text-xs">Главный обвиняемый</span>
+   914→            </div>
+   915→          </div>
+   916→        </CardContent>
+   917→      )}
+   918→    </Card>
+   919→  )
+   920→}
+   921→
+   922→// === Main Component ===
+   923→export function CasePersons() {
+   924→  const [roleFilter, setRoleFilter] = useState<string>('all')
+   925→  const [searchQuery, setSearchQuery] = useState('')
+   926→  const [selectedRoles, setSelectedRoles] = useState<string[]>([])
+   927→  const [expandedId, setExpandedId] = useState<string | null>(null)
+   928→  const [compareIds, setCompareIds] = useState<string[]>([])
+   929→
+   930→  const { data, isLoading } = useQuery({ queryKey: ['persons'], queryFn: getPersons, retry: 1 })
+   931→  const { data: relData } = useQuery({ queryKey: ['person-relationships'], queryFn: getPersonRelationships, retry: 1 })
+   932→  const { data: stmtData } = useQuery({ queryKey: ['witness-statements'], queryFn: getWitnessStatements, retry: 1 })
+   933→  const persons = data ?? mockPersons
+   934→  const relationships = relData ?? mockPersonRelationships
+   935→  const statements = stmtData ?? mockWitnessStatements
+   936→
+   937→  // Filtering logic: search + multi-select roles + single role
+   938→  const filtered = useMemo(() => {
+   939→    let result = persons
+   940→    // Search filter
+   941→    if (searchQuery.trim()) {
+   942→      const q = searchQuery.toLowerCase()
+   943→      result = result.filter(p =>
+   944→        p.fullName.toLowerCase().includes(q) ||
+   945→        (p.shortName?.toLowerCase().includes(q)) ||
+   946→        (p.alias?.toLowerCase().includes(q)) ||
+   947→        (p.occupation?.toLowerCase().includes(q))
+   948→      )
+   949→    }
+   950→    // Multi-select role filter (overrides single role filter)
+   951→    if (selectedRoles.length > 0) {
+   952→      result = result.filter(p => selectedRoles.includes(p.role ?? ''))
+   953→    } else if (roleFilter !== 'all') {
+   954→      result = result.filter(p => p.role === roleFilter)
+   955→    }
+   956→    return result
+   957→  }, [persons, searchQuery, selectedRoles, roleFilter])
+   958→
+   959→  const guiltData = useMemo(() =>
+   960→    Object.entries(GUILT).map(([key, val]) => ({
+   961→      level: val.label,
+   962→      count: persons.filter(p => p.guiltLevel === key).length,
+   963→      fill: val.color,
+   964→    })),
+   965→    [persons]
+   966→  )
+   967→
+   968→  const guiltSummary = useMemo(() => ({
+   969→    high: persons.filter(p => p.guiltLevel === 'high').length,
+   970→    moderate: persons.filter(p => p.guiltLevel === 'moderate').length,
+   971→    low: persons.filter(p => p.guiltLevel === 'low').length,
+   972→    none: persons.filter(p => p.guiltLevel === 'none' || !p.guiltLevel).length,
+   973→  }), [persons])
+   974→
+   975→  // All unique roles for multi-select — must be before conditional return
+   976→  const allRoles = useMemo(() => {
+   977→    const roles = new Set<string>()
+   978→    persons.forEach(p => { if (p.role) roles.add(p.role) })
+   979→    return Array.from(roles)
+   980→  }, [persons])
+   981→
+   982→  if (isLoading) return <div className="grid grid-cols-2 gap-4">{[1, 2, 3].map(i => <Skeleton key={i} className="h-40" />)}</div>
+   983→
+   984→  const kolesnichenko = persons.find(p => p.isKolesnichenko)
+   985→
+   986→  const handleRoleToggle = (role: string) => {
+   987→    setSelectedRoles(prev =>
+   988→      prev.includes(role) ? prev.filter(r => r !== role) : [...prev, role]
+   989→    )
+   990→    // Clear single role filter when multi-select is used
+   991→    if (roleFilter !== 'all') setRoleFilter('all')
+   992→  }
+   993→
+   994→  return (
+   995→    <div className="space-y-6">
+   996→      {/* Person Summary Stats */}
+   997→      <PersonSummaryStats persons={persons} />
+   998→
+   999→      {/* Relationship Graph */}
+  1000→      <PersonRelationshipGraph />
+  1001→
+  1002→      {/* Guilt Assessment Summary */}
+  1003→      <Card className="bg-gradient-to-r from-red-900/20 to-stone-900/10 rounded-xl shadow-sm border-l-4 border-red-700">
+  1004→        <CardContent className="p-4">
+  1005→          <div className="flex items-center gap-3 mb-3">
+  1006→            <div className="flex items-center justify-center w-9 h-9 rounded-xl bg-red-700/20">
+  1007→              <AlertTriangle className="w-5 h-5 text-red-600" />
+  1008→            </div>
+  1009→            <div className="flex-1 min-w-0">
+  1010→              <p className="font-semibold text-sm">Оценка виновности участников</p>
+  1011→              <p className="text-xs text-muted-foreground">Распределение по уровню виновности ({persons.length} участников)</p>
+  1012→            </div>
+  1013→            <Badge className="bg-red-700 text-white text-xs">{guiltSummary.high + guiltSummary.moderate} обвиняемых</Badge>
+  1014→          </div>
+  1015→          <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+  1016→            {Object.entries(guiltSummary).map(([level, count]) => {
+  1017→              const pct = persons.length > 0 ? Math.round((count / persons.length) * 100) : 0
+  1018→              const cfg = GUILT[level] ?? GUILT.none
+  1019→              return (
+  1020→                <div key={level} className="p-2 rounded-lg bg-background/60 border border-stone-200/40">
+  1021→                  <div className="flex items-center justify-between mb-1">
+  1022→                    <Badge className={`${cfg.badge} text-xs`}>{cfg.label}</Badge>
+  1023→                    <span className="text-sm font-bold">{count}</span>
+  1024→                  </div>
+  1025→                  <Progress value={pct} className="h-1.5" />
+  1026→                  <p className="text-xs text-muted-foreground mt-0.5">{pct}% от всех</p>
+  1027→                </div>
+  1028→              )
+  1029→            })}
+  1030→          </div>
+  1031→        </CardContent>
+  1032→      </Card>
+  1033→
+  1034→      {/* Enhanced Filter + Search */}
+  1035→      <div className="space-y-3">
+  1036→        <div className="flex items-center gap-2 flex-wrap">
+  1037→          {/* Search input */}
+  1038→          <div className="relative flex-1 max-w-xs">
+  1039→            <Search className="absolute left-2.5 top-2.5 w-3.5 h-3.5 text-muted-foreground" />
+  1040→            <Input
+  1041→              placeholder="Поиск по имени..."
+  1042→              value={searchQuery}
+  1043→              onChange={(e) => setSearchQuery(e.target.value)}
+  1044→              className="pl-8 h-9 rounded-xl text-sm"
+  1045→            />
+  1046→          </div>
+  1047→          {/* Single role select */}
+  1048→          <Select value={roleFilter} onValueChange={(v) => { setRoleFilter(v); setSelectedRoles([]) }}>
+  1049→            <SelectTrigger className="w-40 rounded-xl"><SelectValue placeholder="Роль" /></SelectTrigger>
+  1050→            <SelectContent>
+  1051→              <SelectItem value="all">Все роли</SelectItem>
+  1052→              {allRoles.map(role => (
+  1053→                <SelectItem key={role} value={role}>{ROLE_LABEL[role] ?? role}</SelectItem>
+  1054→              ))}
+  1055→            </SelectContent>
+  1056→          </Select>
+  1057→          <Badge className="bg-stone-600 text-white">{filtered.length} участников</Badge>
+  1058→          <Separator orientation="vertical" className="h-4 mx-2" />
+  1059→          <Button size="sm" variant="outline" className="rounded-xl gap-1" onClick={() => exportPersonsCSV(persons)}>
+  1060→            <Download className="w-3 h-3" />Export CSV
+  1061→          </Button>
+  1062→          <Button size="sm" variant="outline" className="rounded-xl gap-1" onClick={() => toast.info('PDF экспорт будет доступен в будущих версиях')}>
+  1063→            <FileText className="w-3 h-3" />Export PDF
+  1064→          </Button>
+  1065→        </div>
+  1066→
+  1067→        {/* Multi-select role filter */}
+  1068→        <div className="flex items-center gap-2 p-2 rounded-lg bg-muted/30 border border-stone-200/50 dark:border-stone-800/50">
+  1069→          <span className="text-xs font-medium text-muted-foreground shrink-0">Фильтр по ролям:</span>
+  1070→          {allRoles.map(role => (
+  1071→            <label key={role} className="flex items-center gap-1.5 cursor-pointer">
+  1072→              <Checkbox
+  1073→                checked={selectedRoles.includes(role)}
+  1074→                onCheckedChange={() => handleRoleToggle(role)}
+  1075→              />
+  1076→              <Badge className={`${ROLE_BADGE[role] ?? 'bg-stone-500 text-white'} text-[10px]`}>{ROLE_LABEL[role] ?? role}</Badge>
+  1077→            </label>
+  1078→          ))}
+  1079→          {selectedRoles.length > 0 && (
+  1080→            <Button size="sm" variant="ghost" className="h-6 text-xs rounded-lg" onClick={() => setSelectedRoles([])}>
+  1081→              <X className="w-3 h-3 mr-1" />Сбросить
+  1082→            </Button>
+  1083→          )}
+  1084→        </div>
+  1085→      </div>
+  1086→
+  1087→      {/* Relationship Map */}
+  1088→      <RelationshipMap relationships={relationships} persons={persons} />
+  1089→
+  1090→      {/* Guilt Chart */}
+  1091→      <Card className="rounded-xl shadow-sm">
+  1092→        <CardHeader className="pb-2"><CardTitle className="text-sm">Распределение виновности</CardTitle></CardHeader>
+  1093→        <CardContent className="p-2">
+  1094→          <ChartContainer config={guiltChartConfig} className="h-40 w-full">
+  1095→            <BarChart data={guiltData}>
+  1096→              <XAxis dataKey="level" tick={{ fontSize: 12 }} />
+  1097→              <YAxis hide />
+  1098→              <Bar dataKey="count" radius={4}>
+  1099→                {guiltData.map((d, i) => <Cell key={i} fill={d.fill} />)}
+  1100→              </Bar>
+  1101→              <ChartTooltip content={<ChartTooltipContent />} />
+  1102→            </BarChart>
+  1103→          </ChartContainer>
+  1104→        </CardContent>
+  1105→      </Card>
+  1106→
+  1107→      {/* Kolesnichenko Highlight (Enhanced) */}
+  1108→      {kolesnichenko && (roleFilter === 'all' && selectedRoles.length === 0) && (
+  1109→        <Card className="border-2 border-amber-500 bg-gradient-to-r from-red-900/10 via-amber-900/5 to-stone-900/5 rounded-xl shadow-sm relative overflow-hidden">
+  1110→          {/* Gold star badge */}
+  1111→          <div className="absolute top-2 right-3">
+  1112→            <div className="flex items-center gap-1 px-2 py-1 rounded-full bg-amber-500/20 border border-amber-500/40">
+  1113→              <Star className="w-3 h-3 text-amber-500 fill-amber-500" />
+  1114→              <span className="text-[10px] font-bold text-amber-600">Главный обвиняемый</span>
+  1115→            </div>
+  1116→          </div>
+  1117→          <CardContent className="p-4">
+  1118→            <div className="flex items-center gap-3 mb-2">
+  1119→              <div className="flex items-center justify-center w-9 h-9 rounded-xl bg-red-700/20 border border-red-700/30">
+  1120→                <Gavel className="w-5 h-5 text-red-600" />
+  1121→              </div>
+  1122→              <div>
+  1123→                <p className="font-semibold text-sm">{kolesnichenko.fullName}</p>
+  1124→                <div className="flex items-center gap-1 mt-1">
+  1125→                  <Badge className={ROLE_BADGE[kolesnichenko.role ?? '']} classNameOverride={ROLE_BADGE[kolesnichenko.role ?? '']}>
+  1126→                    {ROLE_LABEL[kolesnichenko.role ?? '']}
+  1127→                  </Badge>
+  1128→                  <Badge className={GUILT[kolesnichenko.guiltLevel ?? 'none'].badge}>{GUILT[kolesnichenko.guiltLevel ?? 'none'].label}</Badge>
+  1129→                  <Badge variant="outline" className="text-xs">{kolesnichenko.status ?? '—'}</Badge>
+  1130→                </div>
+  1131→              </div>
+  1132→            </div>
+  1133→
+  1134→            {/* Guilt level progress bar */}
+  1135→            <div className="mt-2 flex items-center gap-2">
+  1136→              <span className="text-xs text-muted-foreground shrink-0">Уровень виновности:</span>
+  1137→              <div className="flex-1">
+  1138→                <Progress
+  1139→                  value={GUILT[kolesnichenko.guiltLevel ?? 'none'].pct}
+  1140→                  className="h-2"
+  1141→                />
+  1142→              </div>
+  1143→              <span className="text-xs font-bold text-red-600">{GUILT[kolesnichenko.guiltLevel ?? 'none'].pct}%</span>
+  1144→            </div>
+  1145→
+  1146→            {/* Info grid */}
+  1147→            <div className="grid grid-cols-3 gap-2 mt-3">
+  1148→              {kolesnichenko.birthDate && (
+  1149→                <div className="p-2 rounded-md bg-muted/40 flex items-center gap-1.5">
+  1150→                  <Cake className="w-3 h-3 text-muted-foreground" />
+  1151→                  <span className="text-xs text-muted-foreground">ДР:</span>
+  1152→                  <span className="text-xs font-medium">{formatRussianDate(kolesnichenko.birthDate)}</span>
+  1153→                </div>
+  1154→              )}
+  1155→              {kolesnichenko.occupation && (
+  1156→                <div className="p-2 rounded-md bg-muted/40 flex items-center gap-1.5">
+  1157→                  <MapPin className="w-3 h-3 text-muted-foreground" />
+  1158→                  <span className="text-xs text-muted-foreground">Должность:</span>
+  1159→                  <span className="text-xs font-medium truncate">{kolesnichenko.occupation}</span>
+  1160→                </div>
+  1161→              )}
+  1162→              {kolesnichenko.alias && (
+  1163→                <div className="p-2 rounded-md bg-muted/40 flex items-center gap-1.5">
+  1164→                  <Users className="w-3 h-3 text-muted-foreground" />
+  1165→                  <span className="text-xs text-muted-foreground">Псевдоним:</span>
+  1166→                  <span className="text-xs font-medium">{kolesnichenko.alias}</span>
+  1167→                </div>
+  1168→              )}
+  1169→            </div>
+  1170→
+  1171→            <Separator className="my-2" />
+  1172→            <p className="text-xs text-muted-foreground">{kolesnichenko.description}</p>
+  1173→
+  1174→            {/* Defense strategy accordion */}
+  1175→            {kolesnichenko.defenseStrategy && (
+  1176→              <Accordion type="single" collapsible className="mt-3">
+  1177→                <AccordionItem value="defense" className="border-none">
+  1178→                  <AccordionTrigger className="text-xs font-medium py-2 hover:no-underline flex items-center gap-1">
+  1179→                    <Shield className="w-3 h-3 text-amber-600" /> Стратегия защиты
+  1180→                  </AccordionTrigger>
+  1181→                  <AccordionContent className="text-xs pb-2">
+  1182→                    <div className="p-2 rounded-lg bg-muted">
+  1183→                      <p>{kolesnichenko.defenseStrategy}</p>
+  1184→                    </div>
+  1185→                  </AccordionContent>
+  1186→                </AccordionItem>
+  1187→              </Accordion>
+  1188→            )}
+  1189→
+  1190→            {/* Radar chart */}
+  1191→            <div className="mt-3">
+  1192→              <p className="text-xs font-medium flex items-center gap-1 mb-1"><Target className="w-3 h-3" />Радар виновности:</p>
+  1193→              <GuiltRadarChart guiltLevel={kolesnichenko.guiltLevel ?? 'none'} />
+  1194→            </div>
+  1195→          </CardContent>
+  1196→        </Card>
+  1197→      )}
+  1198→
+  1199→      {/* Person Cards (Enhanced) */}
+
+[showing lines 600-1199 of 1654; use offset=1200 with limit to continue reading]

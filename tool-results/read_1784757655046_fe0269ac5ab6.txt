@@ -1,0 +1,1382 @@
+     1→'use client'
+     2→
+     3→import { useState, useMemo } from 'react'
+     4→import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+     5→import { Badge } from '@/components/ui/badge'
+     6→import { Button } from '@/components/ui/button'
+     7→import { Switch } from '@/components/ui/switch'
+     8→import { Separator } from '@/components/ui/separator'
+     9→import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
+    10→import {
+    11→  Select,
+    12→  SelectContent,
+    13→  SelectItem,
+    14→  SelectTrigger,
+    15→  SelectValue,
+    16→} from '@/components/ui/select'
+    17→import {
+    18→  Users,
+    19→  CheckCircle2,
+    20→  XCircle,
+    21→  HelpCircle,
+    22→  Minus,
+    23→  AlertTriangle,
+    24→  Star,
+    25→  Filter,
+    26→  ArrowUpDown,
+    27→  Activity,
+    28→  MessageSquare,
+    29→  FileText,
+    30→  Shield,
+    31→  Eye,
+    32→  TrendingDown,
+    33→  Flame,
+    34→} from 'lucide-react'
+    35→
+    36→// ============================================================================
+    37→// Типы данных
+    38→// ============================================================================
+    39→
+    40→type Position = 'confirm' | 'deny' | 'dont-remember' | 'no-data'
+    41→
+    42→type WitnessRole =
+    43→  | 'обвиняемый'
+    44→  | 'соучастник'
+    45→  | 'свидетель'
+    46→  | 'свидетель алиби'
+    47→  | 'потерпевшая'
+    48→  | 'эксперт'
+    49→
+    50→interface WitnessPosition {
+    51→  position: Position
+    52→  confidence: number // 0..100
+    53→  statement: string
+    54→  contradictsOthers: boolean
+    55→  relatedDocuments: string[]
+    56→}
+    57→
+    58→interface Witness {
+    59→  id: string
+    60→  name: string
+    61→  role: WitnessRole
+    62→  statementDate: string
+    63→  positions: Record<string, WitnessPosition>
+    64→}
+    65→
+    66→interface Fact {
+    67→  id: string
+    68→  text: string
+    69→}
+    70→
+    71→type SortKey = 'name' | 'reliability' | 'contradictions'
+    72→
+    73→// ============================================================================
+    74→// Моковые данные
+    75→// ============================================================================
+    76→
+    77→const FACTS: Fact[] = [
+    78→  { id: 'F1', text: 'Присутствие Колесниченко на встрече 15.03' },
+    79→  { id: 'F2', text: 'Передача денежных средств' },
+    80→  { id: 'F3', text: 'Наличие умысла на хищение' },
+    81→  { id: 'F4', text: 'Алиби Колесниченко на 15.03' },
+    82→  { id: 'F5', text: 'Использование служебного положения' },
+    83→  { id: 'F6', text: 'Размер ущерба (особо крупный)' },
+    84→  { id: 'F7', text: 'Факт обыска без адвоката' },
+    85→  { id: 'F8', text: 'Подлинность финансовых документов' },
+    86→]
+    87→
+    88→const WITNESSES: Witness[] = [
+    89→  {
+    90→    id: 'W1',
+    91→    name: 'Колесниченко Д.А.',
+    92→    role: 'обвиняемый',
+    93→    statementDate: '2024-04-12',
+    94→    positions: {
+    95→      F1: {
+    96→        position: 'deny',
+    97→        confidence: 90,
+    98→        statement:
+    99→          'Я не присутствовал на встрече 15 марта. В этот день находился у своего знакомого Козлова В.Н., что подтверждается показаниями свидетеля алиби.',
+   100→        contradictsOthers: true,
+   101→        relatedDocuments: ['Показания обвиняемого т.3 л.д. 45-48', 'Протокол допроса №12'],
+   102→      },
+   103→      F2: {
+   104→        position: 'deny',
+   105→        confidence: 95,
+   106→        statement:
+   107→          'Никаких денежных средств я не передавал и не получал. Утверждения Сидорова А.П. и потерпевшей Ивановой М.С. являются ложными.',
+   108→        contradictsOthers: true,
+   109→        relatedDocuments: ['Показания обвиняемого т.3 л.д. 45-48'],
+   110→      },
+   111→      F3: {
+   112→        position: 'deny',
+   113→        confidence: 100,
+   114→        statement:
+   115→          'Умысла на хищение у меня не было. Все действия совершались в рамках договорных обязательств, о чём имеются платёжные поручения.',
+   116→        contradictsOthers: true,
+   117→        relatedDocuments: ['Возражения на обвинение т.5 л.д. 110-115'],
+   118→      },
+   119→      F4: {
+   120→        position: 'confirm',
+   121→        confidence: 85,
+   122→        statement:
+   123→          '15 марта 2024 года с 14:00 до 18:00 я находился по адресу г. Москва, ул. Лесная, д. 12, кв. 45, у Козлова В.Н. Это подтверждается записями с камер видеонаблюдения подъезда.',
+   124→        contradictsOthers: true,
+   125→        relatedDocuments: ['Показания обвиняемого т.3 л.д. 45-48', 'Запись с камер наблюдения'],
+   126→      },
+   127→      F5: {
+   128→        position: 'deny',
+   129→        confidence: 80,
+   130→        statement:
+   131→          'Служебное положение я не использовал. Все операции производились в личном качестве, без привлечения ресурсов организации.',
+   132→        contradictsOthers: true,
+   133→        relatedDocuments: ['Возражения на обвинение т.5 л.д. 110-115'],
+   134→      },
+   135→      F6: {
+   136→        position: 'deny',
+   137→        confidence: 70,
+   138→        statement:
+   139→          'Размер ущерба, указанный следствием, не соответствует действительности. Реальные финансовые потери потерпевшей составляют существенно меньшую сумму.',
+   140→        contradictsOthers: true,
+   141→        relatedDocuments: ['Заключение специалиста защиты от 15.06.2024'],
+   142→      },
+   143→      F7: {
+   144→        position: 'confirm',
+   145→        confidence: 95,
+   146→        statement:
+   147→          'Обыск в моей квартире 20 марта 2024 года проводился в отсутствие адвоката, что является существенным нарушением ч.3 ст.182 УПК РФ.',
+   148→        contradictsOthers: false,
+   149→        relatedDocuments: ['Протокол обыска т.2 л.д. 88-94', 'Жалоба в порядке ст.125 УПК РФ'],
+   150→      },
+   151→      F8: {
+   152→        position: 'deny',
+   153→        confidence: 60,
+   154→        statement:
+   155→          'Финансовые документы, изъятые в ходе обыска, являются подложными и не были составлены мной. Требую проведения повторной почерковедческой экспертизы.',
+   156→        contradictsOthers: true,
+   157→        relatedDocuments: ['Ходатайство о повторной экспертизе т.6 л.д. 22-25'],
+   158→      },
+   159→    },
+   160→  },
+   161→  {
+   162→    id: 'W2',
+   163→    name: 'Сидоров А.П.',
+   164→    role: 'соучастник',
+   165→    statementDate: '2024-04-20',
+   166→    positions: {
+   167→      F1: {
+   168→        position: 'confirm',
+   169→        confidence: 95,
+   170→        statement:
+   171→          'Колесниченко Д.А. лично присутствовал на встрече 15 марта 2024 года и участвовал в обсуждении условий передачи денежных средств.',
+   172→        contradictsOthers: true,
+   173→        relatedDocuments: ['Показания Сидорова А.П. т.4 л.д. 12-18'],
+   174→      },
+   175→      F2: {
+   176→        position: 'confirm',
+   177→        confidence: 90,
+   178→        statement:
+   179→          'Передача денежных средств в размере 2,5 млн рублей состоялась в присутствии Колесниченко Д.А. и Ивановой М.С.',
+   180→        contradictsOthers: true,
+   181→        relatedDocuments: ['Показания Сидорова А.П. т.4 л.д. 12-18'],
+   182→      },
+   183→      F3: {
+   184→        position: 'confirm',
+   185→        confidence: 85,
+   186→        statement:
+   187→          'Умысел на хищение денежных средств возник у Колесниченко Д.А. заранее, о чём он неоднократно высказывался в моём присутствии.',
+   188→        contradictsOthers: true,
+   189→        relatedDocuments: ['Показания Сидорова А.П. т.4 л.д. 12-18'],
+   190→      },
+   191→      F4: {
+   192→        position: 'deny',
+   193→        confidence: 80,
+   194→        statement:
+   195→          'Утверждение Колесниченко Д.А. об алиби является ложным. Козлов В.Н. — его давний знакомый, который оговаривает следствие в его интересах.',
+   196→        contradictsOthers: true,
+   197→        relatedDocuments: ['Показания Сидорова А.П. т.4 л.д. 12-18', 'Протокол очной ставки'],
+   198→      },
+   199→      F5: {
+   200→        position: 'confirm',
+   201→        confidence: 75,
+   202→        statement:
+   203→          'Колесниченко Д.А. использовал своё служебное положение руководителя отдела для обеспечения совершения хищения.',
+   204→        contradictsOthers: true,
+   205→        relatedDocuments: ['Показания Сидорова А.П. т.4 л.д. 12-18'],
+   206→      },
+   207→      F6: {
+   208→        position: 'confirm',
+   209→        confidence: 70,
+   210→        statement:
+   211→          'Размер ущерба является особо крупным и, по моим сведениям, превышает 2,5 млн рублей, что соответствует особо крупному размеру.',
+   212→        contradictsOthers: true,
+   213→        relatedDocuments: ['Показания Сидорова А.П. т.4 л.д. 12-18'],
+   214→      },
+   215→      F7: {
+   216→        position: 'no-data',
+   217→        confidence: 0,
+   218→        statement: 'По обстоятельствам проведения обыска показаний не давал.',
+   219→        contradictsOthers: false,
+   220→        relatedDocuments: [],
+   221→      },
+   222→      F8: {
+   223→        position: 'confirm',
+   224→        confidence: 80,
+   225→        statement:
+   226→          'Финансовые документы, изъятые у Колесниченко Д.А., являются подлинными и составлялись в моём присутствии.',
+   227→        contradictsOthers: true,
+   228→        relatedDocuments: ['Показания Сидорова А.П. т.4 л.д. 12-18'],
+   229→      },
+   230→    },
+   231→  },
+   232→  {
+   233→    id: 'W3',
+   234→    name: 'Петров И.В.',
+   235→    role: 'свидетель',
+   236→    statementDate: '2024-05-03',
+   237→    positions: {
+   238→      F1: {
+   239→        position: 'confirm',
+   240→        confidence: 80,
+   241→        statement:
+   242→          'Я видел Колесниченко Д.А. в здании по адресу ул. Тверская, д. 18, 15 марта около 15:00, что совпадает с указанной встречей.',
+   243→        contradictsOthers: true,
+   244→        relatedDocuments: ['Показания Петрова И.В. т.3 л.д. 102-105'],
+   245→      },
+   246→      F2: {
+   247→        position: 'dont-remember',
+   248→        confidence: 40,
+   249→        statement:
+   250→          'Передачу денежных средств я не видел, не могу подтвердить или опровергнуть данный факт.',
+   251→        contradictsOthers: false,
+   252→        relatedDocuments: ['Показания Петрова И.В. т.3 л.д. 102-105'],
+   253→      },
+   254→      F3: {
+   255→        position: 'no-data',
+   256→        confidence: 0,
+   257→        statement: 'Об умысле Колесниченко Д.А. мне ничего не известно.',
+   258→        contradictsOthers: false,
+   259→        relatedDocuments: [],
+   260→      },
+   261→      F4: {
+   262→        position: 'no-data',
+   263→        confidence: 0,
+   264→        statement: 'Об алиби Колесниченко Д.А. мне ничего не известно.',
+   265→        contradictsOthers: false,
+   266→        relatedDocuments: [],
+   267→      },
+   268→      F5: {
+   269→        position: 'no-data',
+   270→        confidence: 0,
+   271→        statement: 'По использованию служебного положения показаний не давал.',
+   272→        contradictsOthers: false,
+   273→        relatedDocuments: [],
+   274→      },
+   275→      F6: {
+   276→        position: 'no-data',
+   277→        confidence: 0,
+   278→        statement: 'О размере ущерба мне ничего не известно.',
+   279→        contradictsOthers: false,
+   280→        relatedDocuments: [],
+   281→      },
+   282→      F7: {
+   283→        position: 'no-data',
+   284→        confidence: 0,
+   285→        statement: 'Об обстоятельствах обыска мне ничего не известно.',
+   286→        contradictsOthers: false,
+   287→        relatedDocuments: [],
+   288→      },
+   289→      F8: {
+   290→        position: 'no-data',
+   291→        confidence: 0,
+   292→        statement: 'О подлинности финансовых документов мне ничего не известно.',
+   293→        contradictsOthers: false,
+   294→        relatedDocuments: [],
+   295→      },
+   296→    },
+   297→  },
+   298→  {
+   299→    id: 'W4',
+   300→    name: 'Козлов В.Н.',
+   301→    role: 'свидетель алиби',
+   302→    statementDate: '2024-05-10',
+   303→    positions: {
+   304→      F1: {
+   305→        position: 'deny',
+   306→        confidence: 85,
+   307→        statement:
+   308→          '15 марта Колесниченко Д.А. находился у меня дома, поэтому не мог присутствовать на указанной встрече. Утверждения других свидетелей ошибочны.',
+   309→        contradictsOthers: true,
+   310→        relatedDocuments: ['Показания Козлова В.Н. т.3 л.д. 130-134'],
+   311→      },
+   312→      F2: {
+   313→        position: 'no-data',
+   314→        confidence: 0,
+   315→        statement: 'О передаче денежных средств мне ничего не известно.',
+   316→        contradictsOthers: false,
+   317→        relatedDocuments: [],
+   318→      },
+   319→      F3: {
+   320→        position: 'no-data',
+   321→        confidence: 0,
+   322→        statement: 'Об умысле Колесниченко Д.А. мне ничего не известно.',
+   323→        contradictsOthers: false,
+   324→        relatedDocuments: [],
+   325→      },
+   326→      F4: {
+   327→        position: 'confirm',
+   328→        confidence: 90,
+   329→        statement:
+   330→          'Подтверждаю, что 15 марта 2024 года Колесниченко Д.А. находился у меня дома с 14:00 до 18:00. Это подтверждается записями с камер видеонаблюдения моего подъезда.',
+   331→        contradictsOthers: true,
+   332→        relatedDocuments: ['Показания Козлова В.Н. т.3 л.д. 130-134', 'Запись с камер наблюдения'],
+   333→      },
+   334→      F5: {
+   335→        position: 'no-data',
+   336→        confidence: 0,
+   337→        statement: 'По использованию служебного положения показаний не давал.',
+   338→        contradictsOthers: false,
+   339→        relatedDocuments: [],
+   340→      },
+   341→      F6: {
+   342→        position: 'no-data',
+   343→        confidence: 0,
+   344→        statement: 'О размере ущерба мне ничего не известно.',
+   345→        contradictsOthers: false,
+   346→        relatedDocuments: [],
+   347→      },
+   348→      F7: {
+   349→        position: 'no-data',
+   350→        confidence: 0,
+   351→        statement: 'Об обстоятельствах обыска мне ничего не известно.',
+   352→        contradictsOthers: false,
+   353→        relatedDocuments: [],
+   354→      },
+   355→      F8: {
+   356→        position: 'no-data',
+   357→        confidence: 0,
+   358→        statement: 'О подлинности финансовых документов мне ничего не известно.',
+   359→        contradictsOthers: false,
+   360→        relatedDocuments: [],
+   361→      },
+   362→    },
+   363→  },
+   364→  {
+   365→    id: 'W5',
+   366→    name: 'Иванова М.С.',
+   367→    role: 'потерпевшая',
+   368→    statementDate: '2024-05-15',
+   369→    positions: {
+   370→      F1: {
+   371→        position: 'dont-remember',
+   372→        confidence: 30,
+   373→        statement:
+   374→          'Точно не помню, присутствовал ли Колесниченко Д.А. на встрече. На встрече было несколько человек.',
+   375→        contradictsOthers: false,
+   376→        relatedDocuments: ['Показания потерпевшей Ивановой М.С. т.2 л.д. 50-56'],
+   377→      },
+   378→      F2: {
+   379→        position: 'confirm',
+   380→        confidence: 90,
+   381→        statement:
+   382→          'Денежные средства в размере 2,5 млн рублей были мной переданы в ходе встречи 15 марта 2024 года.',
+   383→        contradictsOthers: true,
+   384→        relatedDocuments: ['Показания потерпевшей Ивановой М.С. т.2 л.д. 50-56', 'Расписка от 15.03.2024'],
+   385→      },
+   386→      F3: {
+   387→        position: 'confirm',
+   388→        confidence: 95,
+   389→        statement:
+   390→          'У Колесниченко Д.А. был явный умысел на хищение, так как он обещал оказать услуги, которые фактически не собирался предоставлять.',
+   391→        contradictsOthers: true,
+   392→        relatedDocuments: ['Показания потерпевшей Ивановой М.С. т.2 л.д. 50-56'],
+   393→      },
+   394→      F4: {
+   395→        position: 'no-data',
+   396→        confidence: 0,
+   397→        statement: 'Об алиби Колесниченко Д.А. мне ничего не известно.',
+   398→        contradictsOthers: false,
+   399→        relatedDocuments: [],
+   400→      },
+   401→      F5: {
+   402→        position: 'confirm',
+   403→        confidence: 70,
+   404→        statement:
+   405→          'Колесниченко Д.А. представился мне как руководитель отдела и использовал это при убеждении передать денежные средства.',
+   406→        contradictsOthers: true,
+   407→        relatedDocuments: ['Показания потерпевшей Ивановой М.С. т.2 л.д. 50-56'],
+   408→      },
+   409→      F6: {
+   410→        position: 'confirm',
+   411→        confidence: 100,
+   412→        statement:
+   413→          'Размер причинённого мне ущерба составляет 2,5 млн рублей, что, согласно заключению эксперта, является особо крупным размером.',
+   414→        contradictsOthers: true,
+   415→        relatedDocuments: ['Показания потерпевшей Ивановой М.С. т.2 л.д. 50-56', 'Гражданский иск'],
+   416→      },
+   417→      F7: {
+   418→        position: 'no-data',
+   419→        confidence: 0,
+   420→        statement: 'Об обстоятельствах обыска мне ничего не известно.',
+   421→        contradictsOthers: false,
+   422→        relatedDocuments: [],
+   423→      },
+   424→      F8: {
+   425→        position: 'confirm',
+   426→        confidence: 85,
+   427→        statement:
+   428→          'Финансовые документы, на основании которых я передавала денежные средства, являются подлинными и были оформлены надлежащим образом.',
+   429→        contradictsOthers: true,
+   430→        relatedDocuments: ['Показания потерпевшей Ивановой М.С. т.2 л.д. 50-56', 'Договор от 01.03.2024'],
+   431→      },
+   432→    },
+   433→  },
+   434→  {
+   435→    id: 'W6',
+   436→    name: 'Эксперт Смирнов',
+   437→    role: 'эксперт',
+   438→    statementDate: '2024-06-01',
+   439→    positions: {
+   440→      F1: {
+   441→        position: 'no-data',
+   442→        confidence: 0,
+   443→        statement: 'По факту присутствия Колесниченко Д.А. экспертиза не проводилась.',
+   444→        contradictsOthers: false,
+   445→        relatedDocuments: [],
+   446→      },
+   447→      F2: {
+   448→        position: 'no-data',
+   449→        confidence: 0,
+   450→        statement: 'По факту передачи денежных средств экспертиза не проводилась.',
+   451→        contradictsOthers: false,
+   452→        relatedDocuments: [],
+   453→      },
+   454→      F3: {
+   455→        position: 'dont-remember',
+   456→        confidence: 50,
+   457→        statement:
+   458→          'Вопрос о наличии умысла не входит в компетенцию эксперта и не может быть установлен судебной экспертизой.',
+   459→        contradictsOthers: false,
+   460→        relatedDocuments: ['Заключение эксперта №142/2024'],
+   461→      },
+   462→      F4: {
+   463→        position: 'no-data',
+   464→        confidence: 0,
+   465→        statement: 'По факту алиби экспертиза не проводилась.',
+   466→        contradictsOthers: false,
+   467→        relatedDocuments: [],
+   468→      },
+   469→      F5: {
+   470→        position: 'confirm',
+   471→        confidence: 75,
+   472→        statement:
+   473→          'Согласно исследованным документам, Колесниченко Д.А. использовал своё служебное положение для оформления соответствующих распоряжений.',
+   474→        contradictsOthers: true,
+   475→        relatedDocuments: ['Заключение эксперта №142/2024', 'Приказы организации'],
+   476→      },
+   477→      F6: {
+   478→        position: 'confirm',
+   479→        confidence: 90,
+   480→        statement:
+   481→          'Проведённая финансовая экспертиза установила размер ущерба в 2 547 000 рублей, что, согласно примечанию к ст.158 УК РФ, является особо крупным размером.',
+   482→        contradictsOthers: true,
+   483→        relatedDocuments: ['Заключение эксперта №142/2024', 'Бухгалтерская экспертиза'],
+   484→      },
+   485→      F7: {
+   486→        position: 'confirm',
+   487→        confidence: 80,
+   488→        statement:
+   489→          'В протоколе обыска отсутствует подпись адвоката, что является нарушением уголовно-процессуального законодательства.',
+   490→        contradictsOthers: false,
+   491→        relatedDocuments: ['Заключение эксперта №142/2024', 'Протокол обыска т.2 л.д. 88-94'],
+   492→      },
+   493→      F8: {
+   494→        position: 'confirm',
+   495→        confidence: 95,
+   496→        statement:
+   497→          'Проведённая почерковедческая и технико-криминалистическая экспертиза установила подлинность изъятых финансовых документов.',
+   498→        contradictsOthers: true,
+   499→        relatedDocuments: ['Заключение эксперта №142/2024', 'Почерковедческая экспертиза №7'],
+   500→      },
+   501→    },
+   502→  },
+   503→]
+   504→
+   505→// ============================================================================
+   506→// Конфигурация отображения позиций
+   507→// ============================================================================
+   508→
+   509→const POSITION_CONFIG: Record<
+   510→  Position,
+   511→  {
+   512→    label: string
+   513→    short: string
+   514→    icon: React.ReactNode
+   515→    cellClass: string
+   516→    textClass: string
+   517→    badgeClass: string
+   518→  }
+   519→> = {
+   520→  confirm: {
+   521→    label: 'Подтверждает',
+   522→    short: 'Подтв.',
+   523→    icon: <CheckCircle2 className="w-3.5 h-3.5" />,
+   524→    cellClass: 'bg-emerald-700 text-white',
+   525→    textClass: 'text-emerald-700',
+   526→    badgeClass: 'bg-emerald-700 text-white',
+   527→  },
+   528→  deny: {
+   529→    label: 'Опровергает',
+   530→    short: 'Опров.',
+   531→    icon: <XCircle className="w-3.5 h-3.5" />,
+   532→    cellClass: 'bg-red-700 text-white',
+   533→    textClass: 'text-red-700',
+   534→    badgeClass: 'bg-red-700 text-white',
+   535→  },
+   536→  'dont-remember': {
+   537→    label: 'Не помнит',
+   538→    short: 'Не помнит',
+   539→    icon: <HelpCircle className="w-3.5 h-3.5" />,
+   540→    cellClass: 'bg-amber-600 text-white',
+   541→    textClass: 'text-amber-600',
+   542→    badgeClass: 'bg-amber-600 text-white',
+   543→  },
+   544→  'no-data': {
+   545→    label: 'Нет данных',
+   546→    short: '—',
+   547→    icon: <Minus className="w-3.5 h-3.5" />,
+   548→    cellClass: 'bg-stone-200 text-stone-600 dark:bg-stone-700 dark:text-stone-300',
+   549→    textClass: 'text-stone-500',
+   550→    badgeClass: 'bg-stone-200 text-stone-700 dark:bg-stone-700 dark:text-stone-200',
+   551→  },
+   552→}
+   553→
+   554→const ROLE_TONE: Record<WitnessRole, string> = {
+   555→  обвиняемый: 'bg-red-100 text-red-800 dark:bg-red-950/40 dark:text-red-200',
+   556→  соучастник: 'bg-purple-100 text-purple-800 dark:bg-purple-950/40 dark:text-purple-200',
+   557→  свидетель: 'bg-stone-100 text-stone-800 dark:bg-stone-800/50 dark:text-stone-200',
+   558→  'свидетель алиби': 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-200',
+   559→  потерпевшая: 'bg-orange-100 text-orange-800 dark:bg-orange-950/40 dark:text-orange-200',
+   560→  эксперт: 'bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-200',
+   561→}
+   562→
+   563→// ============================================================================
+   564→// Вспомогательные функции
+   565→// ============================================================================
+   566→
+   567→function countContradictions(w: Witness): number {
+   568→  return FACTS.reduce(
+   569→    (sum, f) => sum + (w.positions[f.id]?.contradictsOthers ? 1 : 0),
+   570→    0,
+   571→  )
+   572→}
+   573→
+   574→function reliabilityStars(contradictions: number): number {
+   575→  if (contradictions <= 1) return 5
+   576→  if (contradictions <= 3) return 4
+   577→  if (contradictions <= 5) return 3
+   578→  if (contradictions <= 7) return 2
+   579→  return 1
+   580→}
+   581→
+   582→function confidenceColor(c: number): string {
+   583→  if (c >= 85) return 'text-emerald-700'
+   584→  if (c >= 60) return 'text-amber-600'
+   585→  if (c > 0) return 'text-orange-600'
+   586→  return 'text-stone-400'
+   587→}
+   588→
+   589→function confidenceBarClass(c: number): string {
+   590→  if (c >= 85) return '[&>div]:bg-emerald-700'
+   591→  if (c >= 60) return '[&>div]:bg-amber-600'
+   592→  if (c > 0) return '[&>div]:bg-orange-600'
+   593→  return '[&>div]:bg-stone-400'
+   594→}
+   595→
+   596→function formatDate(iso: string): string {
+   597→  try {
+   598→    return new Date(iso).toLocaleDateString('ru-RU', {
+   599→      day: '2-digit',
+   600→      month: 'long',
+   601→      year: 'numeric',
+   602→    })
+   603→  } catch {
+   604→    return iso
+   605→  }
+   606→}
+   607→
+   608→// ============================================================================
+   609→// Подкомпоненты
+   610→// ============================================================================
+   611→
+   612→function StarRating({ stars, size = 'sm' }: { stars: number; size?: 'sm' | 'md' }) {
+   613→  const sz = size === 'sm' ? 'w-3 h-3' : 'w-4 h-4'
+   614→  return (
+   615→    <div className="flex items-center gap-0.5">
+   616→      {[1, 2, 3, 4, 5].map(n => (
+   617→        <Star
+   618→          key={n}
+   619→          className={`${sz} ${
+   620→            n <= stars
+   621→              ? 'fill-amber-400 text-amber-500'
+   622→              : 'fill-stone-200 text-stone-300 dark:fill-stone-700 dark:text-stone-600'
+   623→          }`}
+   624→        />
+   625→      ))}
+   626→    </div>
+   627→  )
+   628→}
+   629→
+   630→function ConflictsSummary({
+   631→  witnesses,
+   632→  facts,
+   633→}: {
+   634→  witnesses: Witness[]
+   635→  facts: Fact[]
+   636→}) {
+   637→  const totalConflicts = useMemo(() => {
+   638→    return witnesses.reduce((sum, w) => sum + countContradictions(w), 0)
+   639→  }, [witnesses])
+   640→
+   641→  const worstOffender = useMemo(() => {
+   642→    return [...witnesses].sort((a, b) => {
+   643→      const ca = countContradictions(a)
+   644→      const cb = countContradictions(b)
+   645→      if (cb !== ca) return cb - ca
+   646→      return a.name.localeCompare(b.name, 'ru')
+   647→    })[0]
+   648→  }, [witnesses])
+   649→
+   650→  const mostDisputedFact = useMemo(() => {
+   651→    let best: { fact: Fact; count: number } | null = null
+   652→    for (const f of facts) {
+   653→      const count = witnesses.filter(
+   654→        w => w.positions[f.id]?.contradictsOthers,
+   655→      ).length
+   656→      if (!best || count > best.count) {
+   657→        best = { fact: f, count }
+   658→      }
+   659→    }
+   660→    return best
+   661→  }, [witnesses, facts])
+   662→
+   663→  const stats = [
+   664→    {
+   665→      icon: <Flame className="w-5 h-5 text-red-700" />,
+   666→      bgIcon: 'bg-red-100 dark:bg-red-950/40',
+   667→      label: 'Всего противоречий',
+   668→      value: totalConflicts,
+   669→      hint: 'Сумма конфликтующих ячеек',
+   670→      tone: 'text-red-700',
+   671→    },
+   672→    {
+   673→      icon: <TrendingDown className="w-5 h-5 text-orange-600" />,
+   674→      bgIcon: 'bg-orange-100 dark:bg-orange-950/40',
+   675→      label: 'Худший свидетель',
+   676→      value: worstOffender?.name ?? '—',
+   677→      hint: `${worstOffender ? countContradictions(worstOffender) : 0} противоречий`,
+   678→      tone: 'text-orange-700',
+   679→    },
+   680→    {
+   681→      icon: <AlertTriangle className="w-5 h-5 text-amber-600" />,
+   682→      bgIcon: 'bg-amber-100 dark:bg-amber-950/40',
+   683→      label: 'Самый спорный факт',
+   684→      value: mostDisputedFact?.fact.text ?? '—',
+   685→      hint: `${mostDisputedFact?.count ?? 0} свидетелей в конфликте`,
+   686→      tone: 'text-amber-700',
+   687→    },
+   688→  ]
+   689→
+   690→  return (
+   691→    <Card className="rounded-xl shadow-sm border-l-4 border-red-700 hover:shadow-md hover:-translate-y-0.5 transition-all">
+   692→      <CardHeader className="pb-2">
+   693→        <CardTitle className="text-sm flex items-center gap-2">
+   694→          <AlertTriangle className="w-4 h-4 text-red-700" />
+   695→          Сводка противоречий
+   696→        </CardTitle>
+   697→      </CardHeader>
+   698→      <CardContent className="p-4">
+   699→        <div className="grid sm:grid-cols-3 gap-3">
+   700→          {stats.map((s, i) => (
+   701→            <div
+   702→              key={i}
+   703→              className="flex items-start gap-3 p-3 rounded-lg bg-muted/40 hover:bg-muted/70 transition-colors"
+   704→            >
+   705→              <div
+   706→                className={`flex items-center justify-center w-9 h-9 rounded-lg shrink-0 ${s.bgIcon}`}
+   707→              >
+   708→                {s.icon}
+   709→              </div>
+   710→              <div className="min-w-0 flex-1">
+   711→                <p className="text-xs text-muted-foreground">{s.label}</p>
+   712→                <p className={`font-bold break-words leading-snug ${s.tone}`} title={String(s.value)}>
+   713→                  {s.value}
+   714→                </p>
+   715→                <p className="text-xs text-muted-foreground mt-0.5">{s.hint}</p>
+   716→              </div>
+   717→            </div>
+   718→          ))}
+   719→        </div>
+   720→      </CardContent>
+   721→    </Card>
+   722→  )
+   723→}
+   724→
+   725→function CellIcon({ position, conflictsOnly }: { position: Position; conflictsOnly: boolean }) {
+   726→  const cfg = POSITION_CONFIG[position]
+   727→  if (position === 'no-data') {
+   728→    return <Minus className="w-3.5 h-3.5 opacity-60" />
+   729→  }
+   730→  return <span className="flex items-center justify-center">{cfg.icon}</span>
+   731→}
+   732→
+   733→interface CellProps {
+   734→  witness: Witness
+   735→  fact: Fact
+   736→  isSelected: boolean
+   737→  conflictsOnly: boolean
+   738→  onClick: () => void
+   739→}
+   740→
+   741→function MatrixCell({ witness, fact, isSelected, conflictsOnly, onClick }: CellProps) {
+   742→  const pos = witness.positions[fact.id]
+   743→  if (!pos) return null
+   744→  const cfg = POSITION_CONFIG[pos.position]
+   745→  const isContradiction = pos.contradictsOthers
+   746→
+   747→  // Determine if cell should be dimmed (when filter is on, only show conflicts highlighted)
+   748→  const dimmed = conflictsOnly && !isContradiction
+   749→
+   750→  // Background class
+   751→  let bgClass = cfg.cellClass
+   752→  if (dimmed) {
+   753→    bgClass = 'bg-stone-50 text-stone-400 dark:bg-stone-900 dark:text-stone-600'
+   754→  } else if (isContradiction && pos.position !== 'no-data') {
+   755→    // For contradictions, use red-700 background regardless of position
+   756→    bgClass = 'bg-red-700 text-white'
+   757→  }
+   758→
+   759→  const ringClass = isSelected
+   760→    ? 'ring-2 ring-purple-700 ring-offset-1'
+   761→    : isContradiction && !dimmed
+   762→      ? 'ring-1 ring-red-900/40'
+   763→      : ''
+   764→
+   765→  const pulseClass =
+   766→    isContradiction && !dimmed && pos.position === 'deny'
+   767→      ? 'animate-pulse'
+   768→      : ''
+   769→
+   770→  return (
+   771→    <button
+   772→      type="button"
+   773→      onClick={onClick}
+   774→      title={`${witness.name} — ${fact.text}: ${cfg.label}${
+   775→        isContradiction ? ' (противоречит другим)' : ''
+   776→      }`}
+   777→      className={`relative h-12 min-w-[64px] flex items-center justify-center transition-all duration-150 ${bgClass} ${ringClass} ${pulseClass} hover:brightness-110 hover:z-10 cursor-pointer`}
+   778→    >
+   779→      <CellIcon position={pos.position} conflictsOnly={conflictsOnly} />
+   780→      {isContradiction && !dimmed && pos.position !== 'no-data' && (
+   781→        <span className="absolute top-0.5 right-0.5 w-1.5 h-1.5 rounded-full bg-white/90 shadow-sm" />
+   782→      )}
+   783→      {isSelected && (
+   784→        <span className="absolute inset-0 ring-2 ring-purple-700 rounded-sm pointer-events-none" />
+   785→      )}
+   786→    </button>
+   787→  )
+   788→}
+   789→
+   790→function MatrixTable({
+   791→  witnesses,
+   792→  facts,
+   793→  selectedCell,
+   794→  onSelectCell,
+   795→  conflictsOnly,
+   796→}: {
+   797→  witnesses: Witness[]
+   798→  facts: Fact[]
+   799→  selectedCell: { witnessId: string; factId: string } | null
+   800→  onSelectCell: (witnessId: string, factId: string) => void
+   801→  conflictsOnly: boolean
+   802→}) {
+   803→  return (
+   804→    <Card className="rounded-xl shadow-sm hover:shadow-md transition-shadow">
+   805→      <CardHeader className="pb-2">
+   806→        <CardTitle className="text-sm flex items-center gap-2">
+   807→          <Activity className="w-4 h-4 text-purple-700" />
+   808→          Матрица согласованности показаний
+   809→        </CardTitle>
+   810→      </CardHeader>
+   811→      <CardContent className="p-2 sm:p-4">
+   812→        <div className="overflow-x-auto scrollbar-thin rounded-lg border border-border">
+   813→          <table className="border-collapse w-full">
+   814→            <thead>
+   815→              <tr>
+   816→                <th className="sticky left-0 top-0 z-30 bg-stone-800 text-white px-3 py-2 text-xs font-semibold text-left min-w-[180px] max-w-[220px] border-b border-r border-stone-700">
+   817→                  <div className="flex items-center gap-1.5">
+   818→                    <Users className="w-3.5 h-3.5" />
+   819→                    <span>Свидетель</span>
+   820→                  </div>
+   821→                </th>
+   822→                {facts.map(f => (
+   823→                  <th
+   824→                    key={f.id}
+   825→                    className="sticky top-0 z-20 bg-stone-800 text-white px-2 py-2 text-[11px] font-medium text-center min-w-[120px] max-w-[160px] border-b border-r border-stone-700 last:border-r-0"
+   826→                  >
+   827→                    <TooltipProvider delayDuration={200}>
+   828→                      <Tooltip>
+   829→                        <TooltipTrigger asChild>
+   830→                          <div className="flex flex-col items-center gap-0.5 cursor-help">
+   831→                            <span className="text-[10px] uppercase tracking-wide text-stone-400">
+   832→                              {f.id}
+   833→                            </span>
+   834→                            <span
+   835→                              className="whitespace-normal leading-tight text-white text-[10px] line-clamp-2"
+   836→                            >
+   837→                              {f.text}
+   838→                            </span>
+   839→                          </div>
+   840→                        </TooltipTrigger>
+   841→                        <TooltipContent side="bottom" className="max-w-[240px] text-xs">
+   842→                          <span className="font-semibold text-stone-300">{f.id}:</span>{' '}
+   843→                          <span>{f.text}</span>
+   844→                        </TooltipContent>
+   845→                      </Tooltip>
+   846→                    </TooltipProvider>
+   847→                  </th>
+   848→                ))}
+   849→              </tr>
+   850→            </thead>
+   851→            <tbody>
+   852→              {witnesses.map((w, idx) => {
+   853→                const contradictions = countContradictions(w)
+   854→                const stars = reliabilityStars(contradictions)
+   855→                return (
+   856→                  <tr
+   857→                    key={w.id}
+   858→                    className={`group ${
+   859→                      idx % 2 === 0 ? 'bg-background' : 'bg-muted/30'
+   860→                    } hover:bg-amber-50/50 dark:hover:bg-amber-950/20 transition-colors`}
+   861→                  >
+   862→                    <td
+   863→                      className={`sticky left-0 z-10 px-3 py-2 text-xs font-medium border-b border-r border-border min-w-[180px] max-w-[220px] ${
+   864→                        idx % 2 === 0
+   865→                          ? 'bg-background'
+   866→                          : 'bg-muted/30'
+   867→                      } group-hover:bg-amber-50/80 dark:group-hover:bg-amber-950/20`}
+   868→                    >
+   869→                      <div className="flex flex-col gap-1">
+   870→                        <div className="flex items-center gap-1.5">
+   871→                          <span className="font-semibold truncate" title={w.name}>
+   872→                            {w.name}
+   873→                          </span>
+   874→                        </div>
+   875→                        <div className="flex items-center gap-1.5 flex-wrap">
+   876→                          <Badge
+   877→                            variant="outline"
+   878→                            className={`text-[10px] px-1.5 py-0 ${ROLE_TONE[w.role]} border-0`}
+   879→                          >
+   880→                            {w.role}
+   881→                          </Badge>
+   882→                          {contradictions > 0 && (
+   883→                            <Badge className="text-[10px] px-1.5 py-0 bg-red-700 text-white">
+   884→                              <AlertTriangle className="w-2.5 h-2.5 mr-0.5" />
+   885→                              {contradictions}
+   886→                            </Badge>
+   887→                          )}
+   888→                        </div>
+   889→                        <StarRating stars={stars} size="sm" />
+   890→                      </div>
+   891→                    </td>
+   892→                    {facts.map(f => {
+   893→                      const isSelected =
+   894→                        selectedCell?.witnessId === w.id &&
+   895→                        selectedCell?.factId === f.id
+   896→                      return (
+   897→                        <td
+   898→                          key={f.id}
+   899→                          className="p-0 border-b border-r border-border last:border-r-0"
+   900→                        >
+   901→                          <MatrixCell
+   902→                            witness={w}
+   903→                            fact={f}
+   904→                            isSelected={isSelected}
+   905→                            conflictsOnly={conflictsOnly}
+   906→                            onClick={() => onSelectCell(w.id, f.id)}
+   907→                          />
+   908→                        </td>
+   909→                      )
+   910→                    })}
+   911→                  </tr>
+   912→                )
+   913→              })}
+   914→            </tbody>
+   915→          </table>
+   916→        </div>
+   917→
+   918→        {/* Легенда */}
+   919→        <div className="flex flex-wrap items-center gap-3 mt-3 text-[11px] text-muted-foreground">
+   920→          <span className="font-medium">Легенда:</span>
+   921→          <div className="flex items-center gap-1">
+   922→            <span className="w-4 h-4 rounded-sm bg-emerald-700 inline-flex items-center justify-center">
+   923→              <CheckCircle2 className="w-2.5 h-2.5 text-white" />
+   924→            </span>
+   925→            <span>Подтверждает</span>
+   926→          </div>
+   927→          <div className="flex items-center gap-1">
+   928→            <span className="w-4 h-4 rounded-sm bg-red-700 inline-flex items-center justify-center">
+   929→              <XCircle className="w-2.5 h-2.5 text-white" />
+   930→            </span>
+   931→            <span>Опровергает</span>
+   932→          </div>
+   933→          <div className="flex items-center gap-1">
+   934→            <span className="w-4 h-4 rounded-sm bg-amber-600 inline-flex items-center justify-center">
+   935→              <HelpCircle className="w-2.5 h-2.5 text-white" />
+   936→            </span>
+   937→            <span>Не помнит</span>
+   938→          </div>
+   939→          <div className="flex items-center gap-1">
+   940→            <span className="w-4 h-4 rounded-sm bg-stone-200 dark:bg-stone-700 inline-flex items-center justify-center">
+   941→              <Minus className="w-2.5 h-2.5 text-stone-600 dark:text-stone-300" />
+   942→            </span>
+   943→            <span>Нет данных</span>
+   944→          </div>
+   945→          <div className="flex items-center gap-1">
+   946→            <span className="w-4 h-4 rounded-sm bg-red-700 ring-1 ring-red-900 animate-pulse" />
+   947→            <span>Противоречит другим (пульсация)</span>
+   948→          </div>
+   949→        </div>
+   950→      </CardContent>
+   951→    </Card>
+   952→  )
+   953→}
+   954→
+   955→function DetailPanel({
+   956→  witness,
+   957→  fact,
+   958→  onClose,
+   959→}: {
+   960→  witness: Witness | undefined
+   961→  fact: Fact | undefined
+   962→  onClose: () => void
+   963→}) {
+   964→  if (!witness || !fact) {
+   965→    return (
+   966→      <Card className="rounded-xl shadow-sm border-dashed">
+   967→        <CardContent className="p-6 text-center">
+   968→          <Eye className="w-8 h-8 mx-auto text-muted-foreground/60" />
+   969→          <p className="text-sm text-muted-foreground mt-2">
+   970→            Выберите ячейку матрицы, чтобы увидеть подробные показания свидетеля по выбранному факту.
+   971→          </p>
+   972→        </CardContent>
+   973→      </Card>
+   974→    )
+   975→  }
+   976→
+   977→  const pos = witness.positions[fact.id]
+   978→  if (!pos) return null
+   979→  const cfg = POSITION_CONFIG[pos.position]
+   980→  const contradictions = countContradictions(witness)
+   981→  const stars = reliabilityStars(contradictions)
+   982→
+   983→  return (
+   984→    <Card className="rounded-xl shadow-sm border-l-4 border-purple-700 hover:shadow-md hover:-translate-y-0.5 transition-all">
+   985→      <CardHeader className="pb-2">
+   986→        <div className="flex items-start justify-between gap-2">
+   987→          <CardTitle className="text-sm flex items-center gap-2">
+   988→            <Eye className="w-4 h-4 text-purple-700" />
+   989→            Детали показаний
+   990→          </CardTitle>
+   991→          <Button
+   992→            variant="ghost"
+   993→            size="sm"
+   994→            className="h-7 px-2 text-xs"
+   995→            onClick={onClose}
+   996→          >
+   997→            Закрыть
+   998→          </Button>
+   999→        </div>
+  1000→      </CardHeader>
+  1001→      <CardContent className="p-4 space-y-4">
+  1002→        <div className="grid sm:grid-cols-2 gap-3">
+  1003→          <div className="p-3 rounded-lg bg-muted/40">
+  1004→            <p className="text-xs text-muted-foreground flex items-center gap-1">
+  1005→              <Users className="w-3 h-3" /> Свидетель
+  1006→            </p>
+  1007→            <p className="font-semibold text-sm mt-0.5">{witness.name}</p>
+  1008→            <Badge
+  1009→              variant="outline"
+  1010→              className={`text-[10px] mt-1 border-0 ${ROLE_TONE[witness.role]}`}
+  1011→            >
+  1012→              {witness.role}
+  1013→            </Badge>
+  1014→            <p className="text-xs text-muted-foreground mt-1.5">
+  1015→              Дата показаний: {formatDate(witness.statementDate)}
+  1016→            </p>
+  1017→          </div>
+  1018→          <div className="p-3 rounded-lg bg-muted/40">
+  1019→            <p className="text-xs text-muted-foreground flex items-center gap-1">
+  1020→              <FileText className="w-3 h-3" /> Факт
+  1021→            </p>
+  1022→            <p className="font-semibold text-sm mt-0.5" title={fact.text}>
+  1023→              {fact.id}. {fact.text}
+  1024→            </p>
+  1025→            <div className="flex items-center gap-2 mt-1.5">
+  1026→              <Badge className={`text-[10px] ${cfg.badgeClass}`}>
+  1027→                {cfg.icon}
+  1028→                <span className="ml-1">{cfg.label}</span>
+  1029→              </Badge>
+  1030→              {pos.contradictsOthers && (
+  1031→                <Badge className="text-[10px] bg-red-700 text-white">
+  1032→                  <AlertTriangle className="w-2.5 h-2.5 mr-0.5" />
+  1033→                  Противоречит другим
+  1034→                </Badge>
+  1035→              )}
+  1036→            </div>
+  1037→          </div>
+  1038→        </div>
+  1039→
+  1040→        <div className="p-3 rounded-lg border border-border bg-background">
+  1041→          <p className="text-xs font-semibold text-muted-foreground mb-1.5 flex items-center gap-1">
+  1042→            <MessageSquare className="w-3 h-3" /> Показания свидетеля
+  1043→          </p>
+  1044→          <p className="text-sm italic leading-relaxed">«{pos.statement}»</p>
+  1045→        </div>
+  1046→
+  1047→        <div className="grid sm:grid-cols-3 gap-3">
+  1048→          {/* Confidence */}
+  1049→          <div className="p-3 rounded-lg bg-muted/40">
+  1050→            <p className="text-xs text-muted-foreground flex items-center gap-1 mb-1">
+  1051→              <Activity className="w-3 h-3" /> Уверенность
+  1052→            </p>
+  1053→            <p className={`text-2xl font-bold ${confidenceColor(pos.confidence)}`}>
+  1054→              {pos.confidence}%
+  1055→            </p>
+  1056→            <div className="mt-1.5 h-1.5 rounded-full bg-black/10 dark:bg-white/10 overflow-hidden">
+  1057→              <div
+  1058→                className={`h-full rounded-full transition-all duration-500 ${
+  1059→                  pos.confidence >= 85
+  1060→                    ? 'bg-emerald-700'
+  1061→                    : pos.confidence >= 60
+  1062→                      ? 'bg-amber-600'
+  1063→                      : pos.confidence > 0
+  1064→                        ? 'bg-orange-600'
+  1065→                        : 'bg-stone-400'
+  1066→                }`}
+  1067→                style={{ width: `${Math.max(pos.confidence, 4)}%` }}
+  1068→              />
+  1069→            </div>
+  1070→          </div>
+  1071→
+  1072→          {/* Contradictions */}
+  1073→          <div className="p-3 rounded-lg bg-muted/40">
+  1074→            <p className="text-xs text-muted-foreground flex items-center gap-1 mb-1">
+  1075→              <AlertTriangle className="w-3 h-3" /> Противоречий у свидетеля
+  1076→            </p>
+  1077→            <p className="text-2xl font-bold text-red-700">{contradictions}</p>
+  1078→            <p className="text-xs text-muted-foreground mt-1">
+  1079→              из {FACTS.length} рассматриваемых фактов
+  1080→            </p>
+  1081→          </div>
+  1082→
+  1083→          {/* Reliability */}
+  1084→          <div className="p-3 rounded-lg bg-muted/40">
+  1085→            <p className="text-xs text-muted-foreground flex items-center gap-1 mb-1">
+  1086→              <Shield className="w-3 h-3" /> Надёжность свидетеля
+  1087→            </p>
+  1088→            <StarRating stars={stars} size="md" />
+  1089→            <p className="text-xs text-muted-foreground mt-1">
+  1090→              {stars >= 5
+  1091→                ? 'Высокая надёжность'
+  1092→                : stars >= 4
+  1093→                  ? 'Хорошая надёжность'
+  1094→                  : stars >= 3
+  1095→                    ? 'Средняя надёжность'
+  1096→                    : stars >= 2
+  1097→                      ? 'Низкая надёжность'
+  1098→                      : 'Очень низкая надёжность'}
+  1099→            </p>
+  1100→          </div>
+  1101→        </div>
+  1102→
+  1103→        {/* Related documents */}
+  1104→        {pos.relatedDocuments.length > 0 && (
+  1105→          <div className="p-3 rounded-lg bg-muted/40">
+  1106→            <p className="text-xs font-semibold text-muted-foreground mb-1.5 flex items-center gap-1">
+  1107→              <FileText className="w-3 h-3" /> Связанные документы
+  1108→            </p>
+  1109→            <div className="flex flex-wrap gap-1.5">
+  1110→              {pos.relatedDocuments.map((d, i) => (
+  1111→                <Badge
+  1112→                  key={i}
+  1113→                  variant="outline"
+  1114→                  className="text-[11px] gap-1 bg-background"
+  1115→                >
+  1116→                  <FileText className="w-2.5 h-2.5 text-purple-700" />
+  1117→                  {d}
+  1118→                </Badge>
+  1119→              ))}
+  1120→            </div>
+  1121→          </div>
+  1122→        )}
+  1123→      </CardContent>
+  1124→    </Card>
+  1125→  )
+  1126→}
+  1127→
+  1128→function AgreementAnalysis({ witnesses, facts }: { witnesses: Witness[]; facts: Fact[] }) {
+  1129→  const analysis = useMemo(() => {
+  1130→    return facts.map(f => {
+  1131→      const counts = { confirm: 0, deny: 0, 'dont-remember': 0, 'no-data': 0 }
+  1132→      for (const w of witnesses) {
+  1133→        const p = w.positions[f.id]?.position
+  1134→        if (p) counts[p]++
+  1135→      }
+  1136→      const total = counts.confirm + counts.deny + counts['dont-remember']
+  1137→      const consensus =
+  1138→        total > 0
+  1139→          ? Math.max(counts.confirm, counts.deny, counts['dont-remember']) / total
+  1140→          : 0
+  1141→      return { fact: f, counts, consensus, total }
+  1142→    })
+  1143→  }, [witnesses, facts])
+  1144→
+  1145→  return (
+  1146→    <Card className="rounded-xl shadow-sm hover:shadow-md transition-shadow h-full">
+  1147→      <CardHeader className="pb-2">
+  1148→        <CardTitle className="text-sm flex items-center gap-2">
+  1149→          <Shield className="w-4 h-4 text-emerald-700" />
+  1150→          Анализ согласия
+  1151→        </CardTitle>
+  1152→      </CardHeader>
+  1153→      <CardContent className="p-3 sm:p-4 space-y-2 max-h-[640px] overflow-y-auto scrollbar-thin">
+  1154→        {analysis.map(a => {
+  1155→          const maxCount = Math.max(
+  1156→            a.counts.confirm,
+  1157→            a.counts.deny,
+  1158→            a.counts['dont-remember'],
+  1159→            a.counts['no-data'],
+  1160→            1,
+  1161→          )
+  1162→          return (
+  1163→            <div
+  1164→              key={a.fact.id}
+  1165→              className="p-2.5 rounded-lg bg-muted/30 hover:bg-muted/50 transition-colors"
+  1166→            >
+  1167→              <div className="flex items-start gap-2 mb-1.5">
+  1168→                <Badge variant="outline" className="text-[10px] shrink-0">
+  1169→                  {a.fact.id}
+  1170→                </Badge>
+  1171→                <p
+  1172→                  className="text-xs font-medium leading-tight flex-1"
+  1173→                  title={a.fact.text}
+  1174→                >
+  1175→                  {a.fact.text}
+  1176→                </p>
+  1177→              </div>
+  1178→
+  1179→              {/* Stacked bar */}
+  1180→              <div className="flex h-2 rounded-full overflow-hidden bg-stone-200 dark:bg-stone-700">
+  1181→                {(['confirm', 'deny', 'dont-remember', 'no-data'] as Position[]).map(p => {
+  1182→                  const count = a.counts[p]
+  1183→                  if (count === 0) return null
+  1184→                  const width = (count / Math.max(witnesses.length, 1)) * 100
+  1185→                  const cfg = POSITION_CONFIG[p]
+  1186→                  return (
+  1187→                    <div
+  1188→                      key={p}
+  1189→                      className={cfg.cellClass}
+  1190→                      style={{ width: `${width}%` }}
+  1191→                      title={`${cfg.label}: ${count}`}
+  1192→                    />
+  1193→                  )
+  1194→                })}
+  1195→              </div>
+  1196→
+  1197→              {/* Counts */}
+  1198→              <div className="flex flex-wrap gap-1.5 mt-1.5 text-[10px]">
+  1199→                <span className="inline-flex items-center gap-0.5 text-emerald-700">
+  1200→                  <CheckCircle2 className="w-2.5 h-2.5" />
+  1201→                  {a.counts.confirm}
+  1202→                </span>
+  1203→                <span className="inline-flex items-center gap-0.5 text-red-700">
+  1204→                  <XCircle className="w-2.5 h-2.5" />
+  1205→                  {a.counts.deny}
+  1206→                </span>
+  1207→                <span className="inline-flex items-center gap-0.5 text-amber-600">
+  1208→                  <HelpCircle className="w-2.5 h-2.5" />
+  1209→                  {a.counts['dont-remember']}
+  1210→                </span>
+  1211→                <span className="inline-flex items-center gap-0.5 text-stone-500">
+  1212→                  <Minus className="w-2.5 h-2.5" />
+  1213→                  {a.counts['no-data']}
+  1214→                </span>
+  1215→                <span className="ml-auto text-muted-foreground">
+  1216→                  Согласие: {Math.round(a.consensus * 100)}%
+  1217→                </span>
+  1218→              </div>
+  1219→            </div>
+  1220→          )
+  1221→        })}
+  1222→      </CardContent>
+  1223→    </Card>
+  1224→  )
+  1225→}
+  1226→
+  1227→// ============================================================================
+  1228→// Главный компонент
+  1229→// ============================================================================
+  1230→
+  1231→export function CaseWitnessMatrix() {
+  1232→  const [selectedCell, setSelectedCell] = useState<{
+  1233→    witnessId: string
+  1234→    factId: string
+  1235→  } | null>(null)
+  1236→  const [conflictsOnly, setConflictsOnly] = useState(false)
+  1237→  const [sortKey, setSortKey] = useState<SortKey>('name')
+  1238→
+  1239→  const sortedWitnesses = useMemo(() => {
+  1240→    const arr = [...WITNESSES]
+  1241→    switch (sortKey) {
+  1242→      case 'name':
+  1243→        arr.sort((a, b) => a.name.localeCompare(b.name, 'ru'))
+  1244→        break
+  1245→      case 'reliability':
+  1246→        // Worst (fewest stars) first → most contradictions first
+  1247→        arr.sort(
+  1248→          (a, b) =>
+  1249→            countContradictions(b) - countContradictions(a) ||
+  1250→            a.name.localeCompare(b.name, 'ru'),
+  1251→        )
+  1252→        break
+  1253→      case 'contradictions':
+  1254→        arr.sort(
+  1255→          (a, b) =>
+  1256→            countContradictions(b) - countContradictions(a) ||
+  1257→            a.name.localeCompare(b.name, 'ru'),
+  1258→        )
+  1259→        break
+  1260→    }
+  1261→    return arr
+  1262→  }, [sortKey])
+  1263→
+  1264→  const selectedWitness = selectedCell
+  1265→    ? WITNESSES.find(w => w.id === selectedCell.witnessId)
+  1266→    : undefined
+  1267→  const selectedFact = selectedCell
+  1268→    ? FACTS.find(f => f.id === selectedCell.factId)
+  1269→    : undefined
+  1270→
+  1271→  const handleSelectCell = (witnessId: string, factId: string) => {
+  1272→    if (
+  1273→      selectedCell?.witnessId === witnessId &&
+  1274→      selectedCell?.factId === factId
+  1275→    ) {
+  1276→      // Click same cell again to close
+  1277→      setSelectedCell(null)
+  1278→    } else {
+  1279→      setSelectedCell({ witnessId, factId })
+  1280→    }
+  1281→  }
+  1282→
+  1283→  return (
+  1284→    <div className="space-y-6">
+  1285→      {/* Header Banner */}
+  1286→      <Card className="bg-gradient-to-r from-purple-900/30 to-stone-900/20 border-l-4 border-purple-700 rounded-xl shadow-sm">
+  1287→        <CardContent className="p-6">
+  1288→          <div className="flex items-center gap-4">
+  1289→            <div className="flex items-center justify-center w-12 h-12 rounded-xl bg-purple-700/20">
+  1290→              <MessageSquare className="w-6 h-6 text-purple-700" />
+  1291→            </div>
+  1292→            <div className="flex-1 min-w-0">
+  1293→              <h2 className="text-lg font-bold">Матрица согласованности показаний</h2>
+  1294→              <p className="text-sm text-muted-foreground">
+  1295→                Сравнение показаний свидетелей по ключевым фактам дела, выявление
+  1296→                противоречий и оценка надёжности
+  1297→              </p>
+  1298→            </div>
+  1299→            <div className="hidden sm:flex flex-col items-end gap-1 text-right">
+  1300→              <span className="text-xs text-muted-foreground">Свидетелей</span>
+  1301→              <span className="text-xl font-bold text-purple-700">
+  1302→                {WITNESSES.length}
+  1303→              </span>
+  1304→            </div>
+  1305→            <Separator orientation="vertical" className="hidden sm:block h-12" />
+  1306→            <div className="hidden sm:flex flex-col items-end gap-1 text-right">
+  1307→              <span className="text-xs text-muted-foreground">Фактов</span>
+  1308→              <span className="text-xl font-bold text-amber-600">{FACTS.length}</span>
+  1309→            </div>
+  1310→          </div>
+  1311→        </CardContent>
+  1312→      </Card>
+  1313→
+  1314→      {/* Conflicts Summary */}
+  1315→      <ConflictsSummary witnesses={WITNESSES} facts={FACTS} />
+  1316→
+  1317→      {/* Controls */}
+  1318→      <Card className="rounded-xl shadow-sm">
+  1319→        <CardContent className="p-4 flex flex-wrap items-center gap-4 justify-between">
+  1320→          <div className="flex items-center gap-3 flex-wrap">
+  1321→            <div className="flex items-center gap-2">
+  1322→              <ArrowUpDown className="w-4 h-4 text-muted-foreground" />
+  1323→              <span className="text-xs font-medium">Сортировка:</span>
+  1324→            </div>
+  1325→            <Select value={sortKey} onValueChange={v => setSortKey(v as SortKey)}>
+  1326→              <SelectTrigger className="w-56 rounded-xl h-8 text-xs">
+  1327→                <SelectValue placeholder="Выберите сортировку" />
+  1328→              </SelectTrigger>
+  1329→              <SelectContent>
+  1330→                <SelectItem value="name">По имени (А→Я)</SelectItem>
+  1331→                <SelectItem value="reliability">По надёжности (худшие первыми)</SelectItem>
+  1332→                <SelectItem value="contradictions">По противоречиям (больше первыми)</SelectItem>
+  1333→              </SelectContent>
+  1334→            </Select>
+  1335→          </div>
+  1336→
+  1337→          <div className="flex items-center gap-2">
+  1338→            <Filter className="w-4 h-4 text-muted-foreground" />
+  1339→            <span className="text-xs font-medium">Только противоречия:</span>
+  1340→            <Switch
+  1341→              checked={conflictsOnly}
+  1342→              onCheckedChange={setConflictsOnly}
+  1343→              aria-label="Показать только противоречия"
+  1344→            />
+  1345→            {conflictsOnly && (
+  1346→              <Badge className="bg-red-700 text-white text-[10px] ml-1">
+  1347→                <AlertTriangle className="w-2.5 h-2.5 mr-0.5" />
+  1348→                Фильтр активен
+  1349→              </Badge>
+  1350→            )}
+  1351→          </div>
+  1352→        </CardContent>
+  1353→      </Card>
+  1354→
+  1355→      {/* Main grid: matrix + agreement sidebar */}
+  1356→      <div className="grid lg:grid-cols-[1fr_320px] gap-4">
+  1357→        <MatrixTable
+  1358→          witnesses={sortedWitnesses}
+  1359→          facts={FACTS}
+  1360→          selectedCell={selectedCell}
+  1361→          onSelectCell={handleSelectCell}
+  1362→          conflictsOnly={conflictsOnly}
+  1363→        />
+  1364→        <AgreementAnalysis witnesses={WITNESSES} facts={FACTS} />
+  1365→      </div>
+  1366→
+  1367→      {/* Detail Panel */}
+  1368→      <DetailPanel
+  1369→        witness={selectedWitness}
+  1370→        fact={selectedFact}
+  1371→        onClose={() => setSelectedCell(null)}
+  1372→      />
+  1373→
+  1374→      <Separator />
+  1375→      <p className="text-xs text-muted-foreground">
+  1376→        Матрица согласованности показаний • Дело № 2024-00145 • Колесниченко Д.А.
+  1377→        и другие • Не является юридической консультацией
+  1378→      </p>
+  1379→    </div>
+  1380→  )
+  1381→}
+  1382→

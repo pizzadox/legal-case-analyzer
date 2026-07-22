@@ -1,0 +1,1559 @@
+     1→'use client'
+     2→
+     3→import { useState, useMemo, useCallback } from 'react'
+     4→import {
+     5→  Card,
+     6→  CardContent,
+     7→  CardHeader,
+     8→  CardTitle,
+     9→} from '@/components/ui/card'
+    10→import { Badge } from '@/components/ui/badge'
+    11→import { Button } from '@/components/ui/button'
+    12→import { Separator } from '@/components/ui/separator'
+    13→import { Checkbox } from '@/components/ui/checkbox'
+    14→import { Switch } from '@/components/ui/switch'
+    15→import { Label } from '@/components/ui/label'
+    16→import { Progress } from '@/components/ui/progress'
+    17→import {
+    18→  Select,
+    19→  SelectContent,
+    20→  SelectItem,
+    21→  SelectTrigger,
+    22→  SelectValue,
+    23→} from '@/components/ui/select'
+    24→import {
+    25→  Table,
+    26→  TableBody,
+    27→  TableCell,
+    28→  TableHead,
+    29→  TableHeader,
+    30→  TableRow,
+    31→} from '@/components/ui/table'
+    32→import {
+    33→  Dialog,
+    34→  DialogContent,
+    35→  DialogHeader,
+    36→  DialogTitle,
+    37→  DialogDescription,
+    38→  DialogFooter,
+    39→} from '@/components/ui/dialog'
+    40→import {
+    41→  Sheet,
+    42→  SheetContent,
+    43→  SheetHeader,
+    44→  SheetTitle,
+    45→  SheetDescription,
+    46→  SheetFooter,
+    47→} from '@/components/ui/sheet'
+    48→import {
+    49→  Tooltip,
+    50→  TooltipContent,
+    51→  TooltipProvider,
+    52→  TooltipTrigger,
+    53→} from '@/components/ui/tooltip'
+    54→import { toast } from 'sonner'
+    55→import {
+    56→  Package,
+    57→  FileText,
+    58→  Braces,
+    59→  Table as TableIcon,
+    60→  Code,
+    61→  Sparkles,
+    62→  Lock,
+    63→  Download,
+    64→  Loader2,
+    65→  Eye,
+    66→  CheckCircle2,
+    67→  XCircle,
+    68→  Clock,
+    69→  AlertTriangle,
+    70→  Languages,
+    71→  Image as ImageIcon,
+    72→  File as FilePage,
+    73→  LayoutGrid,
+    74→  Stamp,
+    75→  Shield,
+    76→  ListChecks,
+    77→  Users,
+    78→  Files,
+    79→  Link2,
+    80→  MessageSquare,
+    81→  Scale,
+    82→  CalendarClock,
+    83→  Calculator,
+    84→  ShieldCheck,
+    85→  CheckSquare,
+    86→  Square,
+    87→  FileType,
+    88→  Calendar,
+    89→  HardDrive,
+    90→  ArrowRight,
+    91→  RefreshCw,
+    92→  Printer,
+    93→} from 'lucide-react'
+    94→
+    95→// ===== Types =====
+    96→type ExportFormat = 'pdf' | 'json' | 'csv' | 'html'
+    97→
+    98→type ExportStatus = 'ready' | 'processing' | 'error'
+    99→
+   100→interface RecentExport {
+   101→  id: string
+   102→  date: string
+   103→  format: ExportFormat | 'PDF' | 'JSON' | 'CSV' | 'HTML'
+   104→  elementsCount: number
+   105→  size: number
+   106→  status: ExportStatus
+   107→}
+   108→
+   109→interface ExportOptions {
+   110→  language: 'ru' | 'en' | 'both'
+   111→  includeAI: boolean
+   112→  includeCharts: boolean
+   113→  pageFormat: 'a4' | 'a3' | 'letter'
+   114→  orientation: 'portrait' | 'landscape'
+   115→  watermark: boolean
+   116→  encrypt: boolean
+   117→}
+   118→
+   119→// ===== Constants =====
+   120→const CASE_NUMBER = '2024-00145'
+   121→
+   122→const FORMAT_CONFIG: Record<
+   123→  ExportFormat,
+   124→  {
+   125→    id: ExportFormat
+   126→    label: string
+   127→    shortLabel: string
+   128→    description: string
+   129→    icon: React.ReactNode
+   130→    accent: string
+   131→    tileBg: string
+   132→    iconColor: string
+   133→    ringClass: string
+   134→    perItemBytes: number
+   135→    extension: string
+   136→    sizeLabel: string
+   137→  }
+   138→> = {
+   139→  pdf: {
+   140→    id: 'pdf',
+   141→    label: 'PDF Отчёт',
+   142→    shortLabel: 'PDF',
+   143→    description: 'Полный отчёт по делу с графиками и таблицами для печати',
+   144→    icon: <FileText className="w-7 h-7" />,
+   145→    accent: 'red-700',
+   146→    tileBg: 'bg-red-700/15 dark:bg-red-950/40',
+   147→    iconColor: 'text-red-700 dark:text-red-400',
+   148→    ringClass: 'ring-red-700',
+   149→    buttonActiveClass: 'bg-red-700 text-white hover:bg-red-800',
+   150→    perItemBytes: 150 * 1024,
+   151→    extension: 'pdf',
+   152→    sizeLabel: 'С богатой вёрсткой',
+   153→  },
+   154→  json: {
+   155→    id: 'json',
+   156→    label: 'JSON Данные',
+   157→    shortLabel: 'JSON',
+   158→    description: 'Полная выгрузка всех данных дела в структурированном формате',
+   159→    icon: <Braces className="w-7 h-7" />,
+   160→    accent: 'emerald-700',
+   161→    tileBg: 'bg-emerald-700/15 dark:bg-emerald-950/40',
+   162→    iconColor: 'text-emerald-700 dark:text-emerald-400',
+   163→    ringClass: 'ring-emerald-700',
+   164→    buttonActiveClass: 'bg-emerald-700 text-white hover:bg-emerald-800',
+   165→    perItemBytes: 50 * 1024,
+   166→    extension: 'json',
+   167→    sizeLabel: 'Машинно-читаемый',
+   168→  },
+   169→  csv: {
+   170→    id: 'csv',
+   171→    label: 'CSV Таблицы',
+   172→    shortLabel: 'CSV',
+   173→    description: 'Таблицы участников, эпизодов, документов для Excel/Google Sheets',
+   174→    icon: <TableIcon className="w-7 h-7" />,
+   175→    accent: 'amber-600',
+   176→    tileBg: 'bg-amber-600/15 dark:bg-amber-950/40',
+   177→    iconColor: 'text-amber-600 dark:text-amber-400',
+   178→    ringClass: 'ring-amber-600',
+   179→    buttonActiveClass: 'bg-amber-600 text-white hover:bg-amber-700',
+   180→    perItemBytes: 20 * 1024,
+   181→    extension: 'csv',
+   182→    sizeLabel: 'Совместим с Excel',
+   183→  },
+   184→  html: {
+   185→    id: 'html',
+   186→    label: 'HTML Краткая справка',
+   187→    shortLabel: 'HTML',
+   188→    description: 'Веб-страница с краткой справкой по делу для быстрого просмотра',
+   189→    icon: <Code className="w-7 h-7" />,
+   190→    accent: 'orange-600',
+   191→    tileBg: 'bg-orange-600/15 dark:bg-orange-950/40',
+   192→    iconColor: 'text-orange-600 dark:text-orange-400',
+   193→    ringClass: 'ring-orange-600',
+   194→    buttonActiveClass: 'bg-orange-600 text-white hover:bg-orange-700',
+   195→    perItemBytes: 80 * 1024,
+   196→    extension: 'html',
+   197→    sizeLabel: 'Открывается в браузере',
+   198→  },
+   199→}
+   200→
+   201→const CONTENT_GROUPS: {
+   202→  id: string
+   203→  title: string
+   204→  icon: React.ReactNode
+   205→  accent: string
+   206→  items: { id: string; label: string; description: string; meta: string }[]
+   207→}[] = [
+   208→  {
+   209→    id: 'core',
+   210→    title: 'Основная информация',
+   211→    icon: <FileText className="w-4 h-4 text-purple-700 dark:text-purple-400" />,
+   212→    accent: 'purple',
+   213→    items: [
+   214→      {
+   215→        id: 'brief',
+   216→        label: 'Краткое изложение дела',
+   217→        description: 'Итоговое резюме по делу от ИИ',
+   218→        meta: '~12 КБ',
+   219→      },
+   220→      {
+   221→        id: 'dashboard',
+   222→        label: 'Статистика dashboard',
+   223→        description: 'Сводные показатели и счётчики',
+   224→        meta: '~8 КБ',
+   225→      },
+   226→      {
+   227→        id: 'timeline',
+   228→        label: 'Хронология событий',
+   229→        description: 'Лента всех ключевых событий дела',
+   230→        meta: '~24 КБ',
+   231→      },
+   232→      {
+   233→        id: 'risk',
+   234→        label: 'Оценка рисков',
+   235→        description: 'Матрица рисков 5×5 и факторы',
+   236→        meta: '~18 КБ',
+   237→      },
+   238→    ],
+   239→  },
+   240→  {
+   241→    id: 'persons',
+   242→    title: 'Участники и эпизоды',
+   243→    icon: <Users className="w-4 h-4 text-red-700 dark:text-red-400" />,
+   244→    accent: 'red',
+   245→    items: [
+   246→      {
+   247→        id: 'persons-list',
+   248→        label: 'Список участников (5)',
+   249→        description: 'Все участники дела с ролями и статусами',
+   250→        meta: '~22 КБ',
+   251→      },
+   252→      {
+   253→        id: 'episodes',
+   254→        label: 'Эпизоды преступления (3)',
+   255→        description: 'Полное описание всех эпизодов',
+   256→        meta: '~30 КБ',
+   257→      },
+   258→      {
+   259→        id: 'guilt',
+   260→        label: 'Оценка виновности',
+   261→        description: 'Распределение вины и силы доказательств',
+   262→        meta: '~14 КБ',
+   263→      },
+   264→      {
+   265→        id: 'defense',
+   266→        label: 'Линии защиты',
+   267→        description: 'Стратегии защиты и их оценка',
+   268→        meta: '~16 КБ',
+   269→      },
+   270→    ],
+   271→  },
+   272→  {
+   273→    id: 'documents',
+   274→    title: 'Документы и доказательства',
+   275→    icon: <Files className="w-4 h-4 text-amber-600 dark:text-amber-400" />,
+   276→    accent: 'amber',
+   277→    items: [
+   278→      {
+   279→        id: 'documents-registry',
+   280→        label: 'Реестр документов',
+   281→        description: 'Полный перечень всех документов дела',
+   282→        meta: '~28 КБ',
+   283→      },
+   284→      {
+   285→        id: 'evidence-chain',
+   286→        label: 'Цепочка доказательств',
+   287→        description: 'Граф связей между доказательствами',
+   288→        meta: '~32 КБ',
+   289→      },
+   290→      {
+   291→        id: 'witness-matrix',
+   292→        label: 'Матрица показаний',
+   293→        description: 'Согласованность показаний свидетелей',
+   294→        meta: '~26 КБ',
+   295→      },
+   296→      {
+   297→        id: 'cross-refs',
+   298→        label: 'Перекрёстные ссылки',
+   299→        description: 'Ссылки между документами дела',
+   300→        meta: '~12 КБ',
+   301→      },
+   302→    ],
+   303→  },
+   304→  {
+   305→    id: 'legal',
+   306→    title: 'Правовой анализ',
+   307→    icon: <Scale className="w-4 h-4 text-emerald-700 dark:text-emerald-400" />,
+   308→    accent: 'emerald',
+   309→    items: [
+   310→      {
+   311→        id: 'compliance',
+   312→        label: 'Проверки соответствия',
+   313→        description: 'Результаты правовых проверок',
+   314→        meta: '~18 КБ',
+   315→      },
+   316→      {
+   317→        id: 'deadlines',
+   318→        label: 'Процессуальные сроки',
+   319→        description: 'Все сроки по УПК РФ',
+   320→        meta: '~10 КБ',
+   321→      },
+   322→      {
+   323→        id: 'sentence-calc',
+   324→        label: 'Калькулятор наказания',
+   325→        description: 'Расчёт наказания и сделок',
+   326→        meta: '~20 КБ',
+   327→      },
+   328→      {
+   329→        id: 'recommendations',
+   330→        label: 'Рекомендации защиты',
+   331→        description: 'ИИ-рекомендации по стратегии',
+   332→        meta: '~15 КБ',
+   333→      },
+   334→    ],
+   335→  },
+   336→]
+   337→
+   338→const ALL_ITEM_IDS = CONTENT_GROUPS.flatMap((g) => g.items.map((i) => i.id))
+   339→
+   340→const STATUS_CONFIG: Record<
+   341→  ExportStatus,
+   342→  { label: string; badgeClass: string; dotClass: string; icon: React.ReactNode }
+   343→> = {
+   344→  ready: {
+   345→    label: 'Готово',
+   346→    badgeClass: 'bg-emerald-700 text-white',
+   347→    dotClass: 'bg-emerald-600',
+   348→    icon: <CheckCircle2 className="w-3.5 h-3.5" />,
+   349→  },
+   350→  processing: {
+   351→    label: 'В процессе',
+   352→    badgeClass: 'bg-amber-600 text-white',
+   353→    dotClass: 'bg-amber-500',
+   354→    icon: <Clock className="w-3.5 h-3.5" />,
+   355→  },
+   356→  error: {
+   357→    label: 'Ошибка',
+   358→    badgeClass: 'bg-red-700 text-white',
+   359→    dotClass: 'bg-red-600',
+   360→    icon: <XCircle className="w-3.5 h-3.5" />,
+   361→  },
+   362→}
+   363→
+   364→const INITIAL_RECENT_EXPORTS: RecentExport[] = [
+   365→  {
+   366→    id: 'exp1',
+   367→    date: '2024-03-20T14:30:00',
+   368→    format: 'PDF',
+   369→    elementsCount: 16,
+   370→    size: 2_458_000,
+   371→    status: 'ready',
+   372→  },
+   373→  {
+   374→    id: 'exp2',
+   375→    date: '2024-03-19T10:15:00',
+   376→    format: 'JSON',
+   377→    elementsCount: 12,
+   378→    size: 850_000,
+   379→    status: 'ready',
+   380→  },
+   381→  {
+   382→    id: 'exp3',
+   383→    date: '2024-03-18T16:45:00',
+   384→    format: 'CSV',
+   385→    elementsCount: 4,
+   386→    size: 124_000,
+   387→    status: 'ready',
+   388→  },
+   389→  {
+   390→    id: 'exp4',
+   391→    date: '2024-03-17T09:20:00',
+   392→    format: 'PDF',
+   393→    elementsCount: 8,
+   394→    size: 1_180_000,
+   395→    status: 'error',
+   396→  },
+   397→  {
+   398→    id: 'exp5',
+   399→    date: '2024-03-16T11:00:00',
+   400→    format: 'HTML',
+   401→    elementsCount: 16,
+   402→    size: 540_000,
+   403→    status: 'ready',
+   404→  },
+   405→]
+   406→
+   407→// ===== Helpers =====
+   408→function formatFileSize(bytes: number): string {
+   409→  if (bytes < 1024) return `${bytes} Б`
+   410→  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} КБ`
+   411→  return `${(bytes / (1024 * 1024)).toFixed(1)} МБ`
+   412→}
+   413→
+   414→function estimateSize(
+   415→  selectedItems: Set<string>,
+   416→  format: ExportFormat,
+   417→  options: ExportOptions,
+   418→): number {
+   419→  const perItem = FORMAT_CONFIG[format].perItemBytes
+   420→  let bytes = selectedItems.size * perItem
+   421→  // AI analysis adds ~20% overhead per item
+   422→  if (options.includeAI) bytes = Math.round(bytes * 1.2)
+   423→  // Charts as images adds ~15% overhead (only PDF/HTML)
+   424→  if (options.includeCharts && (format === 'pdf' || format === 'html')) {
+   425→    bytes = Math.round(bytes * 1.15)
+   426→  }
+   427→  // Both languages double the size
+   428→  if (options.language === 'both') bytes *= 2
+   429→  // Encryption adds small constant overhead
+   430→  if (options.encrypt) bytes += 4096
+   431→  return bytes
+   432→}
+   433→
+   434→function buildFileName(format: ExportFormat, options: ExportOptions): string {
+   435→  const date = new Date()
+   436→  const ymd = `${date.getFullYear()}${String(date.getMonth() + 1).padStart(2, '0')}${String(date.getDate()).padStart(2, '0')}`
+   437→  const langSuffix = options.language === 'both' ? '-ru-en' : options.language === 'en' ? '-en' : '-ru'
+   438→  return `delo-${CASE_NUMBER}-${ymd}${langSuffix}.${FORMAT_CONFIG[format].extension}`
+   439→}
+   440→
+   441→function formatDateRu(iso: string): string {
+   442→  try {
+   443→    const d = new Date(iso)
+   444→    return d.toLocaleString('ru-RU', {
+   445→      day: '2-digit',
+   446→      month: '2-digit',
+   447→      year: 'numeric',
+   448→      hour: '2-digit',
+   449→      minute: '2-digit',
+   450→    })
+   451→  } catch {
+   452→    return iso
+   453→  }
+   454→}
+   455→
+   456→// ===== Main Component =====
+   457→export function CaseExportCenter() {
+   458→  const [selectedFormat, setSelectedFormat] = useState<ExportFormat>('pdf')
+   459→  const [selectedItems, setSelectedItems] = useState<Set<string>>(
+   460→    () => new Set(ALL_ITEM_IDS.slice(0, 12)),
+   461→  )
+   462→  const [options, setOptions] = useState<ExportOptions>({
+   463→    language: 'ru',
+   464→    includeAI: true,
+   465→    includeCharts: true,
+   466→    pageFormat: 'a4',
+   467→    orientation: 'portrait',
+   468→    watermark: true,
+   469→    encrypt: false,
+   470→  })
+   471→  const [isGenerating, setIsGenerating] = useState(false)
+   472→  const [progress, setProgress] = useState(0)
+   473→  const [recentExports, setRecentExports] = useState<RecentExport[]>(INITIAL_RECENT_EXPORTS)
+   474→  const [previewOpen, setPreviewOpen] = useState(false)
+   475→  const [resultSheetOpen, setResultSheetOpen] = useState(false)
+   476→  const [generatedFileName, setGeneratedFileName] = useState<string>('')
+   477→  const [generatedFileSize, setGeneratedFileSize] = useState<number>(0)
+   478→
+   479→  const totalItems = ALL_ITEM_IDS.length
+   480→  const selectedCount = selectedItems.size
+   481→
+   482→  const estimatedBytes = useMemo(
+   483→    () => estimateSize(selectedItems, selectedFormat, options),
+   484→    [selectedItems, selectedFormat, options],
+   485→  )
+   486→
+   487→  // ===== Item toggle helpers =====
+   488→  const toggleItem = useCallback((id: string) => {
+   489→    setSelectedItems((prev) => {
+   490→      const next = new Set(prev)
+   491→      if (next.has(id)) next.delete(id)
+   492→      else next.add(id)
+   493→      return next
+   494→    })
+   495→  }, [])
+   496→
+   497→  const selectAll = useCallback(() => {
+   498→    setSelectedItems(new Set(ALL_ITEM_IDS))
+   499→    toast.success(`Выбрано всех элементов: ${ALL_ITEM_IDS.length}`)
+   500→  }, [])
+   501→
+   502→  const clearAll = useCallback(() => {
+   503→    setSelectedItems(new Set())
+   504→    toast.info('Снимок выбора очищен')
+   505→  }, [])
+   506→
+   507→  const updateOption = useCallback(
+   508→    <K extends keyof ExportOptions>(key: K, value: ExportOptions[K]) => {
+   509→      setOptions((prev) => ({ ...prev, [key]: value }))
+   510→    },
+   511→    [],
+   512→  )
+   513→
+   514→  // ===== Generate export =====
+   515→  const generateExport = useCallback(async () => {
+   516→    if (selectedItems.size === 0) {
+   517→      toast.error('Выберите хотя бы один элемент для экспорта')
+   518→      return
+   519→    }
+   520→    setIsGenerating(true)
+   521→    setProgress(0)
+   522→    const fileName = buildFileName(selectedFormat, options)
+   523→    const fileSize = estimateSize(selectedItems, selectedFormat, options)
+   524→    setGeneratedFileName(fileName)
+   525→    setGeneratedFileSize(fileSize)
+   526→
+   527→    // Simulate progress
+   528→    const steps = [
+   529→      { pct: 15, label: 'Сбор данных из базы...' },
+   530→      { pct: 35, label: 'Формирование разделов...' },
+   531→      { pct: 55, label: 'Генерация графиков...' },
+   532→      { pct: 75, label: options.includeAI ? 'Анализ ИИ...' : 'Применение опций...' },
+   533→      { pct: 90, label: 'Сборка файла...' },
+   534→      { pct: 100, label: 'Готово' },
+   535→    ]
+   536→    for (const step of steps) {
+   537→      setProgress(step.pct)
+   538→      await new Promise((r) => setTimeout(r, 250))
+   539→    }
+   540→
+   541→    setIsGenerating(false)
+   542→    setProgress(0)
+   543→
+   544→    // Add to recent exports
+   545→    const newEntry: RecentExport = {
+   546→      id: `exp-${Date.now()}`,
+   547→      date: new Date().toISOString(),
+   548→      format: FORMAT_CONFIG[selectedFormat].shortLabel,
+   549→      elementsCount: selectedItems.size,
+   550→      size: fileSize,
+   551→      status: 'ready',
+   552→    }
+   553→    setRecentExports((prev) => [newEntry, ...prev].slice(0, 8))
+   554→
+   555→    toast.success('Экспорт дела сформирован', {
+   556→      description: `${FORMAT_CONFIG[selectedFormat].shortLabel} · ${selectedItems.size} элем. · ${formatFileSize(fileSize)}`,
+   557→      duration: 4000,
+   558→      icon: <CheckCircle2 className="w-4 h-4 text-emerald-600" />,
+   559→    })
+   560→
+   561→    setTimeout(() => setResultSheetOpen(true), 900)
+   562→  }, [selectedItems, selectedFormat, options])
+   563→
+   564→  // ===== Download handler (browser blob) =====
+   565→  const handleDownload = useCallback(() => {
+   566→    if (typeof window === 'undefined') return
+   567→    // Generate a small placeholder blob with a stub header
+   568→    const header = `% Дело № ${CASE_NUMBER}\n% Формат: ${FORMAT_CONFIG[selectedFormat].shortLabel}\n% Элементов: ${selectedItems.size}\n% Дата: ${new Date().toISOString()}\n% Сгенерировано Системой Управления Уголовным Делом\n\n`
+   569→    const body = Array.from(selectedItems)
+   570→      .map((id) => `## ${id}\n[содержимое раздела — заглушка для демо]\n`)
+   571→      .join('\n')
+   572→    const blob = new Blob([header + body], { type: 'text/plain;charset=utf-8' })
+   573→    const url = URL.createObjectURL(blob)
+   574→    const a = document.createElement('a')
+   575→    a.href = url
+   576→    a.download = generatedFileName || `delo-${CASE_NUMBER}.txt`
+   577→    document.body.appendChild(a)
+   578→    a.click()
+   579→    document.body.removeChild(a)
+   580→    URL.revokeObjectURL(url)
+   581→    toast.success('Файл сохранён в загрузки', {
+   582→      description: generatedFileName,
+   583→    })
+   584→  }, [selectedFormat, selectedItems, generatedFileName])
+   585→
+   586→  // ===== Re-download from history =====
+   587→  const handleReDownload = useCallback((entry: RecentExport) => {
+   588→    if (entry.status === 'error') {
+   589→      toast.error('Этот экспорт завершился ошибкой — повторите генерацию')
+   590→      return
+   591→    }
+   592→    if (entry.status === 'processing') {
+   593→      toast.info('Экспорт ещё формируется, подождите...')
+   594→      return
+   595→    }
+   596→    const blob = new Blob(
+   597→      [`Дело № ${CASE_NUMBER} · ${entry.format} · ${entry.elementsCount} элем.\nЗаглушка исторического файла.`],
+   598→      { type: 'text/plain;charset=utf-8' },
+   599→    )
+   600→    const url = URL.createObjectURL(blob)
+   601→    const a = document.createElement('a')
+   602→    a.href = url
+   603→    a.download = `delo-${CASE_NUMBER}-${entry.id}.${String(entry.format).toLowerCase()}`
+   604→    document.body.appendChild(a)
+   605→    a.click()
+   606→    document.body.removeChild(a)
+   607→    URL.revokeObjectURL(url)
+   608→    toast.success('Повторное скачивание запущено', { description: `Формат ${entry.format}` })
+   609→  }, [])
+   610→
+   611→  const selectedFormatConfig = FORMAT_CONFIG[selectedFormat]
+   612→
+   613→  // ===== Render =====
+   614→  return (
+   615→    <TooltipProvider delayDuration={150}>
+   616→      <div className="space-y-6 pb-28">
+   617→        {/* ===== Section 1: Header Banner ===== */}
+   618→        <Card className="rounded-xl shadow-sm border-l-4 border-purple-700 bg-gradient-to-r from-purple-900/30 via-stone-900/20 to-stone-900/20 overflow-hidden">
+   619→          <CardContent className="p-5 sm:p-6">
+   620→            <div className="flex items-center gap-4 flex-wrap">
+   621→              <div className="flex items-center justify-center w-12 h-12 sm:w-14 sm:h-14 rounded-xl bg-purple-700/20 dark:bg-purple-950/40 shrink-0">
+   622→                <Package className="w-6 h-6 sm:w-7 sm:h-7 text-purple-700 dark:text-purple-400" />
+   623→              </div>
+   624→              <div className="flex-1 min-w-0">
+   625→                <h2 className="text-lg sm:text-xl font-bold tracking-tight">
+   626→                  Центр экспорта материалов дела
+   627→                </h2>
+   628→                <p className="text-xs sm:text-sm text-muted-foreground mt-0.5">
+   629→                  Дело № {CASE_NUMBER} · Подготовка материалов для печати, передачи и архивирования
+   630→                </p>
+   631→              </div>
+   632→              <Badge className="bg-purple-700 text-white gap-1 shrink-0">
+   633→                <Sparkles className="w-3 h-3" /> ИИ-помощник
+   634→              </Badge>
+   635→            </div>
+   636→
+   637→            {/* Quick info strip */}
+   638→            <div className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
+   639→              <div className="rounded-lg bg-background/60 dark:bg-background/30 backdrop-blur p-2.5 sm:p-3 border border-purple-700/20">
+   640→                <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Форматов</div>
+   641→                <div className="text-base sm:text-lg font-bold text-purple-700 dark:text-purple-400">4</div>
+   642→              </div>
+   643→              <div className="rounded-lg bg-background/60 dark:bg-background/30 backdrop-blur p-2.5 sm:p-3 border border-purple-700/20">
+   644→                <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Элементов</div>
+   645→                <div className="text-base sm:text-lg font-bold text-purple-700 dark:text-purple-400">{totalItems}</div>
+   646→              </div>
+   647→              <div className="rounded-lg bg-background/60 dark:bg-background/30 backdrop-blur p-2.5 sm:p-3 border border-purple-700/20">
+   648→                <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Выбрано</div>
+   649→                <div className="text-base sm:text-lg font-bold text-purple-700 dark:text-purple-400">{selectedCount}</div>
+   650→              </div>
+   651→              <div className="rounded-lg bg-background/60 dark:bg-background/30 backdrop-blur p-2.5 sm:p-3 border border-purple-700/20">
+   652→                <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Размер</div>
+   653→                <div className="text-base sm:text-lg font-bold text-purple-700 dark:text-purple-400">
+   654→                  {formatFileSize(estimatedBytes)}
+   655→                </div>
+   656→              </div>
+   657→            </div>
+   658→          </CardContent>
+   659→        </Card>
+   660→
+   661→        {/* ===== Section 2: Format Selection ===== */}
+   662→        <div className="space-y-3">
+   663→          <div className="flex items-center justify-between gap-2">
+   664→            <h3 className="text-sm font-semibold flex items-center gap-2">
+   665→              <FileType className="w-4 h-4 text-purple-700 dark:text-purple-400" />
+   666→              Шаг 1. Выберите формат экспорта
+   667→            </h3>
+   668→            <Badge variant="outline" className="text-xs">
+   669→              Текущий: {selectedFormatConfig.shortLabel}
+   670→            </Badge>
+   671→          </div>
+   672→          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+   673→            {(Object.keys(FORMAT_CONFIG) as ExportFormat[]).map((fmtKey) => {
+   674→              const cfg = FORMAT_CONFIG[fmtKey]
+   675→              const isActive = selectedFormat === fmtKey
+   676→              return (
+   677→                <Card
+   678→                  key={fmtKey}
+   679→                  className={`rounded-xl shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md cursor-pointer ${
+   680→                    isActive
+   681→                      ? `ring-2 ${cfg.ringClass} border-transparent`
+   682→                      : 'border-border hover:border-muted-foreground/40'
+   683→                  }`}
+   684→                  onClick={() => {
+   685→                    setSelectedFormat(fmtKey)
+   686→                    toast.info(`Выбран формат: ${cfg.label}`, {
+   687→                      description: cfg.sizeLabel,
+   688→                    })
+   689→                  }}
+   690→                >
+   691→                  <CardContent className="p-4 sm:p-5 flex flex-col gap-3">
+   692→                    <div className="flex items-start justify-between gap-2">
+   693→                      <div
+   694→                        className={`flex items-center justify-center w-12 h-12 rounded-xl ${cfg.tileBg}`}
+   695→                      >
+   696→                        {cfg.icon && (
+   697→                          <span className={cfg.iconColor}>{cfg.icon}</span>
+   698→                        )}
+   699→                      </div>
+   700→                      {isActive ? (
+   701→                        <Badge className={`${cfg.tileBg} ${cfg.iconColor} border-0`}>
+   702→                          <CheckCircle2 className="w-3 h-3 mr-1" /> Выбран
+   703→                        </Badge>
+   704→                      ) : (
+   705→                        <Badge variant="outline" className="text-[10px] text-muted-foreground">
+   706→                          {cfg.shortLabel}
+   707→                        </Badge>
+   708→                      )}
+   709→                    </div>
+   710→                    <div className="space-y-1">
+   711→                      <p className="font-bold text-sm sm:text-base leading-tight">{cfg.label}</p>
+   712→                      <p className="text-xs text-muted-foreground line-clamp-2 leading-snug">
+   713→                        {cfg.description}
+   714→                      </p>
+   715→                    </div>
+   716→                    <div className="flex items-center justify-between gap-2 pt-1">
+   717→                      <span className="text-[11px] text-muted-foreground flex items-center gap-1">
+   718→                        <HardDrive className="w-3 h-3" /> ~{formatFileSize(cfg.perItemBytes)}/элем.
+   719→                      </span>
+   720→                      <Button
+   721→                        size="sm"
+   722→                        variant={isActive ? 'default' : 'outline'}
+   723→                        className={`h-7 text-xs gap-1 ${
+   724→                          isActive ? cfg.buttonActiveClass : ''
+   725→                        }`}
+   726→                        onClick={(e) => {
+   727→                          e.stopPropagation()
+   728→                          setSelectedFormat(fmtKey)
+   729→                        }}
+   730→                      >
+   731→                        {isActive ? (
+   732→                          <>
+   733→                            <CheckCircle2 className="w-3 h-3" /> Выбран
+   734→                          </>
+   735→                        ) : (
+   736→                          <>Выбрать</>
+   737→                        )}
+   738→                      </Button>
+   739→                    </div>
+   740→                  </CardContent>
+   741→                </Card>
+   742→              )
+   743→            })}
+   744→          </div>
+   745→        </div>
+   746→
+   747→        {/* ===== Section 3: Content Selection ===== */}
+   748→        <div className="space-y-3">
+   749→          <div className="flex items-center justify-between gap-2 flex-wrap">
+   750→            <h3 className="text-sm font-semibold flex items-center gap-2">
+   751→              <ListChecks className="w-4 h-4 text-purple-700 dark:text-purple-400" />
+   752→              Шаг 2. Выберите содержание
+   753→            </h3>
+   754→            <div className="flex items-center gap-2 flex-wrap">
+   755→              <Badge
+   756→                className="bg-purple-700 text-white gap-1"
+   757→                variant="secondary"
+   758→              >
+   759→                <CheckSquare className="w-3 h-3" />
+   760→                Выбрано: {selectedCount} из {totalItems}
+   761→              </Badge>
+   762→              <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={selectAll}>
+   763→                <CheckSquare className="w-3 h-3" /> Выбрать все
+   764→              </Button>
+   765→              <Button size="sm" variant="ghost" className="h-7 text-xs gap-1" onClick={clearAll}>
+   766→                <Square className="w-3 h-3" /> Очистить
+   767→              </Button>
+   768→            </div>
+   769→          </div>
+   770→          <Card className="rounded-xl shadow-sm">
+   771→            <CardContent className="p-4 sm:p-5">
+   772→              {/* Progress bar */}
+   773→              <div className="mb-4">
+   774→                <div className="flex items-center justify-between text-xs mb-1.5">
+   775→                  <span className="text-muted-foreground">Заполнение экспорта</span>
+   776→                  <span className="font-medium tabular-nums text-purple-700 dark:text-purple-400">
+   777→                    {Math.round((selectedCount / totalItems) * 100)}%
+   778→                  </span>
+   779→                </div>
+   780→                <Progress
+   781→                  value={(selectedCount / totalItems) * 100}
+   782→                  className="h-1.5 bg-purple-700/15"
+   783→                />
+   784→              </div>
+   785→
+   786→              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
+   787→                {CONTENT_GROUPS.map((group) => {
+   788→                  const groupSelectedCount = group.items.filter((i) =>
+   789→                    selectedItems.has(i.id),
+   790→                  ).length
+   791→                  const allGroupSelected = groupSelectedCount === group.items.length
+   792→                  return (
+   793→                    <div
+   794→                      key={group.id}
+   795→                      className="rounded-xl border border-border bg-muted/20 p-3 sm:p-4 space-y-3"
+   796→                    >
+   797→                      <div className="flex items-center justify-between gap-2">
+   798→                        <div className="flex items-center gap-2 min-w-0">
+   799→                          <div className="flex items-center justify-center w-7 h-7 rounded-lg bg-background border border-border shrink-0">
+   800→                            {group.icon}
+   801→                          </div>
+   802→                          <div className="min-w-0">
+   803→                            <p className="font-semibold text-sm leading-tight truncate">
+   804→                              {group.title}
+   805→                            </p>
+   806→                            <p className="text-[11px] text-muted-foreground">
+   807→                              {groupSelectedCount}/{group.items.length} выбрано
+   808→                            </p>
+   809→                          </div>
+   810→                        </div>
+   811→                        <Tooltip>
+   812→                          <TooltipTrigger asChild>
+   813→                            <Button
+   814→                              size="sm"
+   815→                              variant="ghost"
+   816→                              className="h-7 text-xs px-2 shrink-0"
+   817→                              onClick={() => {
+   818→                                const next = new Set(selectedItems)
+   819→                                if (allGroupSelected) {
+   820→                                  group.items.forEach((i) => next.delete(i.id))
+   821→                                } else {
+   822→                                  group.items.forEach((i) => next.add(i.id))
+   823→                                }
+   824→                                setSelectedItems(next)
+   825→                              }}
+   826→                            >
+   827→                              {allGroupSelected ? 'Снять' : 'Все'}
+   828→                            </Button>
+   829→                          </TooltipTrigger>
+   830→                          <TooltipContent>
+   831→                            {allGroupSelected
+   832→                              ? 'Снять выделение со всей категории'
+   833→                              : 'Выбрать все элементы категории'}
+   834→                          </TooltipContent>
+   835→                        </Tooltip>
+   836→                      </div>
+   837→                      <Separator />
+   838→                      <div className="space-y-2.5">
+   839→                        {group.items.map((item) => {
+   840→                          const checked = selectedItems.has(item.id)
+   841→                          return (
+   842→                            <label
+   843→                              key={item.id}
+   844→                              className={`flex items-start gap-3 p-2 rounded-lg cursor-pointer transition-colors ${
+   845→                                checked
+   846→                                  ? 'bg-purple-700/10 dark:bg-purple-950/30'
+   847→                                  : 'hover:bg-muted/60'
+   848→                              }`}
+   849→                            >
+   850→                              <Checkbox
+   851→                                checked={checked}
+   852→                                onCheckedChange={() => toggleItem(item.id)}
+   853→                                className="mt-0.5 data-[state=checked]:bg-purple-700 data-[state=checked]:border-purple-700"
+   854→                              />
+   855→                              <div className="flex-1 min-w-0">
+   856→                                <div className="flex items-center justify-between gap-2">
+   857→                                  <p className="text-sm font-medium leading-tight">
+   858→                                    {item.label}
+   859→                                  </p>
+   860→                                  <Badge
+   861→                                    variant="outline"
+   862→                                    className="text-[10px] text-muted-foreground shrink-0"
+   863→                                  >
+   864→                                    {item.meta}
+   865→                                  </Badge>
+   866→                                </div>
+   867→                                <p className="text-[11px] text-muted-foreground mt-0.5 leading-snug">
+   868→                                  {item.description}
+   869→                                </p>
+   870→                              </div>
+   871→                            </label>
+   872→                          )
+   873→                        })}
+   874→                      </div>
+   875→                    </div>
+   876→                  )
+   877→                })}
+   878→              </div>
+   879→            </CardContent>
+   880→          </Card>
+   881→        </div>
+   882→
+   883→        {/* ===== Section 4: Export Options ===== */}
+   884→        <div className="space-y-3">
+   885→          <h3 className="text-sm font-semibold flex items-center gap-2">
+   886→            <LayoutGrid className="w-4 h-4 text-purple-700 dark:text-purple-400" />
+   887→            Шаг 3. Параметры экспорта
+   888→          </h3>
+   889→          <Card className="rounded-xl shadow-sm">
+   890→            <CardContent className="p-4 sm:p-5">
+   891→              <div className="grid grid-cols-1 lg:grid-cols-2 gap-x-6 gap-y-4">
+   892→                {/* Language */}
+   893→                <div className="flex items-center justify-between gap-3 p-3 rounded-lg bg-muted/30">
+   894→                  <div className="flex items-center gap-3 min-w-0">
+   895→                    <div className="flex items-center justify-center w-9 h-9 rounded-lg bg-purple-700/15 dark:bg-purple-950/40 shrink-0">
+   896→                      <Languages className="w-4 h-4 text-purple-700 dark:text-purple-400" />
+   897→                    </div>
+   898→                    <div className="min-w-0">
+   899→                      <Label className="text-sm font-medium cursor-pointer">Язык</Label>
+   900→                      <p className="text-xs text-muted-foreground">Язык выгружаемых материалов</p>
+   901→                    </div>
+   902→                  </div>
+   903→                  <Select
+   904→                    value={options.language}
+   905→                    onValueChange={(v) => updateOption('language', v as ExportOptions['language'])}
+   906→                  >
+   907→                    <SelectTrigger className="w-32 sm:w-40 shrink-0">
+   908→                      <SelectValue />
+   909→                    </SelectTrigger>
+   910→                    <SelectContent>
+   911→                      <SelectItem value="ru">Русский</SelectItem>
+   912→                      <SelectItem value="en">English</SelectItem>
+   913→                      <SelectItem value="both">Оба</SelectItem>
+   914→                    </SelectContent>
+   915→                  </Select>
+   916→                </div>
+   917→
+   918→                {/* Include AI analysis */}
+   919→                <div className="flex items-center justify-between gap-3 p-3 rounded-lg bg-muted/30">
+   920→                  <div className="flex items-center gap-3 min-w-0">
+   921→                    <div className="flex items-center justify-center w-9 h-9 rounded-lg bg-purple-700/15 dark:bg-purple-950/40 shrink-0">
+   922→                      <Sparkles className="w-4 h-4 text-purple-700 dark:text-purple-400" />
+   923→                    </div>
+   924→                    <div className="min-w-0">
+   925→                      <Label className="text-sm font-medium cursor-pointer">
+   926→                        Включить ИИ-анализ
+   927→                      </Label>
+   928→                      <p className="text-xs text-muted-foreground">Аналитические блоки и прогнозы</p>
+   929→                    </div>
+   930→                  </div>
+   931→                  <Switch
+   932→                    checked={options.includeAI}
+   933→                    onCheckedChange={(v) => updateOption('includeAI', v)}
+   934→                    className="data-[state=checked]:bg-purple-700"
+   935→                  />
+   936→                </div>
+   937→
+   938→                {/* Include charts as images */}
+   939→                <div className="flex items-center justify-between gap-3 p-3 rounded-lg bg-muted/30">
+   940→                  <div className="flex items-center gap-3 min-w-0">
+   941→                    <div className="flex items-center justify-center w-9 h-9 rounded-lg bg-purple-700/15 dark:bg-purple-950/40 shrink-0">
+   942→                      <ImageIcon className="w-4 h-4 text-purple-700 dark:text-purple-400" />
+   943→                    </div>
+   944→                    <div className="min-w-0">
+   945→                      <Label className="text-sm font-medium cursor-pointer">
+   946→                        Графики как изображения
+   947→                      </Label>
+   948→                      <p className="text-xs text-muted-foreground">Встраивать графики в PNG</p>
+   949→                    </div>
+   950→                  </div>
+   951→                  <Switch
+   952→                    checked={options.includeCharts}
+   953→                    onCheckedChange={(v) => updateOption('includeCharts', v)}
+   954→                    className="data-[state=checked]:bg-purple-700"
+   955→                  />
+   956→                </div>
+   957→
+   958→                {/* Page format */}
+   959→                <div className="flex items-center justify-between gap-3 p-3 rounded-lg bg-muted/30">
+   960→                  <div className="flex items-center gap-3 min-w-0">
+   961→                    <div className="flex items-center justify-center w-9 h-9 rounded-lg bg-purple-700/15 dark:bg-purple-950/40 shrink-0">
+   962→                      <FilePage className="w-4 h-4 text-purple-700 dark:text-purple-400" />
+   963→                    </div>
+   964→                    <div className="min-w-0">
+   965→                      <Label className="text-sm font-medium cursor-pointer">
+   966→                        Формат страницы
+   967→                      </Label>
+   968→                      <p className="text-xs text-muted-foreground">Только для PDF и HTML</p>
+   969→                    </div>
+   970→                  </div>
+   971→                  <Select
+   972→                    value={options.pageFormat}
+   973→                    onValueChange={(v) => updateOption('pageFormat', v as ExportOptions['pageFormat'])}
+   974→                  >
+   975→                    <SelectTrigger className="w-32 sm:w-40 shrink-0">
+   976→                      <SelectValue />
+   977→                    </SelectTrigger>
+   978→                    <SelectContent>
+   979→                      <SelectItem value="a4">A4</SelectItem>
+   980→                      <SelectItem value="a3">A3</SelectItem>
+   981→                      <SelectItem value="letter">Letter</SelectItem>
+   982→                    </SelectContent>
+   983→                  </Select>
+   984→                </div>
+   985→
+   986→                {/* Orientation */}
+   987→                <div className="flex items-center justify-between gap-3 p-3 rounded-lg bg-muted/30">
+   988→                  <div className="flex items-center gap-3 min-w-0">
+   989→                    <div className="flex items-center justify-center w-9 h-9 rounded-lg bg-purple-700/15 dark:bg-purple-950/40 shrink-0">
+   990→                      <LayoutGrid className="w-4 h-4 text-purple-700 dark:text-purple-400" />
+   991→                    </div>
+   992→                    <div className="min-w-0">
+   993→                      <Label className="text-sm font-medium cursor-pointer">
+   994→                        Ориентация
+   995→                      </Label>
+   996→                      <p className="text-xs text-muted-foreground">Расположение страниц</p>
+   997→                    </div>
+   998→                  </div>
+   999→                  <Select
+  1000→                    value={options.orientation}
+  1001→                    onValueChange={(v) => updateOption('orientation', v as ExportOptions['orientation'])}
+  1002→                  >
+  1003→                    <SelectTrigger className="w-32 sm:w-40 shrink-0">
+  1004→                      <SelectValue />
+  1005→                    </SelectTrigger>
+  1006→                    <SelectContent>
+  1007→                      <SelectItem value="portrait">Книжная</SelectItem>
+  1008→                      <SelectItem value="landscape">Альбомная</SelectItem>
+  1009→                    </SelectContent>
+  1010→                  </Select>
+  1011→                </div>
+  1012→
+  1013→                {/* Watermark */}
+  1014→                <div className="flex items-center justify-between gap-3 p-3 rounded-lg bg-muted/30">
+  1015→                  <div className="flex items-center gap-3 min-w-0">
+  1016→                    <div className="flex items-center justify-center w-9 h-9 rounded-lg bg-purple-700/15 dark:bg-purple-950/40 shrink-0">
+  1017→                      <Stamp className="w-4 h-4 text-purple-700 dark:text-purple-400" />
+  1018→                    </div>
+  1019→                    <div className="min-w-0">
+  1020→                      <Label className="text-sm font-medium cursor-pointer">
+  1021→                        Водяной знак с номером дела
+  1022→                      </Label>
+  1023→                      <p className="text-xs text-muted-foreground">«Дело № {CASE_NUMBER}» на каждой странице</p>
+  1024→                    </div>
+  1025→                  </div>
+  1026→                  <Switch
+  1027→                    checked={options.watermark}
+  1028→                    onCheckedChange={(v) => updateOption('watermark', v)}
+  1029→                    className="data-[state=checked]:bg-purple-700"
+  1030→                  />
+  1031→                </div>
+  1032→
+  1033→                {/* Encrypt PDF */}
+  1034→                <div className="flex items-center justify-between gap-3 p-3 rounded-lg bg-muted/30 lg:col-span-2">
+  1035→                  <div className="flex items-center gap-3 min-w-0">
+  1036→                    <div className="flex items-center justify-center w-9 h-9 rounded-lg bg-purple-700/15 dark:bg-purple-950/40 shrink-0">
+  1037→                      <Lock className="w-4 h-4 text-purple-700 dark:text-purple-400" />
+  1038→                    </div>
+  1039→                    <div className="min-w-0">
+  1040→                      <Label className="text-sm font-medium cursor-pointer">
+  1041→                        Зашифровать PDF
+  1042→                      </Label>
+  1043→                      <p className="text-xs text-muted-foreground">
+  1044→                        Защита паролем и ограничение печати (только PDF)
+  1045→                      </p>
+  1046→                    </div>
+  1047→                  </div>
+  1048→                  <Switch
+  1049→                    checked={options.encrypt}
+  1050→                    onCheckedChange={(v) => updateOption('encrypt', v)}
+  1051→                    className="data-[state=checked]:bg-purple-700"
+  1052→                  />
+  1053→                </div>
+  1054→              </div>
+  1055→
+  1056→              {options.encrypt && (
+  1057→                <div className="mt-4 flex items-start gap-2 p-3 rounded-lg bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900">
+  1058→                  <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+  1059→                  <p className="text-xs text-amber-800 dark:text-amber-200 leading-snug">
+  1060→                    Зашифрованный PDF будет защищён паролем. Запомните пароль — без него открыть файл будет невозможно.
+  1061→                    Защита действует только для формата PDF.
+  1062→                  </p>
+  1063→                </div>
+  1064→              )}
+  1065→            </CardContent>
+  1066→          </Card>
+  1067→        </div>
+  1068→
+  1069→        {/* ===== Section 5: Action Bar (sticky) ===== */}
+  1070→        <div className="sticky bottom-3 z-30">
+  1071→          <Card className="rounded-xl shadow-lg border-purple-700/30 bg-background/95 backdrop-blur">
+  1072→            <CardContent className="p-3 sm:p-4">
+  1073→              <div className="flex items-center justify-between gap-3 flex-wrap">
+  1074→                {/* Summary left */}
+  1075→                <div className="flex items-center gap-3 min-w-0 flex-1">
+  1076→                  <div
+  1077→                    className={`flex items-center justify-center w-10 h-10 rounded-xl shrink-0 ${selectedFormatConfig.tileBg}`}
+  1078→                  >
+  1079→                    {isGenerating ? (
+  1080→                      <Loader2 className={`w-5 h-5 animate-spin ${selectedFormatConfig.iconColor}`} />
+  1081→                    ) : (
+  1082→                      <span className={selectedFormatConfig.iconColor}>
+  1083→                        {selectedFormatConfig.icon}
+  1084→                      </span>
+  1085→                    )}
+  1086→                  </div>
+  1087→                  <div className="min-w-0">
+  1088→                    <p className="text-sm font-semibold leading-tight">
+  1089→                      {isGenerating ? 'Идёт формирование экспорта...' : 'Готово к экспорту'}
+  1090→                    </p>
+  1091→                    <p className="text-xs text-muted-foreground truncate">
+  1092→                      Формат: {selectedFormatConfig.shortLabel} · {selectedCount} элемент. · ~
+  1093→                      {formatFileSize(estimatedBytes)}
+  1094→                      {options.language === 'both' ? ' · RU+EN' : ''}
+  1095→                      {options.encrypt ? ' · 🔒 шифр.' : ''}
+  1096→                    </p>
+  1097→                  </div>
+  1098→                  {isGenerating && (
+  1099→                    <div className="hidden sm:flex items-center gap-2 ml-2 min-w-[160px]">
+  1100→                      <Progress
+  1101→                        value={progress}
+  1102→                        className="h-1.5 bg-purple-700/15"
+  1103→                      />
+  1104→                      <span className="text-xs tabular-nums text-purple-700 dark:text-purple-400 shrink-0">
+  1105→                        {progress}%
+  1106→                      </span>
+  1107→                    </div>
+  1108→                  )}
+  1109→                </div>
+  1110→                {/* Buttons right */}
+  1111→                <div className="flex items-center gap-2 shrink-0">
+  1112→                  <Button
+  1113→                    variant="ghost"
+  1114→                    size="sm"
+  1115→                    className="gap-1"
+  1116→                    onClick={() => setPreviewOpen(true)}
+  1117→                    disabled={isGenerating || selectedItems.size === 0}
+  1118→                  >
+  1119→                    <Eye className="w-4 h-4" /> Предпросмотр
+  1120→                  </Button>
+  1121→                  <Button
+  1122→                    size="sm"
+  1123→                    className="gap-1.5 bg-purple-700 text-white hover:bg-purple-800"
+  1124→                    onClick={generateExport}
+  1125→                    disabled={isGenerating || selectedItems.size === 0}
+  1126→                  >
+  1127→                    {isGenerating ? (
+  1128→                      <>
+  1129→                        <Loader2 className="w-4 h-4 animate-spin" />
+  1130→                        Формируется...
+  1131→                      </>
+  1132→                    ) : (
+  1133→                      <>
+  1134→                        <Download className="w-4 h-4" />
+  1135→                        Сгенерировать экспорт
+  1136→                      </>
+  1137→                    )}
+  1138→                  </Button>
+  1139→                </div>
+  1140→              </div>
+  1141→            </CardContent>
+  1142→          </Card>
+  1143→        </div>
+  1144→
+  1145→        {/* ===== Section 6: Recent Exports History ===== */}
+  1146→        <div className="space-y-3">
+  1147→          <div className="flex items-center justify-between gap-2 flex-wrap">
+  1148→            <h3 className="text-sm font-semibold flex items-center gap-2">
+  1149→              <Clock className="w-4 h-4 text-purple-700 dark:text-purple-400" />
+  1150→              История экспортов
+  1151→            </h3>
+  1152→            <div className="flex items-center gap-2">
+  1153→              <Badge variant="outline" className="text-xs gap-1">
+  1154→                <HardDrive className="w-3 h-3" />
+  1155→                Всего: {recentExports.length}
+  1156→              </Badge>
+  1157→              <Button
+  1158→                size="sm"
+  1159→                variant="ghost"
+  1160→                className="h-7 text-xs gap-1"
+  1161→                onClick={() => {
+  1162→                  setRecentExports(INITIAL_RECENT_EXPORTS)
+  1163→                  toast.info('История обновлена')
+  1164→                }}
+  1165→              >
+  1166→                <RefreshCw className="w-3 h-3" /> Обновить
+  1167→              </Button>
+  1168→            </div>
+  1169→          </div>
+  1170→          <Card className="rounded-xl shadow-sm">
+  1171→            <CardContent className="p-0">
+  1172→              <div className="overflow-x-auto">
+  1173→                <Table>
+  1174→                  <TableHeader>
+  1175→                    <TableRow className="hover:bg-transparent">
+  1176→                      <TableHead className="min-w-[140px]">Дата</TableHead>
+  1177→                      <TableHead className="min-w-[90px]">Формат</TableHead>
+  1178→                      <TableHead className="text-center min-w-[80px]">Элементов</TableHead>
+  1179→                      <TableHead className="text-right min-w-[90px]">Размер</TableHead>
+  1180→                      <TableHead className="text-center min-w-[110px]">Статус</TableHead>
+  1181→                      <TableHead className="text-right min-w-[80px]">Действие</TableHead>
+  1182→                    </TableRow>
+  1183→                  </TableHeader>
+  1184→                  <TableBody>
+  1185→                    {recentExports.map((entry) => {
+  1186→                      const cfg = FORMAT_CONFIG[
+  1187→                        String(entry.format).toLowerCase() as ExportFormat
+  1188→                      ]
+  1189→                      const status = STATUS_CONFIG[entry.status]
+  1190→                      return (
+  1191→                        <TableRow key={entry.id} className="hover:bg-muted/40">
+  1192→                          <TableCell className="text-xs text-muted-foreground">
+  1193→                            <div className="flex items-center gap-1.5">
+  1194→                              <Calendar className="w-3 h-3 text-purple-700 dark:text-purple-400" />
+  1195→                              {formatDateRu(entry.date)}
+  1196→                            </div>
+  1197→                          </TableCell>
+  1198→                          <TableCell>
+  1199→                            <div className="flex items-center gap-2">
+  1200→                              <div
+  1201→                                className={`flex items-center justify-center w-7 h-7 rounded-md ${cfg?.tileBg ?? 'bg-stone-500/15'}`}
+  1202→                              >
+  1203→                                <span className={cfg?.iconColor ?? 'text-stone-500'}>
+  1204→                                  {cfg?.icon ?? <FileText className="w-4 h-4" />}
+  1205→                                </span>
+  1206→                              </div>
+  1207→                              <span className="text-sm font-medium">{entry.format}</span>
+  1208→                            </div>
+  1209→                          </TableCell>
+  1210→                          <TableCell className="text-center text-sm tabular-nums">
+  1211→                            {entry.elementsCount}
+  1212→                          </TableCell>
+  1213→                          <TableCell className="text-right text-sm tabular-nums">
+  1214→                            {formatFileSize(entry.size)}
+  1215→                          </TableCell>
+  1216→                          <TableCell className="text-center">
+  1217→                            <Badge className={`gap-1 ${status.badgeClass}`}>
+  1218→                              {status.icon}
+  1219→                              {status.label}
+  1220→                            </Badge>
+  1221→                          </TableCell>
+  1222→                          <TableCell className="text-right">
+  1223→                            <Tooltip>
+  1224→                              <TooltipTrigger asChild>
+  1225→                                <Button
+  1226→                                  size="icon"
+  1227→                                  variant="ghost"
+  1228→                                  className="h-8 w-8"
+  1229→                                  onClick={() => handleReDownload(entry)}
+  1230→                                  disabled={entry.status !== 'ready'}
+  1231→                                >
+  1232→                                  <Download className="w-4 h-4" />
+  1233→                                </Button>
+  1234→                              </TooltipTrigger>
+  1235→                              <TooltipContent>
+  1236→                                {entry.status === 'ready'
+  1237→                                  ? 'Скачать повторно'
+  1238→                                  : entry.status === 'processing'
+  1239→                                    ? 'Файл ещё формируется'
+  1240→                                    : 'Экспорт завершился с ошибкой'}
+  1241→                              </TooltipContent>
+  1242→                            </Tooltip>
+  1243→                          </TableCell>
+  1244→                        </TableRow>
+  1245→                      )
+  1246→                    })}
+  1247→                  </TableBody>
+  1248→                </Table>
+  1249→              </div>
+  1250→
+  1251→              {/* Footer info */}
+  1252→              <div className="border-t p-3 flex items-center justify-between gap-2 flex-wrap text-xs text-muted-foreground">
+  1253→                <div className="flex items-center gap-3 flex-wrap">
+  1254→                  <span className="flex items-center gap-1">
+  1255→                    <span className="w-2 h-2 rounded-full bg-emerald-600" /> Готово
+  1256→                  </span>
+  1257→                  <span className="flex items-center gap-1">
+  1258→                    <span className="w-2 h-2 rounded-full bg-amber-500" /> В процессе
+  1259→                  </span>
+  1260→                  <span className="flex items-center gap-1">
+  1261→                    <span className="w-2 h-2 rounded-full bg-red-600" /> Ошибка
+  1262→                  </span>
+  1263→                </div>
+  1264→                <span>
+  1265→                  Всего: {recentExports.length} · Объём:{' '}
+  1266→                  {formatFileSize(
+  1267→                    recentExports.reduce((acc, e) => acc + (e.status === 'ready' ? e.size : 0), 0),
+  1268→                  )}
+  1269→                </span>
+  1270→              </div>
+  1271→            </CardContent>
+  1272→          </Card>
+  1273→        </div>
+  1274→
+  1275→        {/* ===== Preview Dialog ===== */}
+  1276→        <Dialog open={previewOpen} onOpenChange={setPreviewOpen}>
+  1277→          <DialogContent className="max-w-2xl rounded-xl">
+  1278→            <DialogHeader>
+  1279→              <DialogTitle className="text-base flex items-center gap-2">
+  1280→                <Eye className="w-4 h-4 text-purple-700 dark:text-purple-400" />
+  1281→                Предпросмотр экспорта
+  1282→              </DialogTitle>
+  1283→              <DialogDescription className="text-xs">
+  1284→                {selectedFormatConfig.label} · {selectedCount} элементов · ~
+  1285→                {formatFileSize(estimatedBytes)}
+  1286→              </DialogDescription>
+  1287→            </DialogHeader>
+  1288→
+  1289→            <div className="max-h-[60vh] overflow-y-auto pr-1 space-y-3">
+  1290→              {/* Mock document preview */}
+  1291→              <div className="rounded-lg border bg-muted/20 p-4 sm:p-6 space-y-3">
+  1292→                <div className="flex items-center justify-between gap-2 flex-wrap">
+  1293→                  <div>
+  1294→                    <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
+  1295→                      Система Управления Уголовным Делом
+  1296→                    </p>
+  1297→                    <h4 className="text-base font-bold">
+  1298→                      Дело № {CASE_NUMBER}
+  1299→                    </h4>
+  1300→                    <p className="text-xs text-muted-foreground">
+  1301→                      Колесниченко Д.А. и другие
+  1302→                    </p>
+  1303→                  </div>
+  1304→                  <Badge className="bg-purple-700 text-white gap-1">
+  1305→                    {selectedFormatConfig.shortLabel}
+  1306→                  </Badge>
+  1307→                </div>
+  1308→                <Separator />
+  1309→                <div className="space-y-1.5">
+  1310→                  <p className="text-xs font-semibold uppercase text-muted-foreground">
+  1311→                    Содержание
+  1312→                  </p>
+  1313→                  <ul className="text-xs space-y-1">
+  1314→                    {CONTENT_GROUPS.map((g) =>
+  1315→                      g.items
+  1316→                        .filter((i) => selectedItems.has(i.id))
+  1317→                        .map((i) => (
+  1318→                          <li key={i.id} className="flex items-center gap-2">
+  1319→                            <span className="w-1 h-1 rounded-full bg-purple-700" />
+  1320→                            <span className="font-medium">{i.label}</span>
+  1321→                            <span className="text-muted-foreground">— {i.description}</span>
+  1322→                          </li>
+  1323→                        )),
+  1324→                    )}
+  1325→                    {selectedItems.size === 0 && (
+  1326→                      <li className="text-xs text-muted-foreground italic">
+  1327→                        Нет выбранных элементов
+  1328→                      </li>
+  1329→                    )}
+  1330→                  </ul>
+  1331→                </div>
+  1332→                <Separator />
+  1333→                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs">
+  1334→                  <div className="rounded-md bg-background/60 p-2">
+  1335→                    <p className="text-muted-foreground text-[10px]">Язык</p>
+  1336→                    <p className="font-medium">
+  1337→                      {options.language === 'ru'
+  1338→                        ? 'Русский'
+  1339→                        : options.language === 'en'
+  1340→                          ? 'English'
+  1341→                          : 'Русский + English'}
+  1342→                    </p>
+  1343→                  </div>
+  1344→                  <div className="rounded-md bg-background/60 p-2">
+  1345→                    <p className="text-muted-foreground text-[10px]">Формат страницы</p>
+  1346→                    <p className="font-medium uppercase">
+  1347→                      {options.pageFormat} ·{' '}
+  1348→                      {options.orientation === 'portrait' ? 'книжн.' : 'альбомн.'}
+  1349→                    </p>
+  1350→                  </div>
+  1351→                  <div className="rounded-md bg-background/60 p-2">
+  1352→                    <p className="text-muted-foreground text-[10px]">Опции</p>
+  1353→                    <p className="font-medium">
+  1354→                      {options.includeAI ? 'ИИ ' : ''}
+  1355→                      {options.includeCharts ? '📊 ' : ''}
+  1356→                      {options.watermark ? 'watermark ' : ''}
+  1357→                      {options.encrypt ? '🔒' : ''}
+  1358→                      {!options.includeAI &&
+  1359→                      !options.includeCharts &&
+  1360→                      !options.watermark &&
+  1361→                      !options.encrypt
+  1362→                        ? '—'
+  1363→                        : ''}
+  1364→                    </p>
+  1365→                  </div>
+  1366→                </div>
+  1367→              </div>
+  1368→              <p className="text-[11px] text-muted-foreground italic text-center">
+  1369→                Это упрощённый макет предпросмотра. Полный файл будет сформирован при генерации.
+  1370→              </p>
+  1371→            </div>
+  1372→
+  1373→            <DialogFooter className="gap-2">
+  1374→              <Button variant="outline" size="sm" onClick={() => setPreviewOpen(false)}>
+  1375→                Закрыть
+  1376→              </Button>
+  1377→              <Button
+  1378→                size="sm"
+  1379→                className="gap-1.5 bg-purple-700 text-white hover:bg-purple-800"
+  1380→                onClick={() => {
+  1381→                  setPreviewOpen(false)
+  1382→                  generateExport()
+  1383→                }}
+  1384→              >
+  1385→                <Download className="w-3.5 h-3.5" />
+  1386→                Сгенерировать
+  1387→              </Button>
+  1388→            </DialogFooter>
+  1389→          </DialogContent>
+  1390→        </Dialog>
+  1391→
+  1392→        {/* ===== Result Sheet ===== */}
+  1393→        <Sheet open={resultSheetOpen} onOpenChange={setResultSheetOpen}>
+  1394→          <SheetContent
+  1395→            side="right"
+  1396→            className="w-full sm:max-w-md flex flex-col gap-0 p-0"
+  1397→          >
+  1398→            <SheetHeader className="p-4 border-b bg-purple-700/5">
+  1399→              <SheetTitle className="flex items-center gap-2 text-base">
+  1400→                <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+  1401→                Экспорт сформирован
+  1402→              </SheetTitle>
+  1403→              <SheetDescription className="text-xs">
+  1404→                Файл готов к скачиванию и передаче.
+  1405→              </SheetDescription>
+  1406→            </SheetHeader>
+  1407→
+  1408→            <div className="flex-1 overflow-y-auto p-4 space-y-4">
+  1409→              {/* File icon + name */}
+  1410→              <div className="flex items-start gap-3 p-4 rounded-xl border bg-muted/20">
+  1411→                <div
+  1412→                  className={`flex items-center justify-center w-14 h-14 rounded-xl shrink-0 ${selectedFormatConfig.tileBg}`}
+  1413→                >
+  1414→                  <span className={selectedFormatConfig.iconColor}>
+  1415→                    {selectedFormatConfig.icon}
+  1416→                  </span>
+  1417→                </div>
+  1418→                <div className="min-w-0 flex-1">
+  1419→                  <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
+  1420→                    Имя файла
+  1421→                  </p>
+  1422→                  <p className="text-sm font-medium break-all leading-tight">
+  1423→                    {generatedFileName}
+  1424→                  </p>
+  1425→                  <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+  1426→                    <Badge variant="outline" className="text-[10px]">
+  1427→                      {selectedFormatConfig.shortLabel}
+  1428→                    </Badge>
+  1429→                    <Badge variant="outline" className="text-[10px]">
+  1430→                      {formatFileSize(generatedFileSize)}
+  1431→                    </Badge>
+  1432→                    <Badge variant="outline" className="text-[10px]">
+  1433→                      {selectedCount} элем.
+  1434→                    </Badge>
+  1435→                  </div>
+  1436→                </div>
+  1437→              </div>
+  1438→
+  1439→              {/* Details list */}
+  1440→              <div className="space-y-2">
+  1441→                <p className="text-xs font-semibold uppercase text-muted-foreground">
+  1442→                  Параметры экспорта
+  1443→                </p>
+  1444→                <div className="rounded-lg border divide-y">
+  1445→                  {[
+  1446→                    {
+  1447→                      label: 'Формат',
+  1448→                      value: selectedFormatConfig.label,
+  1449→                      icon: <FileType className="w-3.5 h-3.5" />,
+  1450→                    },
+  1451→                    {
+  1452→                      label: 'Язык',
+  1453→                      value:
+  1454→                        options.language === 'ru'
+  1455→                          ? 'Русский'
+  1456→                          : options.language === 'en'
+  1457→                            ? 'English'
+  1458→                            : 'Русский + English',
+  1459→                      icon: <Languages className="w-3.5 h-3.5" />,
+  1460→                    },
+  1461→                    {
+  1462→                      label: 'Элементов',
+  1463→                      value: `${selectedCount} из ${totalItems}`,
+  1464→                      icon: <ListChecks className="w-3.5 h-3.5" />,
+  1465→                    },
+  1466→                    {
+  1467→                      label: 'ИИ-анализ',
+  1468→                      value: options.includeAI ? 'Включён' : 'Выключен',
+  1469→                      icon: <Sparkles className="w-3.5 h-3.5" />,
+  1470→                    },
+  1471→                    {
+  1472→                      label: 'Графики',
+  1473→                      value: options.includeCharts ? 'Как PNG' : 'Не включать',
+  1474→                      icon: <ImageIcon className="w-3.5 h-3.5" />,
+  1475→                    },
+  1476→                    {
+  1477→                      label: 'Страница',
+  1478→                      value: `${options.pageFormat.toUpperCase()} · ${
+  1479→                        options.orientation === 'portrait' ? 'Книжная' : 'Альбомная'
+  1480→                      }`,
+  1481→                      icon: <FilePage className="w-3.5 h-3.5" />,
+  1482→                    },
+  1483→                    {
+  1484→                      label: 'Водяной знак',
+  1485→                      value: options.watermark ? `Дело № ${CASE_NUMBER}` : 'Нет',
+  1486→                      icon: <Stamp className="w-3.5 h-3.5" />,
+  1487→                    },
+  1488→                    {
+  1489→                      label: 'Шифрование',
+  1490→                      value: options.encrypt ? 'Включено (пароль)' : 'Выключено',
+  1491→                      icon: <Shield className="w-3.5 h-3.5" />,
+  1492→                    },
+  1493→                  ].map((row) => (
+  1494→                    <div
+  1495→                      key={row.label}
+  1496→                      className="flex items-center justify-between gap-2 p-2.5"
+  1497→                    >
+  1498→                      <div className="flex items-center gap-2 min-w-0 text-xs text-muted-foreground">
+  1499→                        {row.icon}
+  1500→                        <span>{row.label}</span>
+  1501→                      </div>
+  1502→                      <span className="text-xs font-medium text-right truncate">
+  1503→                        {row.value}
+  1504→                      </span>
+  1505→                    </div>
+  1506→                  ))}
+  1507→                </div>
+  1508→              </div>
+  1509→
+  1510→              {/* Action suggestions */}
+  1511→              <div className="space-y-2">
+  1512→                <p className="text-xs font-semibold uppercase text-muted-foreground">
+  1513→                  Что дальше?
+  1514→                </p>
+  1515→                <div className="space-y-1.5">
+  1516→                  {[
+  1517→                    { icon: <Download className="w-3.5 h-3.5" />, text: 'Сохранить в загрузки' },
+  1518→                    { icon: <Files className="w-3.5 h-3.5" />, text: 'Передать в архив дела' },
+  1519→                    { icon: <Printer className="w-3.5 h-3.5" />, text: 'Отправить на печать' },
+  1520→                    { icon: <Shield className="w-3.5 h-3.5" />, text: 'Подписать ЭЦП адвоката' },
+  1521→                  ].map((s, i) => (
+  1522→                    <div
+  1523→                      key={i}
+  1524→                      className="flex items-center gap-2 p-2 rounded-lg bg-muted/40 text-xs"
+  1525→                    >
+  1526→                      <span className="text-purple-700 dark:text-purple-400">{s.icon}</span>
+  1527→                      <span className="flex-1">{s.text}</span>
+  1528→                      <ArrowRight className="w-3 h-3 text-muted-foreground" />
+  1529→                    </div>
+  1530→                  ))}
+  1531→                </div>
+  1532→              </div>
+  1533→            </div>
+  1534→
+  1535→            <SheetFooter className="p-4 border-t flex-row gap-2">
+  1536→              <Button
+  1537→                variant="outline"
+  1538→                size="sm"
+  1539→                className="flex-1 gap-1"
+  1540→                onClick={() => setResultSheetOpen(false)}
+  1541→              >
+  1542→                Закрыть
+  1543→              </Button>
+  1544→              <Button
+  1545→                size="sm"
+  1546→                className="flex-1 gap-1.5 bg-purple-700 text-white hover:bg-purple-800"
+  1547→                onClick={handleDownload}
+  1548→              >
+  1549→                <Download className="w-4 h-4" />
+  1550→                Скачать
+  1551→              </Button>
+  1552→            </SheetFooter>
+  1553→          </SheetContent>
+  1554→        </Sheet>
+  1555→      </div>
+  1556→    </TooltipProvider>
+  1557→  )
+  1558→}
+  1559→

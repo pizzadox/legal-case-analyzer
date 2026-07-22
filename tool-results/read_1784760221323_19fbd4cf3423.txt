@@ -1,0 +1,756 @@
+   500→    <Card className="rounded-xl shadow-sm transition-all hover:shadow-md group">
+   501→      <CardContent className="p-4">
+   502→        <div className="flex items-start gap-3">
+   503→          <div className="w-10 h-10 rounded-lg bg-stone-50 dark:bg-stone-900/30 flex items-center justify-center shrink-0">
+   504→            <Link2 className="w-5 h-5 text-stone-600" />
+   505→          </div>
+   506→          <div className="flex-1 min-w-0">
+   507→            {/* Source → Target with arrow */}
+   508→            <div className="flex items-center gap-2 mb-1.5">
+   509→              <Badge className={`${NODE_TYPE_BADGE[cr.sourceDocument.documentType ?? ''] ?? 'bg-stone-500 text-white'} text-xs shrink-0`}>
+   510→                {cr.sourceDocument.documentType ?? '—'}
+   511→              </Badge>
+   512→              <span className="text-xs font-medium truncate max-w-[10rem]">{cr.sourceDocument.originalName}</span>
+   513→              <ArrowRight className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+   514→              <Badge className={`${NODE_TYPE_BADGE[cr.targetDocument.documentType ?? ''] ?? 'bg-stone-500 text-white'} text-xs shrink-0`}>
+   515→                {cr.targetDocument.documentType ?? '—'}
+   516→              </Badge>
+   517→              <span className="text-xs font-medium truncate max-w-[10rem]">{cr.targetDocument.originalName}</span>
+   518→            </div>
+   519→            {/* Reference type badge */}
+   520→            {cr.referenceType && (
+   521→              <Badge className={`${LINK_TYPE_BADGE[cr.referenceType] ?? 'border-stone-300 text-stone-500'} text-xs shrink-0 mb-1.5`}>
+   522→                {cr.referenceType}
+   523→              </Badge>
+   524→            )}
+   525→            {/* Context snippet */}
+   526→            <p className="text-xs text-muted-foreground line-clamp-2 group-hover:text-foreground/80 transition-colors">
+   527→              {truncateText(cr.referenceText, 120)}
+   528→            </p>
+   529→          </div>
+   530→        </div>
+   531→      </CardContent>
+   532→    </Card>
+   533→  )
+   534→}
+   535→
+   536→// ──── Main Component ────
+   537→
+   538→export function CaseSearch() {
+   539→  const [query, setQuery] = useState('')
+   540→  const [filterType, setFilterType] = useState('all')
+   541→  const [searchHistory, setSearchHistory] = useState<HistoryEntry[]>([])
+   542→  const [activeTab, setActiveTab] = useState('all')
+   543→
+   544→  // Advanced filters state
+   545→  const [showFilters, setShowFilters] = useState(false)
+   546→  const [dateFrom, setDateFrom] = useState('')
+   547→  const [dateTo, setDateTo] = useState('')
+   548→  const [selectedDocTypes, setSelectedDocTypes] = useState<string[]>([])
+   549→  const [selectedRoles, setSelectedRoles] = useState<string[]>([])
+   550→  const [selectedSeverity, setSelectedSeverity] = useState<string[]>([])
+   551→  const [selectedArticles, setSelectedArticles] = useState<string[]>([])
+   552→
+   553→  // Cross-ref graph interaction
+   554→  const [highlightedDocId, setHighlightedDocId] = useState<string | null>(null)
+   555→
+   556→  // Auto-suggestions dropdown
+   557→  const [showSuggestions, setShowSuggestions] = useState(false)
+   558→  const inputRef = useRef<HTMLInputElement>(null)
+   559→
+   560→  // Search timing
+   561→  const [searchStartTime, setSearchStartTime] = useState<number | null>(null)
+   562→  const [searchDuration, setSearchDuration] = useState<number | null>(null)
+   563→
+   564→  const searchMutation = useMutation({
+   565→    mutationFn: (vars: { query: string; filterType: string }) => caseApi.search(vars),
+   566→    onError: () => toast.error('Ошибка поиска'),
+   567→  })
+   568→
+   569→  const { data: graphData } = useQuery({
+   570→    queryKey: ['cross-ref-graph'],
+   571→    queryFn: caseApi.getCrossRefGraph,
+   572→    retry: 1,
+   573→  })
+   574→  const { data: bookmarksData } = useQuery({
+   575→    queryKey: ['bookmarks'],
+   576→    queryFn: caseApi.getBookmarks,
+   577→    retry: 1,
+   578→  })
+   579→  const crossRefNodes = graphData ?? mockCrossRefNodes
+   580→  const bookmarks = bookmarksData ?? mockBookmarks
+   581→
+   582→  const emptyResults: SearchResultData = { documents: [], persons: [], episodes: [], crossReferences: [] }
+   583→  const results = searchMutation.data ?? mockSearchResults
+   584→  const isSearching = searchMutation.isPending
+   585→
+   586→  // ──── Active filter count ────
+   587→  const activeFilterCount = useMemo(() => {
+   588→    let count = 0
+   589→    if (dateFrom) count++
+   590→    if (dateTo) count++
+   591→    if (selectedDocTypes.length > 0) count++
+   592→    if (selectedRoles.length > 0) count++
+   593→    if (selectedSeverity.length > 0) count++
+   594→    if (selectedArticles.length > 0) count++
+   595→    return count
+   596→  }, [dateFrom, dateTo, selectedDocTypes, selectedRoles, selectedSeverity, selectedArticles])
+   597→
+   598→  // ──── Auto-suggestions ────
+   599→  const recentSearchTerms = useMemo(() => {
+   600→    return searchHistory.slice(0, 3).map(h => h.query)
+   601→  }, [searchHistory])
+   602→
+   603→  const suggestedTerms = useMemo(() => {
+   604→    const baseSuggestions = ['Колесниченко', 'ст. 159 УК РФ', 'процессуальные нарушения', 'хищение', 'алиби', 'обыск без адвоката']
+   605→    const combined = [...recentSearchTerms, ...baseSuggestions]
+   606→    return combined.filter((s, i) => combined.indexOf(s) === i).slice(0, 6)
+   607→  }, [recentSearchTerms])
+   608→
+   609→  const suggestions = useMemo(() => {
+   610→    if (query.trim().length > 0) {
+   611→      return suggestedTerms.filter(s =>
+   612→        s.toLowerCase().includes(query.toLowerCase()) && s.toLowerCase() !== query.toLowerCase()
+   613→      ).slice(0, 4)
+   614→    }
+   615→    return suggestedTerms.slice(0, 4)
+   616→  }, [query, suggestedTerms])
+   617→
+   618→  // ──── Search execution ────
+   619→  const executeSearch = useCallback((q: string, ft: string) => {
+   620→    if (!q.trim()) return
+   621→    setQuery(q)
+   622→    setFilterType(ft)
+   623→    setShowSuggestions(false)
+   624→    setSearchStartTime(Date.now())
+   625→    searchMutation.mutate({ query: q, filterType: ft })
+   626→    setSearchDuration(Math.round(Math.random() * 300 + 150)) // simulated
+   627→    setSearchHistory(prev => {
+   628→      const entry: HistoryEntry = { query: q, filterType: ft, timestamp: new Date().toISOString() }
+   629→      const filtered = prev.filter(h => !(h.query === q && h.filterType === ft))
+   630→      return [entry, ...filtered].slice(0, 5)
+   631→    })
+   632→  }, [searchMutation])
+   633→
+   634→  const handleSearch = () => executeSearch(query, filterType)
+   635→
+   636→  const resetFilters = () => {
+   637→    setDateFrom('')
+   638→    setDateTo('')
+   639→    setSelectedDocTypes([])
+   640→    setSelectedRoles([])
+   641→    setSelectedSeverity([])
+   642→    setSelectedArticles([])
+   643→  }
+   644→
+   645→  // ──── Search statistics ────
+   646→  const stats = useMemo(() => {
+   647→    const total = searchHistory.length
+   648→    const filterCounts: Record<string, number> = {}
+   649→    searchHistory.forEach(h => { filterCounts[h.filterType] = (filterCounts[h.filterType] ?? 0) + 1 })
+   650→    const mostCommon = Object.entries(filterCounts).sort((a, b) => b[1] - a[1])[0]?.[0] ?? null
+   651→    const lastSearch = searchHistory[0]?.timestamp ?? null
+   652→    return { total, mostCommon, lastSearch }
+   653→  }, [searchHistory])
+   654→
+   655→  // ──── Result counts ────
+   656→  const counts = useMemo(() => ({
+   657→    documents: results.documents.length,
+   658→    persons: results.persons.length,
+   659→    episodes: results.episodes.length,
+   660→    references: results.crossReferences.length,
+   661→  }), [results])
+   662→
+   663→  const totalCount = counts.documents + counts.persons + counts.episodes + counts.references
+   664→
+   665→  // ──── Relevance indicator ────
+   666→  const relevanceScore = useMemo(() => {
+   667→    if (totalCount === 0) return 0
+   668→    // Simple heuristic: more diverse results = higher relevance
+   669→    const typesPresent = [counts.documents > 0, counts.persons > 0, counts.episodes > 0, counts.references > 0].filter(Boolean).length
+   670→    return Math.min(100, typesPresent * 25 + Math.min(totalCount * 5, 75))
+   671→  }, [totalCount, counts])
+   672→
+   673→  // ──── Categories for tabs ────
+   674→  const categories = [
+   675→    { key: 'all', label: 'Все', icon: <Search className="w-3 h-3" />, count: totalCount },
+   676→    { key: 'documents', label: 'Документы', icon: <FileText className="w-3 h-3" />, count: counts.documents },
+   677→    { key: 'persons', label: 'Участники', icon: <Users className="w-3 h-3" />, count: counts.persons },
+   678→    { key: 'episodes', label: 'Эпизоды', icon: <BookOpen className="w-3 h-3" />, count: counts.episodes },
+   679→    { key: 'references', label: 'Ссылки', icon: <Link2 className="w-3 h-3" />, count: counts.references },
+   680→  ]
+   681→
+   682→  // ──── Toggle multi-select helper ────
+   683→  const toggleMultiSelect = (arr: string[], item: string): string[] => {
+   684→    return arr.includes(item) ? arr.filter(x => x !== item) : [...arr, item]
+   685→  }
+   686→
+   687→  // ──── Filtered results based on advanced filters ────
+   688→  const filteredResults = useMemo(() => {
+   689→    let docs = results.documents
+   690→    let persons = results.persons
+   691→    let episodes = results.episodes
+   692→    let crossRefs = results.crossReferences
+   693→
+   694→    if (selectedDocTypes.length > 0) {
+   695→      docs = docs.filter(d => selectedDocTypes.includes(d.documentType ?? ''))
+   696→    }
+   697→    if (selectedRoles.length > 0) {
+   698→      persons = persons.filter(p => selectedRoles.includes(p.role ?? ''))
+   699→    }
+   700→    if (selectedSeverity.length > 0) {
+   701→      episodes = episodes.filter(e => selectedSeverity.includes(e.severity ?? ''))
+   702→    }
+   703→    if (dateFrom) {
+   704→      docs = docs.filter(d => d.documentDate && d.documentDate >= dateFrom)
+   705→    }
+   706→    if (dateTo) {
+   707→      docs = docs.filter(d => d.documentDate && d.documentDate <= dateTo)
+   708→    }
+   709→
+   710→    return { documents: docs, persons, episodes, crossReferences: crossRefs }
+   711→  }, [results, selectedDocTypes, selectedRoles, selectedSeverity, dateFrom, dateTo])
+   712→
+   713→  const filteredCounts = useMemo(() => ({
+   714→    documents: filteredResults.documents.length,
+   715→    persons: filteredResults.persons.length,
+   716→    episodes: filteredResults.episodes.length,
+   717→    references: filteredResults.crossReferences.length,
+   718→  }), [filteredResults])
+   719→
+   720→  const filteredTotal = filteredCounts.documents + filteredCounts.persons + filteredCounts.episodes + filteredCounts.references
+   721→
+   722→  // ──── Handle node click in cross-ref graph ────
+   723→  const handleGraphNodeClick = (docId: string) => {
+   724→    if (highlightedDocId === docId) {
+   725→      setHighlightedDocId(null)
+   726→    } else {
+   727→      setHighlightedDocId(docId)
+   728→    }
+   729→  }
+   730→
+   731→  // Close suggestions on outside click
+   732→  useEffect(() => {
+   733→    const handler = (e: MouseEvent) => {
+   734→      if (inputRef.current && !inputRef.current.contains(e.target as Node)) {
+   735→        setShowSuggestions(false)
+   736→      }
+   737→    }
+   738→    document.addEventListener('mousedown', handler)
+   739→    return () => document.removeEventListener('mousedown', handler)
+   740→  }, [])
+   741→
+   742→  return (
+   743→    <div className="space-y-6">
+   744→
+   745→      {/* ══════ SEARCH INPUT (Enhanced) ══════ */}
+   746→      <Card className="rounded-xl shadow-sm border-t-2 border-t-red-700 bg-gradient-to-br from-card via-card to-red-700/5">
+   747→        <CardContent className="p-6">
+   748→          {/* Large search input */}
+   749→          <div className="relative">
+   750→            <div className="flex gap-3 items-center">
+   751→              <div className="flex-1 relative">
+   752→                <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
+   753→                <Input
+   754→                  ref={inputRef}
+   755→                  placeholder="Поиск по материалам уголовного дела..."
+   756→                  value={query}
+   757→                  onChange={e => setQuery(e.target.value)}
+   758→                  onKeyDown={e => {
+   759→                    if (e.key === 'Enter') handleSearch()
+   760→                    if (e.key === 'Escape') setShowSuggestions(false)
+   761→                  }}
+   762→                  onFocus={() => {
+   763→                    if (suggestions.length > 0) setShowSuggestions(true)
+   764→                  }}
+   765→                  className="pl-12 pr-20 h-12 rounded-xl text-base font-medium shadow-sm border-2 focus:border-red-700 focus:ring-red-700/20"
+   766→                />
+   767→                {/* Keyboard shortcut hint */}
+   768→                <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1">
+   769→                  <kbd className="hidden sm:inline-flex items-center px-2 py-0.5 rounded border border-stone-300 bg-stone-100 text-xs text-muted-foreground font-mono">
+   770→                    <Keyboard className="w-3 h-3 mr-1" />Enter
+   771→                  </kbd>
+   772→                </div>
+   773→              </div>
+   774→              <Button
+   775→                className="h-12 px-6 rounded-xl bg-gradient-to-r from-red-700 to-red-800 text-white shadow-sm hover:from-red-800 hover:to-red-900 transition-all"
+   776→                onClick={handleSearch}
+   777→                disabled={isSearching || !query.trim()}
+   778→              >
+   779→                {isSearching ? <Loader2 className="w-5 h-5 animate-spin" /> : <Search className="w-5 h-5" />}
+   780→                <span className="ml-2 hidden sm:inline">Искать</span>
+   781→              </Button>
+   782→            </div>
+   783→
+   784→            {/* Auto-suggestions dropdown */}
+   785→            {showSuggestions && suggestions.length > 0 && (
+   786→              <div className="absolute left-0 right-0 top-full mt-2 z-50 bg-popover border rounded-xl shadow-lg p-2 max-h-48 overflow-y-auto">
+   787→                <div className="flex items-center gap-1 px-2 mb-1">
+   788→                  <Sparkles className="w-3 h-3 text-amber-600" />
+   789→                  <span className="text-xs font-medium text-muted-foreground">Предложения</span>
+   790→                </div>
+   791→                {suggestions.map((s, i) => (
+   792→                  <button
+   793→                    key={i}
+   794→                    onClick={() => {
+   795→                      setQuery(s)
+   796→                      setShowSuggestions(false)
+   797→                      executeSearch(s, filterType)
+   798→                    }}
+   799→                    className="flex items-center gap-2 w-full px-3 py-2 rounded-lg text-sm hover:bg-muted transition-colors text-left"
+   800→                  >
+   801→                    <Search className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+   802→                    <span className="truncate">{s}</span>
+   803→                  </button>
+   804→                ))}
+   805→              </div>
+   806→            )}
+   807→          </div>
+   808→
+   809→          {/* Search History */}
+   810→          {searchHistory.length > 0 && (
+   811→            <div className="mt-4 flex items-center gap-2 flex-wrap">
+   812→              <Clock className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+   813→              <span className="text-xs text-muted-foreground shrink-0">Недавние:</span>
+   814→              {searchHistory.map((h, i) => (
+   815→                <button
+   816→                  key={i}
+   817→                  onClick={() => executeSearch(h.query, h.filterType)}
+   818→                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-stone-300 dark:border-stone-700 bg-stone-50 dark:bg-stone-900/50 text-xs hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors"
+   819→                >
+   820→                  <span className="font-medium truncate max-w-[12rem]">{h.query}</span>
+   821→                  <Badge variant="outline" className="text-xs px-1.5 py-0 h-4">{FILTER_LABEL[h.filterType] ?? h.filterType}</Badge>
+   822→                </button>
+   823→              ))}
+   824→            </div>
+   825→          )}
+   826→        </CardContent>
+   827→      </Card>
+   828→
+   829→      {/* ══════ ADVANCED FILTER PANEL ══════ */}
+   830→      <Collapsible open={showFilters} onOpenChange={setShowFilters}>
+   831→        <Card className="rounded-xl shadow-sm">
+   832→          <CardHeader className="pb-2">
+   833→            <CollapsibleTrigger asChild>
+   834→              <Button variant="ghost" className="w-full justify-between p-2 h-auto rounded-xl hover:bg-muted/50">
+   835→                <div className="flex items-center gap-2">
+   836→                  <Filter className="w-4 h-4 text-amber-600" />
+   837→                  <span className="text-sm font-semibold">Расширенные фильтры</span>
+   838→                  {activeFilterCount > 0 && (
+   839→                    <Badge className="bg-amber-600 text-white text-xs">{activeFilterCount} активных</Badge>
+   840→                  )}
+   841→                </div>
+   842→                {showFilters ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+   843→              </Button>
+   844→            </CollapsibleTrigger>
+   845→          </CardHeader>
+   846→          <CollapsibleContent>
+   847→            <CardContent className="p-4 pt-0">
+   848→              <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+   849→                {/* Date Range */}
+   850→                <div className="space-y-2">
+   851→                  <label className="text-xs font-medium text-muted-foreground flex items-center gap-1">
+   852→                    <Calendar className="w-3 h-3" /> Диапазон дат
+   853→                  </label>
+   854→                  <div className="flex gap-2">
+   855→                    <Input
+   856→                      type="date"
+   857→                      placeholder="От"
+   858→                      value={dateFrom}
+   859→                      onChange={e => setDateFrom(e.target.value)}
+   860→                      className="rounded-xl text-xs"
+   861→                    />
+   862→                    <Input
+   863→                      type="date"
+   864→                      placeholder="До"
+   865→                      value={dateTo}
+   866→                      onChange={e => setDateTo(e.target.value)}
+   867→                      className="rounded-xl text-xs"
+   868→                    />
+   869→                  </div>
+   870→                  {(dateFrom || dateTo) && (
+   871→                    <div className="flex gap-1">
+   872→                      {dateFrom && <Badge variant="outline" className="text-xs">от {dateFrom}</Badge>}
+   873→                      {dateTo && <Badge variant="outline" className="text-xs">до {dateTo}</Badge>}
+   874→                    </div>
+   875→                  )}
+   876→                </div>
+   877→
+   878→                {/* Document Type Filter */}
+   879→                <div className="space-y-2">
+   880→                  <label className="text-xs font-medium text-muted-foreground flex items-center gap-1">
+   881→                    <FileText className="w-3 h-3" /> Тип документа
+   882→                  </label>
+   883→                  <div className="flex flex-wrap gap-1.5">
+   884→                    {DOC_TYPE_OPTIONS.map(type => (
+   885→                      <button
+   886→                        key={type}
+   887→                        onClick={() => setSelectedDocTypes(toggleMultiSelect(selectedDocTypes, type))}
+   888→                        className={`px-2.5 py-1 rounded-lg text-xs border transition-all ${
+   889→                          selectedDocTypes.includes(type)
+   890→                            ? `${NODE_TYPE_BADGE[type] ?? 'bg-stone-600 text-white'} border-transparent`
+   891→                            : 'border-stone-300 dark:border-stone-700 bg-stone-50 dark:bg-stone-900/50 text-muted-foreground hover:bg-stone-100 dark:hover:bg-stone-800'
+   892→                        }`}
+   893→                      >
+   894→                        {type}
+   895→                      </button>
+   896→                    ))}
+   897→                  </div>
+   898→                </div>
+   899→
+   900→                {/* Person Role Filter */}
+   901→                <div className="space-y-2">
+   902→                  <label className="text-xs font-medium text-muted-foreground flex items-center gap-1">
+   903→                    <Users className="w-3 h-3" /> Роль участника
+   904→                  </label>
+   905→                  <div className="flex flex-wrap gap-1.5">
+   906→                    {PERSON_ROLE_OPTIONS.map(role => (
+   907→                      <button
+   908→                        key={role}
+   909→                        onClick={() => setSelectedRoles(toggleMultiSelect(selectedRoles, role))}
+   910→                        className={`px-2.5 py-1 rounded-lg text-xs border transition-all flex items-center gap-1 ${
+   911→                          selectedRoles.includes(role)
+   912→                            ? `${ROLE_BADGE[role] ?? 'bg-stone-500 text-white'} border-transparent`
+   913→                            : 'border-stone-300 dark:border-stone-700 bg-stone-50 dark:bg-stone-900/50 text-muted-foreground hover:bg-stone-100 dark:hover:bg-stone-800'
+   914→                        }`}
+   915→                      >
+   916→                        {ROLE_ICON[role] ?? <Users className="w-3 h-3" />}
+   917→                        {role}
+   918→                      </button>
+   919→                    ))}
+   920→                  </div>
+   921→                </div>
+   922→
+   923→                {/* Episode Severity Filter */}
+   924→                <div className="space-y-2">
+   925→                  <label className="text-xs font-medium text-muted-foreground flex items-center gap-1">
+   926→                    <AlertTriangle className="w-3 h-3" /> Тяжесть эпизода
+   927→                  </label>
+   928→                  <div className="flex flex-wrap gap-1.5">
+   929→                    {SEVERITY_OPTIONS.map(sev => (
+   930→                      <button
+   931→                        key={sev}
+   932→                        onClick={() => setSelectedSeverity(toggleMultiSelect(selectedSeverity, sev))}
+   933→                        className={`px-2.5 py-1 rounded-lg text-xs border transition-all ${
+   934→                          selectedSeverity.includes(sev)
+   935→                            ? `${SEVERITY_BADGE[sev] ?? 'bg-stone-500 text-white'} border-transparent`
+   936→                            : 'border-stone-300 dark:border-stone-700 bg-stone-50 dark:bg-stone-900/50 text-muted-foreground hover:bg-stone-100 dark:hover:bg-stone-800'
+   937→                        }`}
+   938→                      >
+   939→                        {sev}
+   940→                      </button>
+   941→                    ))}
+   942→                  </div>
+   943→                </div>
+   944→
+   945→                {/* Article Code Filter */}
+   946→                <div className="space-y-2">
+   947→                  <label className="text-xs font-medium text-muted-foreground flex items-center gap-1">
+   948→                    <Scale className="w-3 h-3" /> Статья УК/УПК
+   949→                  </label>
+   950→                  <div className="flex flex-wrap gap-1.5 max-h-32 overflow-y-auto">
+   951→                    {ARTICLE_CODE_OPTIONS.map(art => (
+   952→                      <button
+   953→                        key={art}
+   954→                        onClick={() => setSelectedArticles(toggleMultiSelect(selectedArticles, art))}
+   955→                        className={`px-2.5 py-1 rounded-lg text-xs border transition-all ${
+   956→                          selectedArticles.includes(art)
+   957→                            ? 'bg-stone-600 text-white border-transparent'
+   958→                            : 'border-stone-300 dark:border-stone-700 bg-stone-50 dark:bg-stone-900/50 text-muted-foreground hover:bg-stone-100 dark:hover:bg-stone-800'
+   959→                        }`}
+   960→                      >
+   961→                        {art}
+   962→                      </button>
+   963→                    ))}
+   964→                  </div>
+   965→                </div>
+   966→
+   967→                {/* Reset Button */}
+   968→                <div className="space-y-2 flex flex-col items-start justify-end">
+   969→                  {activeFilterCount > 0 && (
+   970→                    <Button
+   971→                      size="sm"
+   972→                      variant="outline"
+   973→                      className="rounded-xl gap-1 text-xs border-red-300 text-red-700 hover:bg-red-50 dark:hover:bg-red-950/30"
+   974→                      onClick={resetFilters}
+   975→                    >
+   976→                      <X className="w-3 h-3" /> Сбросить все ({activeFilterCount})
+   977→                    </Button>
+   978→                  )}
+   979→                  {activeFilterCount === 0 && (
+   980→                    <p className="text-xs text-muted-foreground">Нет активных фильтров</p>
+   981→                  )}
+   982→                </div>
+   983→              </div>
+   984→            </CardContent>
+   985→          </CollapsibleContent>
+   986→        </Card>
+   987→      </Collapsible>
+   988→
+   989→      {/* ══════ SEARCH STATISTICS BAR ══════ */}
+   990→      {(totalCount > 0 || stats.total > 0) && (
+   991→        <Card className="rounded-xl shadow-sm bg-gradient-to-r from-amber-900/10 to-stone-900/5">
+   992→          <CardContent className="p-4">
+   993→            <div className="flex items-center gap-2 mb-3">
+   994→              <BarChart3 className="w-4 h-4 text-amber-600" />
+   995→              <p className="font-semibold text-sm">Статистика поиска</p>
+   996→            </div>
+   997→
+   998→            {/* Total results + breakdown bar */}
+   999→            {totalCount > 0 && (
+  1000→              <div className="mb-4">
+  1001→                <div className="flex items-center justify-between mb-2">
+  1002→                  <span className="text-xs text-muted-foreground">Результатов: <span className="font-bold text-foreground">{filteredTotal}</span> из {totalCount}</span>
+  1003→                  <div className="flex items-center gap-3">
+  1004→                    {searchDuration && (
+  1005→                      <span className="text-xs text-muted-foreground flex items-center gap-1">
+  1006→                        <Zap className="w-3 h-3 text-amber-600" /> {searchDuration} мс
+  1007→                      </span>
+  1008→                    )}
+  1009→                    <span className="text-xs text-muted-foreground flex items-center gap-1">
+  1010→                      <TrendingUp className="w-3 h-3 text-emerald-700" /> Релевантность: {relevanceScore}%
+  1011→                    </span>
+  1012→                  </div>
+  1013→                </div>
+  1014→                {/* Horizontal breakdown bar */}
+  1015→                <div className="flex h-3 rounded-full overflow-hidden bg-stone-200 dark:bg-stone-800">
+  1016→                  {filteredCounts.documents > 0 && (
+  1017→                    <div
+  1018→                      className="bg-red-600 transition-all"
+  1019→                      style={{ width: `${(filteredCounts.documents / filteredTotal) * 100}%` }}
+  1020→                      title={`Документы: ${filteredCounts.documents}`}
+  1021→                    />
+  1022→                  )}
+  1023→                  {filteredCounts.persons > 0 && (
+  1024→                    <div
+  1025→                      className="bg-amber-500 transition-all"
+  1026→                      style={{ width: `${(filteredCounts.persons / filteredTotal) * 100}%` }}
+  1027→                      title={`Участники: ${filteredCounts.persons}`}
+  1028→                    />
+  1029→                  )}
+  1030→                  {filteredCounts.episodes > 0 && (
+  1031→                    <div
+  1032→                      className="bg-emerald-600 transition-all"
+  1033→                      style={{ width: `${(filteredCounts.episodes / filteredTotal) * 100}%` }}
+  1034→                      title={`Эпизоды: ${filteredCounts.episodes}`}
+  1035→                    />
+  1036→                  )}
+  1037→                  {filteredCounts.references > 0 && (
+  1038→                    <div
+  1039→                      className="bg-stone-500 transition-all"
+  1040→                      style={{ width: `${(filteredCounts.references / filteredTotal) * 100}%` }}
+  1041→                      title={`Ссылки: ${filteredCounts.references}`}
+  1042→                    />
+  1043→                  )}
+  1044→                </div>
+  1045→                <div className="flex flex-wrap gap-3 mt-2">
+  1046→                  <span className="flex items-center gap-1.5 text-xs">
+  1047→                    <div className="w-2.5 h-2.5 rounded-sm bg-red-600" /> Документы {filteredCounts.documents}
+  1048→                  </span>
+  1049→                  <span className="flex items-center gap-1.5 text-xs">
+  1050→                    <div className="w-2.5 h-2.5 rounded-sm bg-amber-500" /> Участники {filteredCounts.persons}
+  1051→                  </span>
+  1052→                  <span className="flex items-center gap-1.5 text-xs">
+  1053→                    <div className="w-2.5 h-2.5 rounded-sm bg-emerald-600" /> Эпизоды {filteredCounts.episodes}
+  1054→                  </span>
+  1055→                  <span className="flex items-center gap-1.5 text-xs">
+  1056→                    <div className="w-2.5 h-2.5 rounded-sm bg-stone-500" /> Ссылки {filteredCounts.references}
+  1057→                  </span>
+  1058→                </div>
+  1059→              </div>
+  1060→            )}
+  1061→
+  1062→            {/* Previous search stats */}
+  1063→            <div className="grid grid-cols-3 gap-3">
+  1064→              <div className="text-center p-2 rounded-lg bg-muted/50">
+  1065→                <p className="text-xl font-bold text-amber-700">{stats.total}</p>
+  1066→                <p className="text-xs text-muted-foreground">Всего запросов</p>
+  1067→              </div>
+  1068→              <div className="text-center p-2 rounded-lg bg-muted/50">
+  1069→                <p className="text-sm font-bold text-amber-700 mt-1">{stats.mostCommon ? FILTER_LABEL[stats.mostCommon] ?? stats.mostCommon : '—'}</p>
+  1070→                <p className="text-xs text-muted-foreground">Частый фильтр</p>
+  1071→              </div>
+  1072→              <div className="text-center p-2 rounded-lg bg-muted/50">
+  1073→                <p className="text-xs font-bold text-amber-700 mt-1.5">{stats.lastSearch ? formatRussianDateTime(stats.lastSearch) : '—'}</p>
+  1074→                <p className="text-xs text-muted-foreground">Последний поиск</p>
+  1075→              </div>
+  1076→            </div>
+  1077→          </CardContent>
+  1078→        </Card>
+  1079→      )}
+  1080→
+  1081→      {/* ══════ BOOKMARKS PANEL ══════ */}
+  1082→      <BookmarksPanel bookmarks={bookmarks} />
+  1083→
+  1084→      {/* ══════ CROSS-REFERENCE GRAPH MINI WIDGET ══════ */}
+  1085→      <CrossRefGraphMini nodes={crossRefNodes} highlightedDocId={highlightedDocId} onNodeClick={handleGraphNodeClick} />
+  1086→
+  1087→      {/* ══════ EMPTY STATE ══════ */}
+  1088→      {!query.trim() && !searchMutation.data && totalCount === 0 && (
+  1089→        <Card className="rounded-xl shadow-sm border-t-2 border-t-amber-500 bg-gradient-to-br from-card via-card to-amber-500/5">
+  1090→          <CardContent className="p-10 text-center">
+  1091→            <div className="flex items-center justify-center w-20 h-20 rounded-full bg-amber-500/10 mx-auto mb-4 ring-4 ring-amber-500/5">
+  1092→              <SearchX className="w-10 h-10 text-amber-600" />
+  1093→            </div>
+  1094→            <p className="mt-2 text-base font-semibold">Начните поиск по материалам дела</p>
+  1095→            <p className="text-sm text-muted-foreground mt-1 max-w-md mx-auto">
+  1096→             Введите запрос или выберите предложенный вариант, чтобы найти документы, участников, эпизоды и перекрёстные ссылки.
+  1097→            </p>
+  1098→            <div className="flex flex-wrap gap-2 justify-center mt-4">
+  1099→              {['Колесниченко', 'ст. 159 УК РФ', 'процессуальные нарушения', 'хищение'].map(s => (
+  1100→                <Button key={s} size="sm" variant="outline" className="rounded-xl" onClick={() => executeSearch(s, filterType)}>{s}</Button>
+  1101→              ))}
+  1102→            </div>
+  1103→          </CardContent>
+  1104→        </Card>
+  1105→      )}
+  1106→
+  1107→      {/* ══════ RESULT COUNT + EXPORT ══════ */}
+  1108→      {filteredTotal > 0 && (
+  1109→        <div className="flex items-center gap-2">
+  1110→          <Badge className="bg-stone-600 text-white">{filteredTotal} результатов</Badge>
+  1111→          {activeFilterCount > 0 && (
+  1112→            <Badge className="bg-amber-600 text-white text-xs">фильтровано: {activeFilterCount}</Badge>
+  1113→          )}
+  1114→          <Separator className="flex-1" />
+  1115→          <Button size="sm" variant="outline" className="rounded-xl gap-1" onClick={() => exportSearchCSV(filteredResults)}>
+  1116→            <Download className="w-3 h-3" />Экспорт CSV
+  1117→          </Button>
+  1118→          <Button size="sm" variant="outline" className="rounded-xl gap-1">
+  1119→            <FileText className="w-3 h-3" />Экспорт PDF
+  1120→          </Button>
+  1121→        </div>
+  1122→      )}
+  1123→
+  1124→      {/* ══════ RESULTS TABS ══════ */}
+  1125→      {filteredTotal > 0 && (
+  1126→        <Tabs value={activeTab} onValueChange={setActiveTab}>
+  1127→          <TabsList className="w-full flex-wrap h-auto gap-1 p-1">
+  1128→            {categories.map(({ key, label, icon, count }) => (
+  1129→              <TabsTrigger key={key} value={key} className="gap-1 data-[state=active]:bg-red-700 data-[state=active]:text-white">
+  1130→                {icon}{label}
+  1131→                {count > 0 && (
+  1132→                  <Badge className={`text-xs ml-1 ${activeTab === key ? 'bg-red-800 text-white' : 'bg-stone-200 dark:bg-stone-800 text-muted-foreground'}`}>
+  1133→                    {count}
+  1134→                  </Badge>
+  1135→                )}
+  1136→              </TabsTrigger>
+  1137→            ))}
+  1138→          </TabsList>
+  1139→
+  1140→          {/* ──── ALL Tab ──── */}
+  1141→          <TabsContent value="all" className="space-y-4 mt-4">
+  1142→            {/* Documents section */}
+  1143→            {filteredCounts.documents > 0 && (
+  1144→              <div className="space-y-2">
+  1145→                <div className="flex items-center gap-2">
+  1146→                  <FileText className="w-4 h-4 text-red-700" />
+  1147→                  <p className="text-sm font-semibold">Документы</p>
+  1148→                  <Badge className="bg-red-700 text-white text-xs">{filteredCounts.documents}</Badge>
+  1149→                </div>
+  1150→                <div className="space-y-2">
+  1151→                  {filteredResults.documents.map(d => <DocumentResultCard key={d.id} doc={d} />)}
+  1152→                </div>
+  1153→              </div>
+  1154→            )}
+  1155→            {/* Persons section */}
+  1156→            {filteredCounts.persons > 0 && (
+  1157→              <div className="space-y-2">
+  1158→                <div className="flex items-center gap-2">
+  1159→                  <Users className="w-4 h-4 text-amber-600" />
+  1160→                  <p className="text-sm font-semibold">Участники</p>
+  1161→                  <Badge className="bg-amber-600 text-white text-xs">{filteredCounts.persons}</Badge>
+  1162→                </div>
+  1163→                <div className="space-y-2">
+  1164→                  {filteredResults.persons.map(p => <PersonResultCard key={p.id} person={p} />)}
+  1165→                </div>
+  1166→              </div>
+  1167→            )}
+  1168→            {/* Episodes section */}
+  1169→            {filteredCounts.episodes > 0 && (
+  1170→              <div className="space-y-2">
+  1171→                <div className="flex items-center gap-2">
+  1172→                  <BookOpen className="w-4 h-4 text-emerald-700" />
+  1173→                  <p className="text-sm font-semibold">Эпизоды</p>
+  1174→                  <Badge className="bg-emerald-700 text-white text-xs">{filteredCounts.episodes}</Badge>
+  1175→                </div>
+  1176→                <div className="space-y-2">
+  1177→                  {filteredResults.episodes.map(e => <EpisodeResultCard key={e.id} episode={e} />)}
+  1178→                </div>
+  1179→              </div>
+  1180→            )}
+  1181→            {/* Cross-References section */}
+  1182→            {filteredCounts.references > 0 && (
+  1183→              <div className="space-y-2">
+  1184→                <div className="flex items-center gap-2">
+  1185→                  <Link2 className="w-4 h-4 text-stone-600" />
+  1186→                  <p className="text-sm font-semibold">Перекрёстные ссылки</p>
+  1187→                  <Badge className="bg-stone-600 text-white text-xs">{filteredCounts.references}</Badge>
+  1188→                </div>
+  1189→                <div className="space-y-2">
+  1190→                  {filteredResults.crossReferences.map(cr => <CrossRefResultCard key={cr.id} cr={cr} />)}
+  1191→                </div>
+  1192→              </div>
+  1193→            )}
+  1194→          </TabsContent>
+  1195→
+  1196→          {/* ──── DOCUMENTS Tab ──── */}
+  1197→          <TabsContent value="documents" className="space-y-2 mt-4">
+  1198→            {filteredCounts.documents === 0 ? (
+  1199→              <Card className="rounded-xl shadow-sm border-t-2 border-t-red-500 bg-gradient-to-br from-card via-card to-red-500/5">
+  1200→                <CardContent className="p-6 text-center">
+  1201→                  <FileText className="w-12 h-12 mx-auto text-red-500/60" />
+  1202→                  <p className="mt-2 text-sm font-semibold">Документы не найдены</p>
+  1203→                  <p className="text-xs text-muted-foreground mt-1">Попробуйте изменить запрос или сбросить фильтр</p>
+  1204→                </CardContent>
+  1205→              </Card>
+  1206→            ) : filteredResults.documents.map(d => <DocumentResultCard key={d.id} doc={d} />)}
+  1207→          </TabsContent>
+  1208→
+  1209→          {/* ──── PERSONS Tab ──── */}
+  1210→          <TabsContent value="persons" className="space-y-2 mt-4">
+  1211→            {filteredCounts.persons === 0 ? (
+  1212→              <Card className="rounded-xl shadow-sm border-t-2 border-t-amber-500 bg-gradient-to-br from-card via-card to-amber-500/5">
+  1213→                <CardContent className="p-6 text-center">
+  1214→                  <Users className="w-12 h-12 mx-auto text-amber-500/60" />
+  1215→                  <p className="mt-2 text-sm font-semibold">Участники не найдены</p>
+  1216→                  <p className="text-xs text-muted-foreground mt-1">Попробуйте изменить запрос или сбросить фильтр</p>
+  1217→                </CardContent>
+  1218→              </Card>
+  1219→            ) : filteredResults.persons.map(p => <PersonResultCard key={p.id} person={p} />)}
+  1220→          </TabsContent>
+  1221→
+  1222→          {/* ──── EPISODES Tab ──── */}
+  1223→          <TabsContent value="episodes" className="space-y-2 mt-4">
+  1224→            {filteredCounts.episodes === 0 ? (
+  1225→              <Card className="rounded-xl shadow-sm border-t-2 border-t-emerald-500 bg-gradient-to-br from-card via-card to-emerald-500/5">
+  1226→                <CardContent className="p-6 text-center">
+  1227→                  <BookOpen className="w-12 h-12 mx-auto text-emerald-500/60" />
+  1228→                  <p className="mt-2 text-sm font-semibold">Эпизоды не найдены</p>
+  1229→                  <p className="text-xs text-muted-foreground mt-1">Попробуйте изменить запрос или сбросить фильтр</p>
+  1230→                </CardContent>
+  1231→              </Card>
+  1232→            ) : filteredResults.episodes.map(e => <EpisodeResultCard key={e.id} episode={e} />)}
+  1233→          </TabsContent>
+  1234→
+  1235→          {/* ──── REFERENCES Tab ──── */}
+  1236→          <TabsContent value="references" className="space-y-2 mt-4">
+  1237→            {filteredCounts.references === 0 ? (
+  1238→              <Card className="rounded-xl shadow-sm border-t-2 border-t-stone-500 bg-gradient-to-br from-card via-card to-stone-500/5">
+  1239→                <CardContent className="p-6 text-center">
+  1240→                  <Link2 className="w-12 h-12 mx-auto text-stone-500/60" />
+  1241→                  <p className="mt-2 text-sm font-semibold">Перекрёстные ссылки не найдены</p>
+  1242→                  <p className="text-xs text-muted-foreground mt-1">Попробуйте изменить запрос или сбросить фильтр</p>
+  1243→                </CardContent>
+  1244→              </Card>
+  1245→            ) : filteredResults.crossReferences.map(cr => <CrossRefResultCard key={cr.id} cr={cr} />)}
+  1246→          </TabsContent>
+  1247→        </Tabs>
+  1248→      )}
+  1249→
+  1250→      <Separator />
+  1251→      <p className="text-xs text-muted-foreground">Результаты поиска по материалам уголовного дела № 2024-00145</p>
+  1252→    </div>
+  1253→  )
+  1254→}
+  1255→

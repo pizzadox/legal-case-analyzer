@@ -1,0 +1,1487 @@
+     1→'use client'
+     2→
+     3→import { useState, useMemo, useCallback } from 'react'
+     4→import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+     5→import { Badge } from '@/components/ui/badge'
+     6→import { Button } from '@/components/ui/button'
+     7→import {
+     8→  Sheet,
+     9→  SheetContent,
+    10→  SheetHeader,
+    11→  SheetTitle,
+    12→} from '@/components/ui/sheet'
+    13→import { Separator } from '@/components/ui/separator'
+    14→import {
+    15→  FileText,
+    16→  Shield,
+    17→  Swords,
+    18→  Scale,
+    19→  Link2,
+    20→  AlertTriangle,
+    21→  TrendingUp,
+    22→  Eye,
+    23→  Filter,
+    24→  CheckCircle2,
+    25→  XCircle,
+    26→  Activity,
+    27→  Zap,
+    28→  ChevronRight,
+    29→} from 'lucide-react'
+    30→
+    31→// ============================================================================
+    32→// Типы данных
+    33→// ============================================================================
+    34→
+    35→type EvidenceSide = 'prosecution' | 'defense'
+    36→type EvidenceType = 'документ' | 'показание' | 'экспертиза' | 'протокол'
+    37→type LinkType = 'contradiction' | 'corroboration' | 'partial'
+    38→type LinkStrength = 'strong' | 'moderate' | 'weak'
+    39→type FilterKey = 'all' | 'prosecution' | 'defense' | 'strong'
+    40→
+    41→interface EvidenceItem {
+    42→  id: string
+    43→  name: string
+    44→  shortName: string
+    45→  date: string // ISO date
+    46→  type: EvidenceType
+    47→  side: EvidenceSide
+    48→  strength: number // 0..100
+    49→  source: string
+    50→  summary: string
+    51→  strengths: string[]
+    52→  weaknesses: string[]
+    53→}
+    54→
+    55→interface EvidenceLink {
+    56→  id: string
+    57→  sourceId: string
+    58→  targetId: string
+    59→  type: LinkType
+    60→  strength: LinkStrength
+    61→  description: string
+    62→}
+    63→
+    64→// ============================================================================
+    65→// Конфигурация отображения типов
+    66→// ============================================================================
+    67→
+    68→const TYPE_CONFIG: Record<
+    69→  EvidenceType,
+    70→  { label: string; icon: React.ReactNode; tone: string }
+    71→> = {
+    72→  документ: {
+    73→    label: 'Документ',
+    74→    icon: <FileText className="w-3 h-3" />,
+    75→    tone: 'bg-stone-100 text-stone-700 dark:bg-stone-800 dark:text-stone-200',
+    76→  },
+    77→  показание: {
+    78→    label: 'Показание',
+    79→    icon: <Eye className="w-3 h-3" />,
+    80→    tone: 'bg-amber-100 text-amber-800 dark:bg-amber-950/50 dark:text-amber-200',
+    81→  },
+    82→  экспертиза: {
+    83→    label: 'Экспертиза',
+    84→    icon: <Activity className="w-3 h-3" />,
+    85→    tone: 'bg-purple-100 text-purple-800 dark:bg-purple-950/50 dark:text-purple-200',
+    86→  },
+    87→  протокол: {
+    88→    label: 'Протокол',
+    89→    icon: <Scale className="w-3 h-3" />,
+    90→    tone: 'bg-orange-100 text-orange-800 dark:bg-orange-950/50 dark:text-orange-200',
+    91→  },
+    92→}
+    93→
+    94→const LINK_TYPE_CONFIG: Record<
+    95→  LinkType,
+    96→  { label: string; color: string; dashed: boolean }
+    97→> = {
+    98→  contradiction: { label: 'Противоречие', color: '#b91c1c', dashed: false },
+    99→  corroboration: { label: 'Подтверждение', color: '#047857', dashed: false },
+   100→  partial: { label: 'Частичное', color: '#d97706', dashed: true },
+   101→}
+   102→
+   103→const LINK_STRENGTH_CONFIG: Record<
+   104→  LinkStrength,
+   105→  { label: string; width: number; opacity: number }
+   106→> = {
+   107→  strong: { label: 'Сильная', width: 2.5, opacity: 0.95 },
+   108→  moderate: { label: 'Средняя', width: 1.8, opacity: 0.75 },
+   109→  weak: { label: 'Слабая', width: 1.2, opacity: 0.55 },
+   110→}
+   111→
+   112→const FILTER_OPTIONS: { key: FilterKey; label: string; icon: React.ReactNode }[] = [
+   113→  { key: 'all', label: 'Все', icon: <Filter className="w-3 h-3" /> },
+   114→  { key: 'prosecution', label: 'Обвинение', icon: <Swords className="w-3 h-3" /> },
+   115→  { key: 'defense', label: 'Защита', icon: <Shield className="w-3 h-3" /> },
+   116→  { key: 'strong', label: 'С сильной связью', icon: <Zap className="w-3 h-3" /> },
+   117→]
+   118→
+   119→// ============================================================================
+   120→// Вспомогательные функции для силы доказательства
+   121→// ============================================================================
+   122→
+   123→function strengthColor(s: number): string {
+   124→  if (s >= 70) return '#b91c1c' // strong — red-700 (prosecution) или emerald для defense (определяется вызывающим)
+   125→  if (s >= 40) return '#d97706' // moderate — amber-600
+   126→  return '#78716c' // weak — stone-500
+   127→}
+   128→
+   129→function strengthColorForSide(s: number, side: EvidenceSide): string {
+   130→  if (s >= 70) return side === 'prosecution' ? '#b91c1c' : '#047857'
+   131→  if (s >= 40) return '#d97706'
+   132→  return '#78716c'
+   133→}
+   134→
+   135→function strengthLabel(s: number): string {
+   136→  if (s >= 70) return 'Сильное'
+   137→  if (s >= 40) return 'Умеренное'
+   138→  return 'Слабое'
+   139→}
+   140→
+   141→function strengthBadge(s: number): string {
+   142→  if (s >= 70) return 'bg-emerald-700 text-white'
+   143→  if (s >= 40) return 'bg-amber-600 text-white'
+   144→  return 'bg-stone-500 text-white'
+   145→}
+   146→
+   147→function strengthBadgeForSide(s: number, side: EvidenceSide): string {
+   148→  if (s >= 70) return side === 'prosecution' ? 'bg-red-700 text-white' : 'bg-emerald-700 text-white'
+   149→  if (s >= 40) return 'bg-amber-600 text-white'
+   150→  return 'bg-stone-500 text-white'
+   151→}
+   152→
+   153→// ============================================================================
+   154→// Mock-данные: доказательства обвинения (6), защиты (5), связи (7)
+   155→// ============================================================================
+   156→
+   157→const PROSECUTION_EVIDENCE: EvidenceItem[] = [
+   158→  {
+   159→    id: 'pe-1',
+   160→    name: 'Обвинительное заключение',
+   161→    shortName: 'Обвин. заключение',
+   162→    date: '2024-04-25',
+   163→    type: 'документ',
+   164→    side: 'prosecution',
+   165→    strength: 78,
+   166→    source: 'Следственный отдел СУ СК России по г. Москве',
+   167→    summary:
+   168→      'Сводный процессуальный документ, излагающий сформулированное обвинение против Колесниченко Д.А. по ст. 159 ч. 3 и ст. 160 ч. 2 УК РФ. Содержит анализ собранных доказательств, квалификацию деяния и предложения о передаче дела в суд.',
+   169→    strengths: [
+   170→      'Систематизированы все эпизоды преступной деятельности',
+   171→      'Подкреплено результатами четырёх экспертиз',
+   172→      'Содержит ссылки на 45 томов материалов дела',
+   173→    ],
+   174→    weaknesses: [
+   175→      'Не учтены показания свидетеля Козлова о местонахождении обвиняемого',
+   176→      'Финансовая экспертиза основана на копиях, а не оригиналах документов',
+   177→      'Не отражена хронология обысков 20 февраля 2024 года',
+   178→    ],
+   179→  },
+   180→  {
+   181→    id: 'pe-2',
+   182→    name: 'Показания свидетеля Петрова И.В.',
+   183→    shortName: 'Показания Петрова',
+   184→    date: '2024-02-05',
+   185→    type: 'показание',
+   186→    side: 'prosecution',
+   187→    strength: 55,
+   188→    source: 'Протокол допроса свидетеля от 05.02.2024',
+   189→    summary:
+   190→      'Свидетель Петров И.В. — бывший сотрудник ООО «ТехноПром» — дал показания о причастности Колесниченко Д.А. к хищению денежных средств путём фиктивных договоров. В повторном допросе 15.04.2024 уточнил отдельные обстоятельства.',
+   191→    strengths: [
+   192→      'Свидетель являлся непосредственным участником операций',
+   193→      'Показания подтверждаются частью бухгалтерских документов',
+   194→    ],
+   195→    weaknesses: [
+   196→      'Противоречия с показаниями свидетеля Козлова В.Н.',
+   197→      'Изменение показаний между допросами',
+   198→      'Личная заинтересованность свидетеля (конфликт с обвиняемым)',
+   199→    ],
+   200→  },
+   201→  {
+   202→    id: 'pe-3',
+   203→    name: 'Протокол обыска от 20.02.2024',
+   204→    shortName: 'Протокол обыска',
+   205→    date: '2024-02-20',
+   206→    type: 'протокол',
+   207→    side: 'prosecution',
+   208→    strength: 62,
+   209→    source: 'Протокол обыска № 14/2024 от 20.02.2024',
+   210→    summary:
+   211→      'Протокол обыска служебного помещения Колесниченко Д.А. в офисе ООО «ТехноПром». Изъяты 45 листов финансовых документов, ноутбук и три флеш-накопителя. Обыск проведён в присутствии понятых.',
+   212→    strengths: [
+   213→      'Изъятие зафиксировано с участием двух понятых',
+   214→      'Документы упакованы и опечатаны',
+   215→    ],
+   216→    weaknesses: [
+   217→      'Обыск проведён без участия адвоката подозреваемого',
+   218→      'Отсутствует видеофиксация процесса изъятия',
+   219→      'Задержка в передаче на экспертизу (1 день)',
+   220→    ],
+   221→  },
+   222→  {
+   223→    id: 'pe-4',
+   224→    name: 'Заключение финансово-экономической экспертизы',
+   225→    shortName: 'Заключение эксперта',
+   226→    date: '2024-04-10',
+   227→    type: 'экспертиза',
+   228→    side: 'prosecution',
+   229→    strength: 72,
+   230→    source: 'Заключение эксперта № 128-Э от 10.04.2024',
+   231→    summary:
+   232→      'Комплексная финансово-экономическая экспертиза, проведённая экспертом Кузнецовой Е.В. Установлено хищение 4,7 млн руб. путём заключения фиктивных договоров с подставными контрагентами. Подтверждена финансовая цепочка от ООО «ТехноПром» в пользу аффилированных структур.',
+   233→    strengths: [
+   234→      'Эксперт имеет 12-летний стаж и государственную аттестацию',
+   235→      'Применены стандартные методики анализа',
+   236→      'Заключение согласуется с изъятыми документами',
+   237→    ],
+   238→    weaknesses: [
+   239→      'Экспертиза проводилась по копиям документов, а не оригиналам',
+   240→      'Не исследована оборотная сторона договоров',
+   241→      'Эксперт не давала показаний в судебном заседании',
+   242→    ],
+   243→  },
+   244→  {
+   245→    id: 'pe-5',
+   246→    name: 'Финансовые документы ООО «ТехноПром»',
+   247→    shortName: 'Финанс. документы',
+   248→    date: '2024-03-05',
+   249→    type: 'документ',
+   250→    side: 'prosecution',
+   251→    strength: 68,
+   252→    source: 'Изъято при обыске 20.02.2024, приобщено 05.03.2024',
+   253→    summary:
+   254→      'Совокупность изъятых при обыске первичных учётных документов: договоры, счета, платёжные поручения, акты выполненных работ. Документы подтверждают финансовые операции между ООО «ТехноПром» и подставными контрагентами в период 2023–2024 гг.',
+   255→    strengths: [
+   256→      'Подлинность подписей подтверждена почерковедческой экспертизой',
+   257→      'Документы образуют непрерывную финансовую цепочку',
+   258→    ],
+   259→    weaknesses: [
+   260→      'Часть документов утрачена при хранении',
+   261→      'Отсутствуют оригиналы платёжных поручений по трём сделкам',
+   262→      'Не все контрагенты идентифицированы',
+   263→    ],
+   264→  },
+   265→  {
+   266→    id: 'pe-6',
+   267→    name: 'Показания свидетеля Ивановой А.С.',
+   268→    shortName: 'Показания Ивановой',
+   269→    date: '2024-03-20',
+   270→    type: 'показание',
+   271→    side: 'prosecution',
+   272→    strength: 48,
+   273→    source: 'Протокол допроса свидетеля от 20.03.2024',
+   274→    summary:
+   275→      'Свидетель Иванова А.С. — главный бухгалтер ООО «ТехноПром» — дала показания о порядке согласования финансовых операций с Колесниченко Д.А. Подтвердила подлинность подписей на ключевых документах.',
+   276→    strengths: [
+   277→      'Свидетель непосредственно подписывала документы',
+   278→      'Показания согласуются с результатами экспертизы',
+   279→    ],
+   280→    weaknesses: [
+   281→      'Свидетель имеет собственный интерес (уголовное преследование прекращено)',
+   282→      'Отдельные утверждения основаны на слухах',
+   283→      'Не может вспомнить детали сделок 2023 года',
+   284→    ],
+   285→  },
+   286→]
+   287→
+   288→const DEFENSE_EVIDENCE: EvidenceItem[] = [
+   289→  {
+   290→    id: 'de-1',
+   291→    name: 'Показания свидетеля Козлова В.Н. — алиби',
+   292→    shortName: 'Козлов — алиби',
+   293→    date: '2024-02-28',
+   294→    type: 'показание',
+   295→    side: 'defense',
+   296→    strength: 74,
+   297→    source: 'Протокол допроса свидетеля от 28.02.2024',
+   298→    summary:
+   299→      'Свидетель Козлов В.Н. — сосед Колесниченко Д.А. — подтвердил, что в день проведения обыска (20.02.2024) и в день предполагаемой ключевой сделки обвиняемый находился у него дома в связи с семейным торжеством. Алиби охватывает период 14:00–18:00.',
+   300→    strengths: [
+   301→      'Свидетель не связан с обвиняемым служебными отношениями',
+   302→      'Показания согласуются с записями видеонаблюдения',
+   303→      'Алиби подтверждается третьим лицом (супруга Козлова)',
+   304→    ],
+   305→    weaknesses: [
+   306→      'Свидетель является давним знакомым обвиняемого',
+   307→      'Не может вспомнить точное время прихода Колесниченко',
+   308→    ],
+   309→  },
+   310→  {
+   311→    id: 'de-2',
+   312→    name: 'Видеозапись с камер наблюдения',
+   313→    shortName: 'Видео с камер',
+   314→    date: '2024-03-12',
+   315→    type: 'документ',
+   316→    side: 'defense',
+   317→    strength: 81,
+   318→    source: 'DVD-носитель, изъятый адвокатом у администратора ТЦ «Город»',
+   319→    summary:
+   320→      'Видеозапись с камер наружного наблюдения ТЦ «Город» за 20.02.2024, фиксирующая нахождение Колесниченко Д.А. в торговом центре в период 14:30–17:45, что противоречит версии следствия о его присутствии в офисе ООО «ТехноПром».',
+   321→    strengths: [
+   322→      'Видеозапись имеет непрерывный характер без признаков монтажа',
+   323→      'Подлинность подтверждена технической экспертизой',
+   324→      'Время на записи синхронизировано с сервером ТЦ',
+   325→    ],
+   326→    weaknesses: [
+   327→      'Запись получена адвокатом вне процессуального порядка',
+   328→      'Часть изображения перекрыта конструкцией',
+   329→    ],
+   330→  },
+   331→  {
+   332→    id: 'de-3',
+   333→    name: 'Билеты на поезд Москва — Казань',
+   334→    shortName: 'Билеты на поезд',
+   335→    date: '2024-02-15',
+   336→    type: 'документ',
+   337→    side: 'defense',
+   338→    strength: 65,
+   339→    source: 'Электронные билеты, распечатка от РЖД',
+   340→    summary:
+   341→      'Электронные проездные билеты на поезд Москва — Казань, оформленные на имя Колесниченко Д.А. на 19.02.2024 (вечерний рейс). Документ подтверждает, что обвиняемый покинул Москву накануне обыска и предполагаемой ключевой сделки.',
+   342→    strengths: [
+   343→      'Билеты оформлены через официальную систему РЖД',
+   344→      'Подтверждены системой бронирования',
+   345→      'Согласуются с показаниями Козлова',
+   346→    ],
+   347→    weaknesses: [
+   348→      'Не подтверждено фактическое использование билетов',
+   349→      'Отсутствует посадочный талон',
+   350→    ],
+   351→  },
+   352→  {
+   353→    id: 'de-4',
+   354→    name: 'Характеристика с места работы',
+   355→    shortName: 'Характеристика',
+   356→    date: '2024-04-05',
+   357→    type: 'документ',
+   358→    side: 'defense',
+   359→    strength: 45,
+   360→    source: 'Характеристика ООО «ТехноПром» от 05.04.2024',
+   361→    summary:
+   362→      'Положительная производственная характеристика на Колесниченко Д.А. с места работы, подписанная генеральным директором. Отражает высокие профессиональные качества, отсутствие дисциплинарных взысканий и поощрения за период работы.',
+   363→    strengths: [
+   364→      'Подписана действующим руководителем организации',
+   365→      'Содержит конкретные достижения',
+   366→    ],
+   367→    weaknesses: [
+   368→      'Подписана лицом, не являющимся независимым',
+   369→      'Относится к личности, а не к обстоятельствам дела',
+   370→    ],
+   371→  },
+   372→  {
+   373→    id: 'de-5',
+   374→    name: 'Справка об отсутствии судимости',
+   375→    shortName: 'Справка о судимости',
+   376→    date: '2024-04-22',
+   377→    type: 'документ',
+   378→    side: 'defense',
+   379→    strength: 38,
+   380→    source: 'Справка МВД России от 22.04.2024 № 77-АА-123456',
+   381→    summary:
+   382→      'Официальная справка МВД России об отсутствии у Колесниченко Д.А. судимости и фактов уголовного преследования на момент возбуждения настоящего уголовного дела. Имеет значение для характеристики личности и назначения наказания.',
+   383→    strengths: [
+   384→      'Официальный документ государственного органа',
+   385→      'Имеет неопровержимый характер',
+   386→    ],
+   387→    weaknesses: [
+   388→      'Относится к личности, а не к обстоятельствам дела',
+   389→      'Не опровергает инкриминируемое деяние',
+   390→    ],
+   391→  },
+   392→]
+   393→
+   394→const EVIDENCE_LINKS: EvidenceLink[] = [
+   395→  {
+   396→    id: 'link-1',
+   397→    sourceId: 'pe-3',
+   398→    targetId: 'de-1',
+   399→    type: 'contradiction',
+   400→    strength: 'strong',
+   401→    description:
+   402→      'Протокол обыска фиксирует присутствие Колесниченко в офисе в 14:00–18:00, тогда как Козлов утверждает, что обвиняемый в это время находился у него дома. Прямое противоречие по ключевому временному промежутку.',
+   403→  },
+   404→  {
+   405→    id: 'link-2',
+   406→    sourceId: 'pe-2',
+   407→    targetId: 'de-1',
+   408→    type: 'contradiction',
+   409→    strength: 'strong',
+   410→    description:
+   411→      'Петров И.В. утверждает, что видел Колесниченко в офисе в день сделки, Козлов В.Н. — что обвиняемый находился у него дома. Взаимоисключающие показания по месту нахождения обвиняемого.',
+   412→  },
+   413→  {
+   414→    id: 'link-3',
+   415→    sourceId: 'pe-4',
+   416→    targetId: 'de-2',
+   417→    type: 'contradiction',
+   418→    strength: 'moderate',
+   419→    description:
+   420→      'Заключение эксперта основано на предположении о совершении сделок в офисе в период 14:00–18:00, видеозапись фиксирует Колесниченко в другом месте в это же время. Экспертиза не учитывает альтернативный сценарий.',
+   421→  },
+   422→  {
+   423→    id: 'link-4',
+   424→    sourceId: 'pe-2',
+   425→    targetId: 'de-2',
+   426→    type: 'contradiction',
+   427→    strength: 'moderate',
+   428→    description:
+   429→      'Показания Петрова о присутствии Колесниченко в офисе опровергаются видеозаписью с камер наблюдения в ТЦ «Город», где обвиняемый зафиксирован в это же время.',
+   430→  },
+   431→  {
+   432→    id: 'link-5',
+   433→    sourceId: 'pe-1',
+   434→    targetId: 'de-5',
+   435→    type: 'corroboration',
+   436→    strength: 'weak',
+   437→    description:
+   438→      'Обвинительное заключение и справка о судимости характеризуют личность обвиняемого. Справка подтверждает отсутствие прежней судимости, что должно быть учтено при назначении наказания, но не опровергает обвинение.',
+   439→  },
+   440→  {
+   441→    id: 'link-6',
+   442→    sourceId: 'pe-6',
+   443→    targetId: 'de-4',
+   444→    type: 'partial',
+   445→    strength: 'weak',
+   446→    description:
+   447→      'Показания Ивановой о деловых качествах Колесниченко частично согласуются с производственной характеристикой, но относятся к личности обвиняемого, а не к обстоятельствам преступления.',
+   448→  },
+   449→  {
+   450→    id: 'link-7',
+   451→    sourceId: 'pe-3',
+   452→    targetId: 'de-3',
+   453→    type: 'contradiction',
+   454→    strength: 'strong',
+   455→    description:
+   456→      'Протокол обыска предполагает нахождение Колесниченко в Москве 20.02.2024, билеты на поезд подтверждают его отъезд в Казань 19.02.2024 вечером. Прямое противоречие по месту нахождения обвиняемого.',
+   457→  },
+   458→]
+   459→
+   460→// ============================================================================
+   461→// Геометрия SVG-визуализации
+   462→// ============================================================================
+   463→
+   464→const SVG_WIDTH = 1400
+   465→const SVG_HEIGHT = 460
+   466→const NODE_WIDTH = 132
+   467→const NODE_HEIGHT = 92
+   468→const PADDING_X = 80
+   469→const PROSECUTION_Y = 100 // центр верхнего узла (увеличен, чтобы не перекрывать заголовок)
+   470→const DEFENSE_Y = 380 // центр нижнего узла (немного поднят, чтобы не перекрывать нижний заголовок)
+   471→const AXIS_Y = 230
+   472→
+   473→const ALL_EVIDENCE: EvidenceItem[] = [...PROSECUTION_EVIDENCE, ...DEFENSE_EVIDENCE]
+   474→
+   475→const EVIDENCE_MAP: Record<string, EvidenceItem> = Object.fromEntries(
+   476→  ALL_EVIDENCE.map((e) => [e.id, e]),
+   477→)
+   478→
+   479→// Рассчитываем x-координату по дате
+   480→const dateToX = (dateStr: string): number => {
+   481→  const dates = ALL_EVIDENCE.map((e) => new Date(e.date).getTime())
+   482→  const min = Math.min(...dates)
+   483→  const max = Math.max(...dates)
+   484→  const t = (new Date(dateStr).getTime() - min) / (max - min || 1)
+   485→  return PADDING_X + t * (SVG_WIDTH - 2 * PADDING_X)
+   486→}
+   487→
+   488→// Предварительно посчитанные позиции узлов (с лёгким «расталкиванием»)
+   489→const nodePositions: Record<string, { x: number; y: number }> = (() => {
+   490→  const pos: Record<string, { x: number; y: number }> = {}
+   491→  // Prosecution: сортируем по дате и расталкиваем
+   492→  const pros = [...PROSECUTION_EVIDENCE].sort(
+   493→    (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime(),
+   494→  )
+   495→  const def = [...DEFENSE_EVIDENCE].sort(
+   496→    (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime(),
+   497→  )
+   498→
+   499→  const minSpacing = NODE_WIDTH + 24
+   500→  const applyDodge = (arr: EvidenceItem[], y: number) => {
+   501→    const coords = arr.map((e) => ({ id: e.id, x: dateToX(e.date) }))
+   502→    for (let i = 1; i < coords.length; i++) {
+   503→      if (coords[i].x - coords[i - 1].x < minSpacing) {
+   504→        coords[i].x = coords[i - 1].x + minSpacing
+   505→      }
+   506→    }
+   507→    // Не даём выйти за правую границу
+   508→    const maxX = SVG_WIDTH - PADDING_X
+   509→    for (let i = coords.length - 1; i >= 0; i--) {
+   510→      if (coords[i].x > maxX) coords[i].x = maxX
+   511→    }
+   512→    coords.forEach((c) => {
+   513→      pos[c.id] = { x: c.x, y }
+   514→    })
+   515→  }
+   516→  applyDodge(pros, PROSECUTION_Y)
+   517→  applyDodge(def, DEFENSE_Y)
+   518→  return pos
+   519→})()
+   520→
+   521→// Метки месяцев для центральной оси
+   522→const monthLabels: { x: number; label: string }[] = (() => {
+   523→  const labels: { x: number; label: string }[] = []
+   524→  const months = [
+   525→    { y: 2024, m: 1, label: 'Февраль 2024' },
+   526→    { y: 2024, m: 2, label: 'Март 2024' },
+   527→    { y: 2024, m: 3, label: 'Апрель 2024' },
+   528→  ]
+   529→  const firstOfMonth = (y: number, m: number) => new Date(y, m, 1).getTime()
+   530→  const feb1 = firstOfMonth(2024, 1)
+   531→  const mar1 = firstOfMonth(2024, 2)
+   532→  const apr1 = firstOfMonth(2024, 3)
+   533→  const may1 = firstOfMonth(2024, 4)
+   534→  // Используем ту же логику, что и dateToX (мин/макс по фактическим датам)
+   535→  const dates = ALL_EVIDENCE.map((e) => new Date(e.date).getTime())
+   536→  const min = Math.min(...dates)
+   537→  const max = Math.max(...dates)
+   538→  const t2x = (t: number) => PADDING_X + ((t - min) / (max - min || 1)) * (SVG_WIDTH - 2 * PADDING_X)
+   539→  labels.push({ x: t2x(feb1), label: months[0].label })
+   540→  labels.push({ x: t2x(mar1), label: months[1].label })
+   541→  labels.push({ x: t2x(apr1), label: months[2].label })
+   542→  // Ограничиваем
+   543→  void may1
+   544→  return labels.filter((l) => l.x >= PADDING_X - 10 && l.x <= SVG_WIDTH - PADDING_X + 10)
+   545→})()
+   546→
+   547→// ============================================================================
+   548→// Подсчёт «разрывов» в цепочке доказательств
+   549→// ============================================================================
+   550→
+   551→const getGaps = (): string[] => {
+   552→  // Обвинительные доказательства, не имеющие ни одной связи с защитой
+   553→  const linkedProsecution = new Set(
+   554→    EVIDENCE_LINKS.flatMap((l) =>
+   555→      l.sourceId.startsWith('pe-') ? [l.sourceId] : l.targetId.startsWith('pe-') ? [l.targetId] : [],
+   556→    ),
+   557→  )
+   558→  return PROSECUTION_EVIDENCE.filter((e) => !linkedProsecution.has(e.id)).map((e) => e.id)
+   559→}
+   560→
+   561→const GAP_IDS = getGaps()
+   562→
+   563→// ============================================================================
+   564→// Подкомпонент: узел-карточка доказательства
+   565→// ============================================================================
+   566→
+   567→interface EvidenceNodeProps {
+   568→  item: EvidenceItem
+   569→  x: number
+   570→  y: number
+   571→  isDimmed: boolean
+   572→  isHighlighted: boolean
+   573→  isGap: boolean
+   574→  showGap: boolean
+   575→  onClick: (id: string) => void
+   576→  onHover: (id: string | null) => void
+   577→}
+   578→
+   579→function EvidenceNode({
+   580→  item,
+   581→  x,
+   582→  y,
+   583→  isDimmed,
+   584→  isHighlighted,
+   585→  isGap,
+   586→  showGap,
+   587→  onClick,
+   588→  onHover,
+   589→}: EvidenceNodeProps) {
+   590→  const typeCfg = TYPE_CONFIG[item.type]
+   591→  const sideColor = item.side === 'prosecution' ? '#b91c1c' : '#047857'
+   592→  const sideGradient =
+   593→    item.side === 'prosecution'
+   594→      ? 'from-card via-card to-red-500/5'
+   595→      : 'from-card via-card to-emerald-500/5'
+   596→  const topBorder = item.side === 'prosecution' ? 'border-t-red-700' : 'border-t-emerald-700'
+   597→  const dateObj = new Date(item.date)
+   598→  const dateStr = dateObj.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: '2-digit' })
+   599→
+   600→  const leftPct = (x / SVG_WIDTH) * 100
+   601→  const topPct = (y / SVG_HEIGHT) * 100
+   602→
+   603→  return (
+   604→    <button
+   605→      type="button"
+   606→      onClick={() => onClick(item.id)}
+   607→      onMouseEnter={() => onHover(item.id)}
+   608→      onMouseLeave={() => onHover(null)}
+   609→      className={`absolute -translate-x-1/2 -translate-y-1/2 text-left rounded-xl shadow-sm transition-all duration-200 hover:shadow-md hover:-translate-y-[calc(50%+2px)] focus:outline-none focus-visible:ring-2 focus-visible:ring-foreground/40 border-t-4 ${topBorder} bg-gradient-to-br ${sideGradient} ${
+   610→        isDimmed ? 'opacity-30' : 'opacity-100'
+   611→      } ${isHighlighted ? 'ring-2 ring-amber-500 scale-105 z-20' : 'z-10'} ${
+   612→        showGap && isGap ? 'outline outline-2 outline-dashed outline-red-700' : ''
+   613→      }`}
+   614→      style={{
+   615→        left: `${leftPct}%`,
+   616→        top: `${topPct}%`,
+   617→        width: `${(NODE_WIDTH / SVG_WIDTH) * 100}%`,
+   618→        maxWidth: `${NODE_WIDTH}px`,
+   619→        minWidth: '110px',
+   620→      }}
+   621→      title={item.name}
+   622→    >
+   623→      <div className="p-2 space-y-1">
+   624→        {/* Верхняя строка: тип + сила */}
+   625→        <div className="flex items-center gap-1">
+   626→          <span className={`inline-flex items-center gap-0.5 px-1 py-0.5 rounded text-[9px] font-medium ${typeCfg.tone}`}>
+   627→            {typeCfg.icon}
+   628→            <span className="hidden sm:inline">{typeCfg.label}</span>
+   629→          </span>
+   630→          <span
+   631→            className="ml-auto inline-flex items-center justify-center min-w-[28px] px-1 py-0.5 rounded text-[9px] font-bold text-white"
+   632→            style={{ backgroundColor: sideColor }}
+   633→            title={`Сила доказательства: ${item.strength}/100`}
+   634→          >
+   635→            {item.strength}
+   636→          </span>
+   637→        </div>
+   638→        {/* Название (2 строки) */}
+   639→        <p className="text-[11px] font-semibold leading-tight line-clamp-2 min-h-[26px]">
+   640→          {item.name}
+   641→        </p>
+   642→        {/* Дата */}
+   643→        <p className="text-[9px] text-muted-foreground tabular-nums">{dateStr}</p>
+   644→        {/* Полоса силы */}
+   645→        <div className="h-1 rounded-full bg-muted overflow-hidden">
+   646→          <div
+   647→            className="h-full rounded-full transition-all duration-500"
+   648→            style={{
+   649→              width: `${item.strength}%`,
+   650→              backgroundColor: strengthColorForSide(item.strength, item.side),
+   651→            }}
+   652→          />
+   653→        </div>
+   654→        {showGap && isGap && (
+   655→          <div className="flex items-center gap-1 mt-0.5">
+   656→            <AlertTriangle className="w-2.5 h-2.5 text-red-700" />
+   657→            <span className="text-[8px] font-semibold text-red-700 uppercase tracking-wide">
+   658→              Разрыв в защите
+   659→            </span>
+   660→          </div>
+   661→        )}
+   662→      </div>
+   663→    </button>
+   664→  )
+   665→}
+   666→
+   667→// ============================================================================
+   668→// Подкомпонент: SVG-путь связи между узлами
+   669→// ============================================================================
+   670→
+   671→interface EvidenceLinkPathProps {
+   672→  link: EvidenceLink
+   673→  sourceX: number
+   674→  sourceY: number
+   675→  targetX: number
+   676→  targetY: number
+   677→  isDimmed: boolean
+   678→  isHighlighted: boolean
+   679→  onHover: (id: string | null) => void
+   680→}
+   681→
+   682→function EvidenceLinkPath({
+   683→  link,
+   684→  sourceX,
+   685→  sourceY,
+   686→  targetX,
+   687→  targetY,
+   688→  isDimmed,
+   689→  isHighlighted,
+   690→  onHover,
+   691→}: EvidenceLinkPathProps) {
+   692→  const typeCfg = LINK_TYPE_CONFIG[link.type]
+   693→  const strCfg = LINK_STRENGTH_CONFIG[link.strength]
+   694→
+   695→  // Источник сверху (обвинение), цель снизу (защита) — всегда так по построению
+   696→  const x1 = sourceX
+   697→  const y1 = sourceY + NODE_HEIGHT / 2
+   698→  const x2 = targetX
+   699→  const y2 = targetY - NODE_HEIGHT / 2
+   700→  // Контрольные точки для плавной Bezier-кривой
+   701→  const midY = (y1 + y2) / 2
+   702→  const path = `M ${x1} ${y1} C ${x1} ${midY}, ${x2} ${midY}, ${x2} ${y2}`
+   703→
+   704→  const opacity = isDimmed ? 0.12 : isHighlighted ? 1 : strCfg.opacity
+   705→  const width = isHighlighted ? strCfg.width + 1.2 : strCfg.width
+   706→
+   707→  return (
+   708→    <g
+   709→      onMouseEnter={() => onHover(link.id)}
+   710→      onMouseLeave={() => onHover(null)}
+   711→      className="cursor-pointer"
+   712→    >
+   713→      {/* Широкая невидимая дорожка для удобного наведения */}
+   714→      <path d={path} fill="none" stroke="transparent" strokeWidth={14} />
+   715→      {/* Видимая линия */}
+   716→      <path
+   717→        d={path}
+   718→        fill="none"
+   719→        stroke={typeCfg.color}
+   720→        strokeWidth={width}
+   721→        strokeOpacity={opacity}
+   722→        strokeDasharray={typeCfg.dashed ? '5 4' : undefined}
+   723→        strokeLinecap="round"
+   724→        style={{ transition: 'stroke-opacity 200ms ease, stroke-width 200ms ease' }}
+   725→      />
+   726→      {/* Маркер в средней точке связи */}
+   727→      <circle
+   728→        cx={(x1 + x2) / 2}
+   729→        cy={midY}
+   730→        r={isHighlighted ? 4.5 : 3}
+   731→        fill={typeCfg.color}
+   732→        fillOpacity={opacity}
+   733→        stroke="#ffffff"
+   734→        strokeWidth={1}
+   735→        style={{ transition: 'r 200ms ease, fill-opacity 200ms ease' }}
+   736→      />
+   737→    </g>
+   738→  )
+   739→}
+   740→
+   741→// ============================================================================
+   742→// Подкомпонент: легенда
+   743→// ============================================================================
+   744→
+   745→function Legend() {
+   746→  return (
+   747→    <Card className="rounded-xl shadow-sm">
+   748→      <CardContent className="p-4">
+   749→        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+   750→          <div>
+   751→            <p className="text-xs font-semibold text-muted-foreground mb-2 flex items-center gap-1">
+   752→              <Filter className="w-3 h-3" /> Тип связи
+   753→            </p>
+   754→            <div className="space-y-1.5">
+   755→              {(['contradiction', 'corroboration', 'partial'] as LinkType[]).map((t) => {
+   756→                const cfg = LINK_TYPE_CONFIG[t]
+   757→                return (
+   758→                  <div key={t} className="flex items-center gap-2 text-xs">
+   759→                    <svg width="32" height="8" className="shrink-0">
+   760→                      <line
+   761→                        x1="0"
+   762→                        y1="4"
+   763→                        x2="32"
+   764→                        y2="4"
+   765→                        stroke={cfg.color}
+   766→                        strokeWidth="2"
+   767→                        strokeDasharray={cfg.dashed ? '4 3' : undefined}
+   768→                      />
+   769→                    </svg>
+   770→                    <span>{cfg.label}</span>
+   771→                  </div>
+   772→                )
+   773→              })}
+   774→            </div>
+   775→          </div>
+   776→          <div>
+   777→            <p className="text-xs font-semibold text-muted-foreground mb-2 flex items-center gap-1">
+   778→              <TrendingUp className="w-3 h-3" /> Сила связи
+   779→            </p>
+   780→            <div className="space-y-1.5">
+   781→              {(['strong', 'moderate', 'weak'] as LinkStrength[]).map((s) => {
+   782→                const cfg = LINK_STRENGTH_CONFIG[s]
+   783→                return (
+   784→                  <div key={s} className="flex items-center gap-2 text-xs">
+   785→                    <svg width="32" height="8" className="shrink-0">
+   786→                      <line
+   787→                        x1="0"
+   788→                        y1="4"
+   789→                        x2="32"
+   790→                        y2="4"
+   791→                        stroke="#78716c"
+   792→                        strokeWidth={cfg.width}
+   793→                        strokeOpacity={cfg.opacity}
+   794→                      />
+   795→                    </svg>
+   796→                    <span>{cfg.label}</span>
+   797→                  </div>
+   798→                )
+   799→              })}
+   800→            </div>
+   801→          </div>
+   802→          <div>
+   803→            <p className="text-xs font-semibold text-muted-foreground mb-2 flex items-center gap-1">
+   804→              <Activity className="w-3 h-3" /> Сила доказательства
+   805→            </p>
+   806→            <div className="space-y-1.5">
+   807→              <div className="flex items-center gap-2 text-xs">
+   808→                <span className="w-6 h-2 rounded-full bg-red-700" />
+   809→                <span>Сильное (≥70) — обвинение</span>
+   810→              </div>
+   811→              <div className="flex items-center gap-2 text-xs">
+   812→                <span className="w-6 h-2 rounded-full bg-emerald-700" />
+   813→                <span>Сильное (≥70) — защита</span>
+   814→              </div>
+   815→              <div className="flex items-center gap-2 text-xs">
+   816→                <span className="w-6 h-2 rounded-full bg-amber-600" />
+   817→                <span>Умеренное (40–69)</span>
+   818→              </div>
+   819→              <div className="flex items-center gap-2 text-xs">
+   820→                <span className="w-6 h-2 rounded-full bg-stone-500" />
+   821→                <span>Слабое (&lt;40)</span>
+   822→              </div>
+   823→            </div>
+   824→          </div>
+   825→        </div>
+   826→      </CardContent>
+   827→    </Card>
+   828→  )
+   829→}
+   830→
+   831→// ============================================================================
+   832→// Подкомпонент: панель деталей доказательства (Sheet)
+   833→// ============================================================================
+   834→
+   835→interface EvidenceDetailSheetProps {
+   836→  item: EvidenceItem | null
+   837→  open: boolean
+   838→  onOpenChange: (open: boolean) => void
+   839→  links: EvidenceLink[]
+   840→  allItems: EvidenceItem[]
+   841→  onSelectItem: (id: string) => void
+   842→}
+   843→
+   844→function EvidenceDetailSheet({
+   845→  item,
+   846→  open,
+   847→  onOpenChange,
+   848→  links,
+   849→  allItems,
+   850→  onSelectItem,
+   851→}: EvidenceDetailSheetProps) {
+   852→  if (!item) {
+   853→    return (
+   854→      <Sheet open={open} onOpenChange={onOpenChange}>
+   855→        <SheetContent side="right" className="w-full sm:max-w-lg" />
+   856→      </Sheet>
+   857→    )
+   858→  }
+   859→
+   860→  const typeCfg = TYPE_CONFIG[item.type]
+   861→  const relatedLinks = links.filter(
+   862→    (l) => l.sourceId === item.id || l.targetId === item.id,
+   863→  )
+   864→  const relatedItems = relatedLinks
+   865→    .map((l) => {
+   866→      const otherId = l.sourceId === item.id ? l.targetId : l.sourceId
+   867→      return { link: l, item: allItems.find((i) => i.id === otherId) }
+   868→    })
+   869→    .filter((r) => r.item)
+   870→
+   871→  const dateObj = new Date(item.date)
+   872→  const dateStr = dateObj.toLocaleDateString('ru-RU', {
+   873→    day: '2-digit',
+   874→    month: 'long',
+   875→    year: 'numeric',
+   876→  })
+   877→
+   878→  const sideBg =
+   879→    item.side === 'prosecution'
+   880→      ? 'from-red-900/30 via-card to-card border-l-red-700'
+   881→      : 'from-emerald-900/30 via-card to-card border-l-emerald-700'
+   882→  const sideLabel =
+   883→    item.side === 'prosecution' ? 'Доказательство обвинения' : 'Доказательство защиты'
+   884→  const sideIcon =
+   885→    item.side === 'prosecution' ? <Swords className="w-4 h-4 text-red-700" /> : <Shield className="w-4 h-4 text-emerald-700" />
+   886→
+   887→  return (
+   888→    <Sheet open={open} onOpenChange={onOpenChange}>
+   889→      <SheetContent side="right" className="w-full sm:max-w-lg overflow-y-auto">
+   890→        <SheetHeader className={`bg-gradient-to-r ${sideBg} border-l-4 rounded-r-lg`}>
+   891→          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+   892→            {sideIcon}
+   893→            <span>{sideLabel}</span>
+   894→          </div>
+   895→          <SheetTitle className="text-base leading-tight">{item.name}</SheetTitle>
+   896→          <div className="flex flex-wrap items-center gap-2 mt-1">
+   897→            <Badge className={`gap-1 ${typeCfg.tone}`}>
+   898→              {typeCfg.icon}
+   899→              {typeCfg.label}
+   900→            </Badge>
+   901→            <Badge className={strengthBadgeForSide(item.strength, item.side)}>
+   902→              Сила: {item.strength}/100 · {strengthLabel(item.strength)}
+   903→            </Badge>
+   904→            <Badge variant="outline" className="tabular-nums">{dateStr}</Badge>
+   905→          </div>
+   906→        </SheetHeader>
+   907→
+   908→        <div className="px-4 pb-6 space-y-4">
+   909→          {/* Источник */}
+   910→          <div className="space-y-1">
+   911→            <p className="text-xs font-semibold text-muted-foreground flex items-center gap-1">
+   912→              <FileText className="w-3 h-3" /> Источник
+   913→            </p>
+   914→            <p className="text-sm">{item.source}</p>
+   915→          </div>
+   916→
+   917→          <Separator />
+   918→
+   919→          {/* Краткое описание */}
+   920→          <div className="space-y-1">
+   921→            <p className="text-xs font-semibold text-muted-foreground flex items-center gap-1">
+   922→              <Eye className="w-3 h-3" /> Краткое описание
+   923→            </p>
+   924→            <p className="text-sm leading-relaxed">{item.summary}</p>
+   925→          </div>
+   926→
+   927→          <Separator />
+   928→
+   929→          {/* Сильные стороны */}
+   930→          <div className="space-y-2">
+   931→            <p className="text-xs font-semibold flex items-center gap-1 text-emerald-700 dark:text-emerald-400">
+   932→              <CheckCircle2 className="w-3 h-3" /> Сильные стороны
+   933→            </p>
+   934→            <ul className="space-y-1.5">
+   935→              {item.strengths.map((s, i) => (
+   936→                <li key={i} className="text-xs flex items-start gap-2">
+   937→                  <CheckCircle2 className="w-3 h-3 mt-0.5 text-emerald-600 shrink-0" />
+   938→                  <span>{s}</span>
+   939→                </li>
+   940→              ))}
+   941→            </ul>
+   942→          </div>
+   943→
+   944→          {/* Слабые стороны */}
+   945→          <div className="space-y-2">
+   946→            <p className="text-xs font-semibold flex items-center gap-1 text-red-700 dark:text-red-400">
+   947→              <XCircle className="w-3 h-3" /> Слабые стороны
+   948→            </p>
+   949→            <ul className="space-y-1.5">
+   950→              {item.weaknesses.map((w, i) => (
+   951→                <li key={i} className="text-xs flex items-start gap-2">
+   952→                  <XCircle className="w-3 h-3 mt-0.5 text-red-600 shrink-0" />
+   953→                  <span>{w}</span>
+   954→                </li>
+   955→              ))}
+   956→            </ul>
+   957→          </div>
+   958→
+   959→          <Separator />
+   960→
+   961→          {/* Связанные доказательства */}
+   962→          <div className="space-y-2">
+   963→            <p className="text-xs font-semibold text-muted-foreground flex items-center gap-1">
+   964→              <Link2 className="w-3 h-3" /> Связанные доказательства ({relatedItems.length})
+   965→            </p>
+   966→            {relatedItems.length === 0 ? (
+   967→              <div className="flex items-start gap-2 p-2 rounded-lg bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900">
+   968→                <AlertTriangle className="w-3.5 h-3.5 text-amber-600 mt-0.5 shrink-0" />
+   969→                <p className="text-xs text-amber-800 dark:text-amber-200">
+   970→                  У данного доказательства отсутствуют связи с противоположной стороной.
+   971→                  Это может указывать на пробел в аргументации.
+   972→                </p>
+   973→              </div>
+   974→            ) : (
+   975→              <div className="space-y-1.5">
+   976→                {relatedItems.map(({ link, item: related }) => {
+   977→                  if (!related) return null
+   978→                  const linkTypeCfg = LINK_TYPE_CONFIG[link.type]
+   979→                  const strCfg = LINK_STRENGTH_CONFIG[link.strength]
+   980→                  return (
+   981→                    <button
+   982→                      key={link.id}
+   983→                      onClick={() => onSelectItem(related.id)}
+   984→                      className="w-full text-left p-2 rounded-lg border bg-gradient-to-br from-card via-card to-muted/30 hover:shadow-sm hover:-translate-y-0.5 transition-all"
+   985→                    >
+   986→                      <div className="flex items-center gap-2 mb-1">
+   987→                        <span
+   988→                          className="inline-block w-2 h-2 rounded-full shrink-0"
+   989→                          style={{ backgroundColor: linkTypeCfg.color }}
+   990→                        />
+   991→                        <span className="text-xs font-medium truncate">{related.name}</span>
+   992→                        <ChevronRight className="w-3 h-3 ml-auto text-muted-foreground shrink-0" />
+   993→                      </div>
+   994→                      <div className="flex items-center gap-1 mb-1">
+   995→                        <Badge variant="outline" className="text-[10px] px-1 py-0">
+   996→                          {linkTypeCfg.label}
+   997→                        </Badge>
+   998→                        <Badge variant="outline" className="text-[10px] px-1 py-0">
+   999→                          {strCfg.label} связь
+  1000→                        </Badge>
+  1001→                        <Badge
+  1002→                          className={`text-[10px] px-1 py-0 ml-auto ${
+  1003→                            related.side === 'prosecution'
+  1004→                              ? 'bg-red-700 text-white'
+  1005→                              : 'bg-emerald-700 text-white'
+  1006→                          }`}
+  1007→                        >
+  1008→                          {related.side === 'prosecution' ? 'Обвинение' : 'Защита'}
+  1009→                        </Badge>
+  1010→                      </div>
+  1011→                      <p className="text-[11px] text-muted-foreground line-clamp-2 leading-snug">
+  1012→                        {link.description}
+  1013→                      </p>
+  1014→                    </button>
+  1015→                  )
+  1016→                })}
+  1017→              </div>
+  1018→            )}
+  1019→          </div>
+  1020→        </div>
+  1021→      </SheetContent>
+  1022→    </Sheet>
+  1023→  )
+  1024→}
+  1025→
+  1026→// ============================================================================
+  1027→// Главный компонент
+  1028→// ============================================================================
+  1029→
+  1030→export function CaseEvidenceChain() {
+  1031→  const [selectedId, setSelectedId] = useState<string | null>(null)
+  1032→  const [hoveredId, setHoveredId] = useState<string | null>(null)
+  1033→  const [hoveredLinkId, setHoveredLinkId] = useState<string | null>(null)
+  1034→  const [filter, setFilter] = useState<FilterKey>('all')
+  1035→  const [showGaps, setShowGaps] = useState(false)
+  1036→
+  1037→  // Сильные связи
+  1038→  const strongLinkIds = useMemo(
+  1039→    () => new Set(EVIDENCE_LINKS.filter((l) => l.strength === 'strong').map((l) => l.id)),
+  1040→    [],
+  1041→  )
+  1042→  // Все ID узлов, имеющих хотя бы одну сильную связь
+  1043→  const strongConnectedIds = useMemo(() => {
+  1044→    const ids = new Set<string>()
+  1045→    EVIDENCE_LINKS.filter((l) => l.strength === 'strong').forEach((l) => {
+  1046→      ids.add(l.sourceId)
+  1047→      ids.add(l.targetId)
+  1048→    })
+  1049→    return ids
+  1050→  }, [])
+  1051→
+  1052→  // Список узлов с учётом фильтра
+  1053→  const visibleItems = useMemo(() => {
+  1054→    if (filter === 'all') return ALL_EVIDENCE
+  1055→    if (filter === 'prosecution') return PROSECUTION_EVIDENCE
+  1056→    if (filter === 'defense') return DEFENSE_EVIDENCE
+  1057→    if (filter === 'strong') return ALL_EVIDENCE.filter((e) => strongConnectedIds.has(e.id))
+  1058→    return ALL_EVIDENCE
+  1059→  }, [filter, strongConnectedIds])
+  1060→
+  1061→  const visibleIds = useMemo(() => new Set(visibleItems.map((i) => i.id)), [visibleItems])
+  1062→
+  1063→  // Связи, у которых оба конца видимы
+  1064→  const visibleLinks = useMemo(() => {
+  1065→    return EVIDENCE_LINKS.filter(
+  1066→      (l) => visibleIds.has(l.sourceId) && visibleIds.has(l.targetId),
+  1067→    )
+  1068→  }, [visibleIds])
+  1069→
+  1070→  // Множество ID узлов и связей, связанных с наведённым элементом
+  1071→  const activeIds = useMemo(() => {
+  1072→    if (hoveredId) {
+  1073→      const linked = new Set<string>([hoveredId])
+  1074→      EVIDENCE_LINKS.forEach((l) => {
+  1075→        if (l.sourceId === hoveredId) linked.add(l.targetId)
+  1076→        if (l.targetId === hoveredId) linked.add(l.sourceId)
+  1077→      })
+  1078→      return { nodes: linked, links: new Set<string>() }
+  1079→    }
+  1080→    if (hoveredLinkId) {
+  1081→      const link = EVIDENCE_LINKS.find((l) => l.id === hoveredLinkId)
+  1082→      if (link) {
+  1083→        return {
+  1084→          nodes: new Set([link.sourceId, link.targetId]),
+  1085→          links: new Set([hoveredLinkId]),
+  1086→        }
+  1087→      }
+  1088→    }
+  1089→    return { nodes: new Set<string>(), links: new Set<string>() }
+  1090→  }, [hoveredId, hoveredLinkId])
+  1091→
+  1092→  const handleSelectItem = useCallback((id: string) => {
+  1093→    setSelectedId(id)
+  1094→  }, [])
+  1095→
+  1096→  const handleOpenChange = useCallback((open: boolean) => {
+  1097→    if (!open) setSelectedId(null)
+  1098→  }, [])
+  1099→
+  1100→  const selectedItem = selectedId ? EVIDENCE_MAP[selectedId] ?? null : null
+  1101→
+  1102→  // Статистика
+  1103→  const stats = useMemo(() => {
+  1104→    const pros = PROSECUTION_EVIDENCE
+  1105→    const def = DEFENSE_EVIDENCE
+  1106→    const avgStrength = (arr: EvidenceItem[]) =>
+  1107→      arr.length ? Math.round(arr.reduce((s, i) => s + i.strength, 0) / arr.length) : 0
+  1108→    return {
+  1109→      prosCount: pros.length,
+  1110→      defCount: def.length,
+  1111→      prosAvg: avgStrength(pros),
+  1112→      defAvg: avgStrength(def),
+  1113→      linksCount: EVIDENCE_LINKS.length,
+  1114→      contradictions: EVIDENCE_LINKS.filter((l) => l.type === 'contradiction').length,
+  1115→      gaps: GAP_IDS.length,
+  1116→    }
+  1117→  }, [])
+  1118→
+  1119→  return (
+  1120→    <div className="space-y-6">
+  1121→      {/* Заголовок */}
+  1122→      <Card className="bg-gradient-to-r from-red-900/30 via-stone-900/20 to-emerald-900/20 border-l-4 border-l-red-700 rounded-xl shadow-sm">
+  1123→        <CardContent className="p-6">
+  1124→          <div className="flex items-center gap-4 flex-wrap">
+  1125→            <div className="flex items-center justify-center w-12 h-12 rounded-xl bg-red-700/20">
+  1126→              <Link2 className="w-6 h-6 text-red-700" />
+  1127→            </div>
+  1128→            <div className="flex-1 min-w-0">
+  1129→              <h2 className="text-lg font-bold">Визуализация цепочки доказательств</h2>
+  1130→              <p className="text-sm text-muted-foreground">
+  1131→                Интерактивная схема связей между доказательствами обвинения и защиты по делу
+  1132→                № 2024-00145
+  1133→              </p>
+  1134→            </div>
+  1135→            <Badge className="bg-red-700 text-white gap-1">
+  1136→              <Swords className="w-3 h-3" /> Обвинение: {stats.prosCount}
+  1137→            </Badge>
+  1138→            <Badge className="bg-emerald-700 text-white gap-1">
+  1139→              <Shield className="w-3 h-3" /> Защита: {stats.defCount}
+  1140→            </Badge>
+  1141→            <Badge className="bg-stone-700 text-white gap-1">
+  1142→              <Link2 className="w-3 h-3" /> Связей: {stats.linksCount}
+  1143→            </Badge>
+  1144→          </div>
+  1145→        </CardContent>
+  1146→      </Card>
+  1147→
+  1148→      {/* Сводная статистика */}
+  1149→      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+  1150→        <Card className="border-l-4 border-l-red-700 bg-gradient-to-br from-card via-card to-red-500/5 rounded-xl shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all">
+  1151→          <CardContent className="p-4">
+  1152→            <div className="flex items-center gap-2">
+  1153→              <Swords className="w-4 h-4 text-red-700" />
+  1154→              <span className="text-2xl font-bold">{stats.prosAvg}</span>
+  1155→              <span className="text-xs text-muted-foreground">/100</span>
+  1156→            </div>
+  1157→            <p className="text-xs text-muted-foreground mt-1">Средняя сила обвинения</p>
+  1158→          </CardContent>
+  1159→        </Card>
+  1160→        <Card className="border-l-4 border-l-emerald-700 bg-gradient-to-br from-card via-card to-emerald-500/5 rounded-xl shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all">
+  1161→          <CardContent className="p-4">
+  1162→            <div className="flex items-center gap-2">
+  1163→              <Shield className="w-4 h-4 text-emerald-700" />
+  1164→              <span className="text-2xl font-bold">{stats.defAvg}</span>
+  1165→              <span className="text-xs text-muted-foreground">/100</span>
+  1166→            </div>
+  1167→            <p className="text-xs text-muted-foreground mt-1">Средняя сила защиты</p>
+  1168→          </CardContent>
+  1169→        </Card>
+  1170→        <Card className="border-l-4 border-l-amber-600 bg-gradient-to-br from-card via-card to-amber-500/5 rounded-xl shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all">
+  1171→          <CardContent className="p-4">
+  1172→            <div className="flex items-center gap-2">
+  1173→              <Swords className="w-4 h-4 text-amber-600" />
+  1174→              <span className="text-2xl font-bold">{stats.contradictions}</span>
+  1175→            </div>
+  1176→            <p className="text-xs text-muted-foreground mt-1">Противоречий в деле</p>
+  1177→          </CardContent>
+  1178→        </Card>
+  1179→        <Card
+  1180→          className={`border-l-4 ${
+  1181→            stats.gaps > 0
+  1182→              ? 'border-l-red-700 bg-gradient-to-br from-card via-card to-red-500/5'
+  1183→              : 'border-l-emerald-700 bg-gradient-to-br from-card via-card to-emerald-500/5'
+  1184→          } rounded-xl shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all`}
+  1185→        >
+  1186→          <CardContent className="p-4">
+  1187→            <div className="flex items-center gap-2">
+  1188→              <AlertTriangle
+  1189→                className={`w-4 h-4 ${stats.gaps > 0 ? 'text-red-700' : 'text-emerald-700'}`}
+  1190→              />
+  1191→              <span className="text-2xl font-bold">{stats.gaps}</span>
+  1192→            </div>
+  1193→            <p className="text-xs text-muted-foreground mt-1">
+  1194→              {stats.gaps > 0 ? 'Разрывов в защите' : 'Разрывов не найдено'}
+  1195→            </p>
+  1196→          </CardContent>
+  1197→        </Card>
+  1198→      </div>
+  1199→
+  1200→      {/* Панель фильтров и переключателей */}
+  1201→      <Card className="rounded-xl shadow-sm">
+  1202→        <CardContent className="p-4 space-y-3">
+  1203→          <div className="flex flex-wrap items-center gap-3">
+  1204→            <p className="text-xs font-semibold text-muted-foreground flex items-center gap-1">
+  1205→              <Filter className="w-3 h-3" /> Фильтр:
+  1206→            </p>
+  1207→            <div className="flex flex-wrap gap-2">
+  1208→              {FILTER_OPTIONS.map((opt) => (
+  1209→                <Button
+  1210→                  key={opt.key}
+  1211→                  size="sm"
+  1212→                  variant={filter === opt.key ? 'default' : 'outline'}
+  1213→                  className={`rounded-xl text-xs gap-1 ${
+  1214→                    filter === opt.key ? 'bg-red-700 text-white hover:bg-red-800' : ''
+  1215→                  }`}
+  1216→                  onClick={() => setFilter(opt.key)}
+  1217→                >
+  1218→                  {opt.icon}
+  1219→                  {opt.label}
+  1220→                </Button>
+  1221→              ))}
+  1222→            </div>
+  1223→          </div>
+  1224→          <Separator />
+  1225→          <div className="flex flex-wrap items-center gap-3">
+  1226→            <Button
+  1227→              size="sm"
+  1228→              variant={showGaps ? 'default' : 'outline'}
+  1229→              className={`rounded-xl text-xs gap-1 ${
+  1230→                showGaps ? 'bg-red-700 text-white hover:bg-red-800' : ''
+  1231→              }`}
+  1232→              onClick={() => setShowGaps((v) => !v)}
+  1233→            >
+  1234→              <AlertTriangle className="w-3 h-3" />
+  1235→              {showGaps ? 'Анализ разрывов: включён' : 'Анализ разрывов'}
+  1236→            </Button>
+  1237→            <span className="text-xs text-muted-foreground">
+  1238→              Подсветить доказательства обвинения, не имеющие контраргументов со стороны защиты
+  1239→              ({GAP_IDS.length} шт.)
+  1240→            </span>
+  1241→          </div>
+  1242→          <Separator />
+  1243→          <div className="flex items-center justify-between text-xs">
+  1244→            <span className="text-muted-foreground">
+  1245→              Показано: <strong className="text-foreground">{visibleItems.length}</strong> доказательств
+  1246→              {' • '}
+  1247→              <strong className="text-foreground">{visibleLinks.length}</strong> связей
+  1248→            </span>
+  1249→            <span className="text-muted-foreground hidden md:inline">
+  1250→              Подсказка: наведите курсор на узел или связь — подсветятся связанные элементы. Нажмите для деталей.
+  1251→            </span>
+  1252→          </div>
+  1253→        </CardContent>
+  1254→      </Card>
+  1255→
+  1256→      {/* SVG-визуализация */}
+  1257→      <Card className="rounded-xl shadow-sm overflow-hidden">
+  1258→        <CardHeader className="pb-2">
+  1259→          <CardTitle className="text-sm flex items-center gap-2">
+  1260→            <Activity className="w-4 h-4 text-purple-700" />
+  1261→            Схема доказательств во времени
+  1262→          </CardTitle>
+  1263→        </CardHeader>
+  1264→        <CardContent className="p-2 sm:p-4">
+  1265→          <div
+  1266→            className="relative w-full"
+  1267→            style={{ aspectRatio: `${SVG_WIDTH} / ${SVG_HEIGHT}` }}
+  1268→          >
+  1269→            {/* SVG-слой: ось, метки, кривые связей */}
+  1270→            <svg
+  1271→              viewBox={`0 0 ${SVG_WIDTH} ${SVG_HEIGHT}`}
+  1272→              className="absolute inset-0 w-full h-full"
+  1273→              preserveAspectRatio="xMidYMid meet"
+  1274→            >
+  1275→              {/* Фон верхней (обвинение) и нижней (защита) зон */}
+  1276→              <rect
+  1277→                x="0"
+  1278→                y="0"
+  1279→                width={SVG_WIDTH}
+  1280→                height={AXIS_Y}
+  1281→                fill="url(#prosBg)"
+  1282→                opacity={0.4}
+  1283→              />
+  1284→              <rect
+  1285→                x="0"
+  1286→                y={AXIS_Y}
+  1287→                width={SVG_WIDTH}
+  1288→                height={SVG_HEIGHT - AXIS_Y}
+  1289→                fill="url(#defBg)"
+  1290→                opacity={0.4}
+  1291→              />
+  1292→              <defs>
+  1293→                <linearGradient id="prosBg" x1="0" x2="0" y1="0" y2="1">
+  1294→                  <stop offset="0%" stopColor="#b91c1c" stopOpacity="0.06" />
+  1295→                  <stop offset="100%" stopColor="#b91c1c" stopOpacity="0" />
+  1296→                </linearGradient>
+  1297→                <linearGradient id="defBg" x1="0" x2="0" y1="0" y2="1">
+  1298→                  <stop offset="0%" stopColor="#047857" stopOpacity="0" />
+  1299→                  <stop offset="100%" stopColor="#047857" stopOpacity="0.06" />
+  1300→                </linearGradient>
+  1301→              </defs>
+  1302→
+  1303→              {/* Подписи дорожек */}
+  1304→              <text
+  1305→                x={PADDING_X}
+  1306→                y={20}
+  1307→                fontSize={13}
+  1308→                fontWeight={700}
+  1309→                className="fill-red-700 dark:fill-red-400"
+  1310→              >
+  1311→                Доказательства обвинения
+  1312→              </text>
+  1313→              <text
+  1314→                x={PADDING_X}
+  1315→                y={SVG_HEIGHT - 8}
+  1316→                fontSize={13}
+  1317→                fontWeight={700}
+  1318→                className="fill-emerald-700 dark:fill-emerald-400"
+  1319→              >
+  1320→                Доказательства защиты
+  1321→              </text>
+  1322→
+  1323→              {/* Центральная ось времени */}
+  1324→              <line
+  1325→                x1={PADDING_X}
+  1326→                y1={AXIS_Y}
+  1327→                x2={SVG_WIDTH - PADDING_X}
+  1328→                y2={AXIS_Y}
+  1329→                stroke="#a8a29e"
+  1330→                strokeWidth={1.5}
+  1331→                strokeDasharray="4 4"
+  1332→                opacity={0.6}
+  1333→              />
+  1334→              {/* Метки месяцев */}
+  1335→              {monthLabels.map((m, i) => (
+  1336→                <g key={i}>
+  1337→                  <line
+  1338→                    x1={m.x}
+  1339→                    y1={AXIS_Y - 8}
+  1340→                    x2={m.x}
+  1341→                    y2={AXIS_Y + 8}
+  1342→                    stroke="#78716c"
+  1343→                    strokeWidth={1.5}
+  1344→                  />
+  1345→                  <text
+  1346→                    x={m.x}
+  1347→                    y={AXIS_Y + 24}
+  1348→                    fontSize={11}
+  1349→                    textAnchor="middle"
+  1350→                    className="fill-stone-600 dark:fill-stone-300"
+  1351→                    fontWeight={600}
+  1352→                  >
+  1353→                    {m.label}
+  1354→                  </text>
+  1355→                </g>
+  1356→              ))}
+  1357→
+  1358→              {/* Связи */}
+  1359→              {visibleLinks.map((link) => {
+  1360→                const src = nodePositions[link.sourceId]
+  1361→                const tgt = nodePositions[link.targetId]
+  1362→                if (!src || !tgt) return null
+  1363→                const isHl = activeIds.links.has(link.id) || activeIds.nodes.has(link.sourceId) || activeIds.nodes.has(link.targetId)
+  1364→                const isDim =
+  1365→                  (hoveredId !== null || hoveredLinkId !== null) && !isHl
+  1366→                return (
+  1367→                  <EvidenceLinkPath
+  1368→                    key={link.id}
+  1369→                    link={link}
+  1370→                    sourceX={src.x}
+  1371→                    sourceY={src.y}
+  1372→                    targetX={tgt.x}
+  1373→                    targetY={tgt.y}
+  1374→                    isDimmed={isDim}
+  1375→                    isHighlighted={isHl}
+  1376→                    onHover={setHoveredLinkId}
+  1377→                  />
+  1378→                )
+  1379→              })}
+  1380→
+  1381→              {/* Маркеры силы на дорожках (горизонтальные «рельсы») */}
+  1382→              <line
+  1383→                x1={PADDING_X}
+  1384→                y1={PROSECUTION_Y}
+  1385→                x2={SVG_WIDTH - PADDING_X}
+  1386→                y2={PROSECUTION_Y}
+  1387→                stroke="#b91c1c"
+  1388→                strokeWidth={1}
+  1389→                strokeDasharray="2 6"
+  1390→                opacity={0.25}
+  1391→              />
+  1392→              <line
+  1393→                x1={PADDING_X}
+  1394→                y1={DEFENSE_Y}
+  1395→                x2={SVG_WIDTH - PADDING_X}
+  1396→                y2={DEFENSE_Y}
+  1397→                stroke="#047857"
+  1398→                strokeWidth={1}
+  1399→                strokeDasharray="2 6"
+  1400→                opacity={0.25}
+  1401→              />
+  1402→            </svg>
+  1403→
+  1404→            {/* HTML-слой: узлы-карточки (поверх SVG) */}
+  1405→            {visibleItems.map((item) => {
+  1406→              const pos = nodePositions[item.id]
+  1407→              if (!pos) return null
+  1408→              const isActive = activeIds.nodes.has(item.id) || hoveredId === item.id
+  1409→              const isDim =
+  1410→                (hoveredId !== null || hoveredLinkId !== null) && !isActive
+  1411→              const isGap = GAP_IDS.includes(item.id)
+  1412→              return (
+  1413→                <EvidenceNode
+  1414→                  key={item.id}
+  1415→                  item={item}
+  1416→                  x={pos.x}
+  1417→                  y={pos.y}
+  1418→                  isDimmed={isDim}
+  1419→                  isHighlighted={isActive}
+  1420→                  isGap={isGap}
+  1421→                  showGap={showGaps}
+  1422→                  onClick={handleSelectItem}
+  1423→                  onHover={setHoveredId}
+  1424→                />
+  1425→              )
+  1426→            })}
+  1427→          </div>
+  1428→
+  1429→          {/* Список видимых элементов под схемой (для мобильных) */}
+  1430→          <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+  1431→            {visibleItems.map((item) => {
+  1432→              const typeCfg = TYPE_CONFIG[item.type]
+  1433→              return (
+  1434→                <button
+  1435→                  key={item.id}
+  1436→                  onClick={() => handleSelectItem(item.id)}
+  1437→                  className={`text-left p-2 rounded-lg border bg-gradient-to-br from-card via-card to-muted/20 hover:shadow-sm hover:-translate-y-0.5 transition-all ${
+  1438→                    item.side === 'prosecution' ? 'border-l-4 border-l-red-700' : 'border-l-4 border-l-emerald-700'
+  1439→                  } ${showGaps && GAP_IDS.includes(item.id) ? 'ring-1 ring-red-700' : ''}`}
+  1440→                >
+  1441→                  <div className="flex items-center gap-1 mb-1">
+  1442→                    <Badge className={`gap-0.5 text-[9px] px-1 ${typeCfg.tone}`}>
+  1443→                      {typeCfg.icon}
+  1444→                      {typeCfg.label}
+  1445→                    </Badge>
+  1446→                    <span className="text-[10px] text-muted-foreground ml-auto tabular-nums">
+  1447→                      {new Date(item.date).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: '2-digit' })}
+  1448→                    </span>
+  1449→                  </div>
+  1450→                  <p className="text-xs font-medium line-clamp-2 leading-tight">{item.name}</p>
+  1451→                  <div className="flex items-center gap-1 mt-1">
+  1452→                    <div className="h-1 flex-1 rounded-full bg-muted overflow-hidden">
+  1453→                      <div
+  1454→                        className="h-full rounded-full"
+  1455→                        style={{
+  1456→                          width: `${item.strength}%`,
+  1457→                          backgroundColor: strengthColorForSide(item.strength, item.side),
+  1458→                        }}
+  1459→                      />
+  1460→                    </div>
+  1461→                    <span className="text-[10px] font-bold tabular-nums" style={{ color: strengthColorForSide(item.strength, item.side) }}>
+  1462→                      {item.strength}
+  1463→                    </span>
+  1464→                  </div>
+  1465→                </button>
+  1466→              )
+  1467→            })}
+  1468→          </div>
+  1469→        </CardContent>
+  1470→      </Card>
+  1471→
+  1472→      {/* Легенда */}
+  1473→      <Legend />
+  1474→
+  1475→      {/* Панель деталей */}
+  1476→      <EvidenceDetailSheet
+  1477→        item={selectedItem}
+  1478→        open={selectedId !== null}
+  1479→        onOpenChange={handleOpenChange}
+  1480→        links={EVIDENCE_LINKS}
+  1481→        allItems={ALL_EVIDENCE}
+  1482→        onSelectItem={handleSelectItem}
+  1483→      />
+  1484→    </div>
+  1485→  )
+  1486→}
+  1487→
