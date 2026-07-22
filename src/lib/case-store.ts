@@ -13,6 +13,7 @@ export type SectionId =
   | 'timeline'
   | 'risk'
   | 'brief'
+  | 'analytics'
 
 export interface DocumentData {
   id: string
@@ -334,6 +335,37 @@ export interface WitnessStatementData {
   contradictions: { withStatementId: string; description: string }[]
   reliability: 'high' | 'moderate' | 'low'
   verifiedBy: string[]
+}
+
+// === NEW: Analytics Data ===
+export interface AnalyticsData {
+  // Processing trends over time
+  processingTrend: { date: string; processed: number; pending: number; failed: number }[]
+  // Episode severity vs. status matrix
+  episodeMatrix: { severity: string; proven: number; investigating: number; doubtful: number; total: number }[]
+  // Person involvement distribution (radial)
+  personInvolvement: { name: string; episodes: number; documents: number; relationships: number }[]
+  // Article charge distribution
+  articleCharges: { code: string; description: string; count: number; severity: string }[]
+  // Case complexity metrics
+  complexity: {
+    overallScore: number // 0-100
+    factors: { name: string; score: number; benchmark: number }[]
+    rating: 'low' | 'moderate' | 'high' | 'extreme'
+  }
+  // Document type distribution
+  documentTypes: { type: string; count: number; percentage: number }[]
+  // AI-generated insights
+  insights: {
+    type: 'positive' | 'warning' | 'critical' | 'info'
+    title: string
+    description: string
+    confidence: number
+  }[]
+  // Predicted case outcome probabilities
+  outcomePrediction: { scenario: string; probability: number; rationale: string }[]
+  // Workload by month (for resource planning)
+  workloadByMonth: { month: string; documents: number; actions: number; hearings: number }[]
 }
 
 // Structured search results matching the API response

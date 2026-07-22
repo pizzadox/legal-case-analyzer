@@ -11,7 +11,7 @@ import { Separator } from '@/components/ui/separator'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from '@/components/ui/chart'
 import { Bar, BarChart, XAxis, YAxis, Cell } from 'recharts'
-import { Users, Shield, Star, ChevronDown, ChevronUp, AlertTriangle, Gavel, Download, FileText, Link2, MessageSquare, Target, ArrowRight, MapPin, Cake, CheckCircle, XCircle } from 'lucide-react'
+import { Users, Shield, Star, ChevronDown, ChevronUp, AlertTriangle, Gavel, Download, FileText, Link2, MessageSquare, Target, ArrowRight, MapPin, Cake, CheckCircle, XCircle, GitCompare, Plus, X } from 'lucide-react'
 import { mockPersons, mockPersonRelationships, mockWitnessStatements } from '@/lib/mock-data'
 import { getPersons, getPersonRelationships, getWitnessStatements } from '@/lib/case-api'
 import type { PersonData, PersonRelationship, WitnessStatementData } from '@/lib/case-store'
@@ -251,6 +251,7 @@ function RelationshipMap({ relationships, persons }: { relationships: PersonRela
 export function CasePersons() {
   const [roleFilter, setRoleFilter] = useState('all')
   const [expandedId, setExpandedId] = useState<string | null>(null)
+  const [compareIds, setCompareIds] = useState<string[]>([])
 
   const { data, isLoading } = useQuery({ queryKey: ['persons'], queryFn: getPersons, retry: 1 })
   const { data: relData } = useQuery({ queryKey: ['person-relationships'], queryFn: getPersonRelationships, retry: 1 })
@@ -502,6 +503,166 @@ export function CasePersons() {
 
       <Separator />
       <p className="text-xs text-muted-foreground">Показано {filtered.length} из {persons.length} участников дела</p>
+
+      {/* Comparison View - side-by-side analysis */}
+      <ComparisonView persons={persons} compareIds={compareIds} setCompareIds={setCompareIds} />
     </div>
+  )
+}
+
+// === Comparison View Component ===
+// Allows side-by-side comparison of up to 3 selected persons across key dimensions
+function ComparisonView({ persons, compareIds, setCompareIds }: {
+  persons: PersonData[]
+  compareIds: string[]
+  setCompareIds: (ids: string[]) => void
+}) {
+  const selected = compareIds
+    .map(id => persons.find(p => p.id === id))
+    .filter((p): p is PersonData => p !== undefined)
+
+  const availablePersons = persons.filter(p => !compareIds.includes(p.id))
+
+  const addPerson = (id: string) => {
+    if (compareIds.length >= 3) {
+      toast.info('Можно сравнить не более 3 участников одновременно')
+      return
+    }
+    setCompareIds([...compareIds, id])
+  }
+
+  const removePerson = (id: string) => {
+    setCompareIds(compareIds.filter(x => x !== id))
+  }
+
+  // Comparison dimensions
+  const dimensions = [
+    { key: 'role', label: 'Роль', getValue: (p: PersonData) => ROLE_LABEL[p.role ?? ''] ?? p.role ?? '—' },
+    { key: 'status', label: 'Статус', getValue: (p: PersonData) => p.status ?? '—' },
+    { key: 'guiltLevel', label: 'Виновность', getValue: (p: PersonData) => GUILT[p.guiltLevel ?? 'none'].label },
+    { key: 'guiltPct', label: 'Уровень вины', getValue: (p: PersonData) => `${GUILT[p.guiltLevel ?? 'none'].pct}%` },
+    { key: 'occupation', label: 'Должность', getValue: (p: PersonData) => p.occupation ?? '—' },
+    { key: 'alias', label: 'Псевдоним', getValue: (p: PersonData) => p.alias ?? '—' },
+    { key: 'defense', label: 'Стратегия защиты', getValue: (p: PersonData) => p.defenseStrategy ?? 'Не определена' },
+  ]
+
+  return (
+    <Card className="rounded-xl shadow-sm border-l-4 border-purple-500">
+      <CardHeader className="pb-2">
+        <CardTitle className="text-sm flex items-center gap-2">
+          <GitCompare className="w-4 h-4 text-purple-600" /> Сравнение участников
+          <Badge variant="outline" className="text-xs">{selected.length}/3 выбрано</Badge>
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="p-4 space-y-3">
+        {selected.length === 0 ? (
+          <div className="p-6 text-center rounded-lg bg-muted/30 border border-dashed">
+            <GitCompare className="w-8 h-8 mx-auto text-muted-foreground" />
+            <p className="text-sm text-muted-foreground mt-2">Выберите до 3 участников для сравнения</p>
+            <p className="text-xs text-muted-foreground mt-1">Сравнение по 7 ключевым параметрам</p>
+          </div>
+        ) : (
+          <>
+            {/* Comparison Table */}
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs border-collapse">
+                <thead>
+                  <tr className="border-b">
+                    <th className="text-left p-2 font-medium text-muted-foreground w-32">Параметр</th>
+                    {selected.map(p => (
+                      <th key={p.id} className="text-left p-2 font-semibold align-top min-w-[180px]">
+                        <div className="flex items-start gap-2">
+                          <div className="flex-1 min-w-0">
+                            <p className="truncate">{p.shortName ?? p.fullName}</p>
+                            <div className="flex items-center gap-1 mt-1">
+                              <Badge className={`${ROLE_BADGE[p.role ?? ''] ?? 'bg-stone-500 text-white'} text-[10px]`}>
+                                {ROLE_LABEL[p.role ?? ''] ?? p.role}
+                              </Badge>
+                            </div>
+                          </div>
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className="h-5 w-5 shrink-0"
+                            onClick={() => removePerson(p.id)}
+                          >
+                            <X className="w-3 h-3" />
+                          </Button>
+                        </div>
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {dimensions.map((dim, idx) => (
+                    <tr key={dim.key} className={idx % 2 === 0 ? 'bg-muted/20' : ''}>
+                      <td className="p-2 font-medium text-muted-foreground">{dim.label}</td>
+                      {selected.map(p => {
+                        const value = dim.getValue(p)
+                        // Highlight guilt level with color
+                        const isGuilt = dim.key === 'guiltLevel'
+                        const guiltClass = isGuilt ? GUILT[p.guiltLevel ?? 'none'].badge : ''
+                        return (
+                          <td key={p.id} className="p-2 align-top">
+                            {isGuilt ? (
+                              <Badge className={`${guiltClass} text-xs`}>{value}</Badge>
+                            ) : (
+                              <span className="text-xs">{value}</span>
+                            )}
+                          </td>
+                        )
+                      })}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Visual guilt comparison */}
+            <div className="p-3 rounded-lg bg-muted/30">
+              <p className="text-xs font-semibold mb-2 flex items-center gap-1">
+                <Target className="w-3 h-3" /> Сравнение уровней виновности
+              </p>
+              <div className="space-y-2">
+                {selected.map(p => {
+                  const pct = GUILT[p.guiltLevel ?? 'none'].pct
+                  const color = GUILT[p.guiltLevel ?? 'none'].color
+                  return (
+                    <div key={p.id} className="flex items-center gap-2">
+                      <span className="text-xs w-24 truncate text-muted-foreground">{p.shortName ?? p.fullName}</span>
+                      <div className="flex-1 h-2 rounded-full bg-muted overflow-hidden">
+                        <div
+                          className="h-full rounded-full transition-all duration-700"
+                          style={{ width: `${pct}%`, backgroundColor: color }}
+                        />
+                      </div>
+                      <span className="text-xs font-semibold w-10 text-right">{pct}%</span>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          </>
+        )}
+
+        {/* Add person to comparison */}
+        {availablePersons.length > 0 && compareIds.length < 3 && (
+          <div className="flex items-center gap-2">
+            <Select onValueChange={addPerson}>
+              <SelectTrigger className="h-8 text-xs flex-1">
+                <SelectValue placeholder="+ Добавить участника для сравнения" />
+              </SelectTrigger>
+              <SelectContent>
+                {availablePersons.map(p => (
+                  <SelectItem key={p.id} value={p.id} className="text-xs">
+                    {p.shortName ?? p.fullName} ({ROLE_LABEL[p.role ?? ''] ?? p.role})
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
+      </CardContent>
+    </Card>
   )
 }

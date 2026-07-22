@@ -6,6 +6,7 @@ import {
   NotificationData, CaseHealthScore, CrossRefNode,
   CaseBriefData, RiskAssessmentData, SentencingData, EvidenceChainData,
   AuditLogEntry, CaseTimelineEvent, BookmarkData, WitnessStatementData,
+  AnalyticsData,
 } from './case-store'
 
 export const mockDocuments: DocumentData[] = [
@@ -520,3 +521,91 @@ export const mockWitnessStatements: WitnessStatementData[] = [
     verifiedBy: ['Бухгалтерские документы с датой май 2023'],
   },
 ]
+
+// === NEW: Mock Analytics Data ===
+export const mockAnalytics: AnalyticsData = {
+  processingTrend: [
+    { date: 'Янв', processed: 1, pending: 0, failed: 0 },
+    { date: 'Фев', processed: 2, pending: 0, failed: 0 },
+    { date: 'Мар', processed: 1, pending: 0, failed: 0 },
+    { date: 'Апр', processed: 0, pending: 1, failed: 0 },
+    { date: 'Май', processed: 0, pending: 1, failed: 0 },
+  ],
+  episodeMatrix: [
+    { severity: 'особо тяжкое', proven: 0, investigating: 0, doubtful: 0, total: 0 },
+    { severity: 'тяжкое', proven: 1, investigating: 1, doubtful: 0, total: 2 },
+    { severity: 'средней тяжести', proven: 0, investigating: 0, doubtful: 1, total: 1 },
+    { severity: 'небольшой', proven: 0, investigating: 0, doubtful: 0, total: 0 },
+  ],
+  personInvolvement: [
+    { name: 'Колесниченко Д.А.', episodes: 3, documents: 2, relationships: 4 },
+    { name: 'Сидоров А.П.', episodes: 2, documents: 1, relationships: 3 },
+    { name: 'Петров И.В.', episodes: 1, documents: 1, relationships: 1 },
+    { name: 'Иванова М.С.', episodes: 1, documents: 0, relationships: 1 },
+    { name: 'Козлов В.Н.', episodes: 1, documents: 0, relationships: 1 },
+  ],
+  articleCharges: [
+    { code: 'ст. 159 ч.3 УК РФ', description: 'Мошенничество с использованием служебного положения', count: 2, severity: 'тяжкое' },
+    { code: 'ст. 159 ч.4 УК РФ', description: 'Мошенничество в особо крупном размере', count: 1, severity: 'особо тяжкое' },
+    { code: 'ст. 160 ч.3 УК РФ', description: 'Присвоение или растрата', count: 1, severity: 'тяжкое' },
+    { code: 'ст. 33 УК РФ', description: 'Соучастие в преступлении', count: 1, severity: 'тяжкое' },
+  ],
+  complexity: {
+    overallScore: 72,
+    factors: [
+      { name: 'Объём документов', score: 65, benchmark: 50 },
+      { name: 'Количество участников', score: 70, benchmark: 40 },
+      { name: 'Количество эпизодов', score: 55, benchmark: 35 },
+      { name: 'Сложность статей', score: 85, benchmark: 60 },
+      { name: 'Перекрёстных ссылок', score: 60, benchmark: 45 },
+      { name: 'Экспертиз', score: 80, benchmark: 30 },
+    ],
+    rating: 'high',
+  },
+  documentTypes: [
+    { type: 'Обвинение', count: 1, percentage: 20 },
+    { type: 'Показание', count: 2, percentage: 40 },
+    { type: 'Протокол', count: 1, percentage: 20 },
+    { type: 'Экспертиза', count: 1, percentage: 20 },
+  ],
+  insights: [
+    {
+      type: 'critical',
+      title: 'Противоречия в показаниях свидетелей',
+      description: 'Обнаружены 3 противоречия в показаниях свидетелей по дате подписания приказов. Рекомендуется дополнительный допрос.',
+      confidence: 88,
+    },
+    {
+      type: 'warning',
+      title: 'Истекает срок давности по эпизоду 2',
+      description: 'По эпизоду 2 (средней тяжести) срок давности истекает через 14 месяцев. Необходимо ускорить рассмотрение.',
+      confidence: 95,
+    },
+    {
+      type: 'positive',
+      title: 'Сильная доказательственная база по эпизоду 1',
+      description: 'Эпизод 1 подтверждён 4 независимыми источниками. Вероятность доказанности в суде — 87%.',
+      confidence: 92,
+    },
+    {
+      type: 'info',
+      title: 'Рекомендуется дополнительная экспертиза',
+      description: 'Для полного доказывания по эпизоду 3 рекомендуется назначение почерковедческой экспертизы.',
+      confidence: 78,
+    },
+  ],
+  outcomePrediction: [
+    { scenario: 'Полное признание вины по всем эпизодам', probability: 35, rationale: 'Сильная доказательная база по эп. 1, но есть противоречия' },
+    { scenario: 'Частичное признание (эп. 1, оправдание эп. 2-3)', probability: 45, rationale: 'Алиби по эп. 1 опровергается, но по эп. 2-3 есть основания' },
+    { scenario: 'Оправдание по всем эпизодам', probability: 12, rationale: 'Маловероятно при текущей доказательной базе' },
+    { scenario: 'Возврат дела прокурору (нарушения)', probability: 8, rationale: 'Возможно при обнаружении процессуальных нарушений' },
+  ],
+  workloadByMonth: [
+    { month: 'Янв', documents: 1, actions: 5, hearings: 0 },
+    { month: 'Фев', documents: 2, actions: 8, hearings: 1 },
+    { month: 'Мар', documents: 1, actions: 6, hearings: 1 },
+    { month: 'Апр', documents: 1, actions: 9, hearings: 2 },
+    { month: 'Май', documents: 1, actions: 7, hearings: 1 },
+    { month: 'Июн', documents: 0, actions: 4, hearings: 1 },
+  ],
+}

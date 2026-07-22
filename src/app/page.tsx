@@ -30,6 +30,17 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import {
+  CommandDialog,
+  CommandInput,
+  CommandList,
+  CommandEmpty,
+  CommandGroup,
+  CommandItem,
+  CommandSeparator,
+  CommandShortcut,
+} from '@/components/ui/command'
+import { ScrollArea } from '@/components/ui/scroll-area'
 
 import {
   LayoutDashboard,
@@ -54,6 +65,12 @@ import {
   CalendarClock,
   TrendingUp,
   FileBarChart,
+  BarChart3,
+  Command as CommandIcon,
+  Activity,
+  Heart,
+  Sparkles,
+  ArrowRight,
 } from 'lucide-react'
 import { useTheme } from 'next-themes'
 import { toast } from 'sonner'
@@ -71,6 +88,7 @@ import { CaseLegalCheck } from '@/components/case-legal-check'
 import { CaseTimeline } from '@/components/case-timeline'
 import { CaseRisk } from '@/components/case-risk'
 import { CaseBrief } from '@/components/case-brief'
+import { CaseAnalytics } from '@/components/case-analytics'
 
 const NAV_ITEMS: {
   id: SectionId
@@ -90,6 +108,7 @@ const NAV_ITEMS: {
   { id: 'timeline', label: 'Хронология', icon: <CalendarClock className="h-4 w-4" />, description: 'Полная хронология дела', shortcut: '9' },
   { id: 'risk', label: 'Оценка рисков', icon: <TrendingUp className="h-4 w-4" />, description: 'Матрица рисков и наказания', shortcut: '0' },
   { id: 'brief', label: 'Краткое изложение', icon: <FileBarChart className="h-4 w-4" />, description: 'Итоговое резюме дела', shortcut: 'B' },
+  { id: 'analytics', label: 'Аналитика', icon: <BarChart3 className="h-4 w-4" />, description: 'Глубокий анализ и прогнозы', shortcut: 'A' },
 ]
 
 const NOTIF_TYPE_ICON: Record<string, React.ReactNode> = {
@@ -118,7 +137,7 @@ function ThemeToggle() {
       <DropdownMenuTrigger asChild>
         <Button variant="ghost" size="icon" className="h-8 w-8">
           <Sun className="h-4 w-4 rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
-          <Moon className="absolute h-4 h-4 rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
+          <Moon className="absolute h-4 w-4 rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
           <span className="sr-only">Переключить тему</span>
         </Button>
       </DropdownMenuTrigger>
@@ -219,12 +238,135 @@ function KeyboardShortcutsHelp({ open, onClose }: { open: boolean; onClose: () =
           ))}
           <Separator className="mt-3" />
           <div className="flex items-center gap-2 p-2 rounded-lg bg-muted/50">
+            <kbd className="px-2 py-1 rounded bg-muted text-xs font-mono border">Ctrl+K</kbd>
+            <span className="text-sm">Командная палитра</span>
+            <span className="text-xs text-muted-foreground ml-auto">Быстрый поиск и действия</span>
+          </div>
+          <div className="flex items-center gap-2 p-2 rounded-lg bg-muted/50">
             <kbd className="px-2 py-1 rounded bg-muted text-xs font-mono border">?</kbd>
             <span className="text-sm">Показать эту справку</span>
           </div>
         </div>
       </DialogContent>
     </Dialog>
+  )
+}
+
+function CommandPalette({
+  open,
+  onOpenChange,
+  setActiveSection,
+}: {
+  open: boolean
+  onOpenChange: (v: boolean) => void
+  setActiveSection: (s: SectionId) => void
+}) {
+  // Quick action shortcuts
+  const quickActions = [
+    { id: 'refresh', label: 'Обновить данные', icon: <Activity className="h-4 w-4" />, section: 'dashboard' as SectionId, hint: 'Перейти на главную' },
+    { id: 'qa-ask', label: 'Задать вопрос ИИ', icon: <MessageSquare className="h-4 w-4" />, section: 'qa' as SectionId, hint: 'AI-аналитик' },
+    { id: 'check-compliance', label: 'Проверить соответствие', icon: <Scale className="h-4 w-4" />, section: 'legal-check' as SectionId, hint: 'Правовая проверка' },
+    { id: 'view-risk', label: 'Посмотреть риски', icon: <TrendingUp className="h-4 w-4" />, section: 'risk' as SectionId, hint: 'Матрица рисков' },
+    { id: 'view-timeline', label: 'Открыть хронологию', icon: <CalendarClock className="h-4 w-4" />, section: 'timeline' as SectionId, hint: 'Все события дела' },
+  ]
+
+  return (
+    <CommandDialog open={open} onOpenChange={onOpenChange}>
+      <CommandInput placeholder="Поиск разделов, действий, документов..." />
+      <CommandList>
+        <CommandEmpty>Ничего не найдено</CommandEmpty>
+        <CommandGroup heading="Разделы дела">
+          {NAV_ITEMS.map(item => (
+            <CommandItem
+              key={item.id}
+              value={`${item.label} ${item.description}`}
+              onSelect={() => {
+                setActiveSection(item.id)
+                onOpenChange(false)
+              }}
+              className="gap-2"
+            >
+              {item.icon}
+              <span className="font-medium">{item.label}</span>
+              <span className="text-xs text-muted-foreground truncate">{item.description}</span>
+              <CommandShortcut>Ctrl+{item.shortcut}</CommandShortcut>
+            </CommandItem>
+          ))}
+        </CommandGroup>
+        <CommandSeparator />
+        <CommandGroup heading="Быстрые действия">
+          {quickActions.map(action => (
+            <CommandItem
+              key={action.id}
+              value={action.label}
+              onSelect={() => {
+                setActiveSection(action.section)
+                onOpenChange(false)
+              }}
+              className="gap-2"
+            >
+              {action.icon}
+              <span className="font-medium">{action.label}</span>
+              <span className="text-xs text-muted-foreground ml-auto">{action.hint}</span>
+              <ArrowRight className="h-3 w-3 text-muted-foreground" />
+            </CommandItem>
+          ))}
+        </CommandGroup>
+      </CommandList>
+    </CommandDialog>
+  )
+}
+
+function CaseHealthBadge() {
+  // Compact health indicator for sidebar footer
+  const [score, setScore] = useState<number | null>(null)
+  useEffect(() => {
+    fetch('/api/case/health-score')
+      .then(r => r.ok ? r.json() : null)
+      .then(d => {
+        if (d && typeof d.score === 'number') setScore(d.score)
+        else if (d && typeof d.overallScore === 'number') setScore(d.overallScore)
+      })
+      .catch(() => setScore(null))
+  }, [])
+
+  if (score === null) {
+    return (
+      <div className="flex items-center gap-2 px-2 py-1.5 rounded-md bg-muted/50 text-xs text-muted-foreground">
+        <Activity className="w-3.5 h-3.5 animate-pulse" />
+        <span className="group-data-[collapsible=icon]:hidden">Загрузка...</span>
+      </div>
+    )
+  }
+
+  // Color thresholds: <50 red, 50-75 amber, >75 emerald
+  const color = score >= 75 ? 'emerald' : score >= 50 ? 'amber' : 'red'
+  const colorClasses = {
+    emerald: 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-900',
+    amber: 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-900',
+    red: 'bg-red-50 text-red-700 border-red-200 dark:bg-red-950/40 dark:text-red-300 dark:border-red-900',
+  }
+  const statusText = score >= 75 ? 'Здоровое' : score >= 50 ? 'Среднее' : 'Проблемное'
+
+  return (
+    <div className={`flex items-center gap-2 px-2 py-1.5 rounded-md border text-xs ${colorClasses[color]}`}>
+      <Heart className="w-3.5 h-3.5 fill-current" />
+      <div className="flex-1 min-w-0 group-data-[collapsible=icon]:hidden">
+        <div className="flex items-center gap-1.5">
+          <span className="font-semibold">{score}/100</span>
+          <span className="opacity-70">·</span>
+          <span className="truncate">{statusText}</span>
+        </div>
+        <div className="mt-1 h-1 rounded-full bg-black/10 dark:bg-white/10 overflow-hidden">
+          <div
+            className={`h-full rounded-full transition-all duration-700 ${
+              color === 'emerald' ? 'bg-emerald-600' : color === 'amber' ? 'bg-amber-600' : 'bg-red-700'
+            }`}
+            style={{ width: `${score}%` }}
+          />
+        </div>
+      </div>
+    </div>
   )
 }
 
@@ -273,9 +415,12 @@ function AppSidebar({ activeSection, setActiveSection }: {
       </SidebarContent>
       <SidebarSeparator />
       <SidebarFooter>
-        <div className="flex items-center gap-2 px-2 py-1">
-          <ThemeToggle />
-          <span className="group-data-[collapsible=icon]:hidden text-xs text-muted-foreground">Тема</span>
+        <div className="flex flex-col gap-2 px-2 pb-1">
+          <CaseHealthBadge />
+          <div className="flex items-center gap-2 px-1">
+            <ThemeToggle />
+            <span className="group-data-[collapsible=icon]:hidden text-xs text-muted-foreground">Тема</span>
+          </div>
         </div>
       </SidebarFooter>
       <SidebarRail />
@@ -283,18 +428,19 @@ function AppSidebar({ activeSection, setActiveSection }: {
   )
 }
 
-function TopHeader({ activeSection, notifications, setActiveSection, onHelpClick }: {
+function TopHeader({ activeSection, notifications, setActiveSection, onHelpClick, onCommandClick }: {
   activeSection: SectionId
   notifications: NotificationData[]
   setActiveSection: (section: SectionId) => void
   onHelpClick: () => void
+  onCommandClick: () => void
 }) {
   const { toggleSidebar } = useSidebar()
   const activeItem = NAV_ITEMS.find(item => item.id === activeSection)
   const unreadCount = notifications.filter(n => !n.isRead).length
 
   return (
-    <header className="flex h-14 shrink-0 items-center gap-2 border-b px-4">
+    <header className="flex h-14 shrink-0 items-center gap-2 border-b px-4 bg-gradient-to-r from-background via-background to-muted/30 backdrop-blur-sm">
       <Button variant="ghost" size="icon" className="h-8 w-8" onClick={toggleSidebar}>
         <PanelLeft className="h-4 w-4" />
       </Button>
@@ -302,10 +448,20 @@ function TopHeader({ activeSection, notifications, setActiveSection, onHelpClick
       <div className="flex items-center gap-2 min-w-0">
         {activeItem?.icon}
         <h1 className="text-sm font-semibold truncate">{activeItem?.label || 'Главная'}</h1>
-        <Badge variant="outline" className="text-xs shrink-0">{activeItem?.description}</Badge>
-        <kbd className="hidden sm:inline-flex px-1.5 py-0.5 rounded bg-muted text-xs font-mono border text-muted-foreground">Ctrl+{activeItem?.shortcut}</kbd>
+        <Badge variant="outline" className="text-xs shrink-0 hidden md:inline-flex">{activeItem?.description}</Badge>
+        <kbd className="hidden lg:inline-flex px-1.5 py-0.5 rounded bg-muted text-xs font-mono border text-muted-foreground">Ctrl+{activeItem?.shortcut}</kbd>
       </div>
       <div className="ml-auto flex items-center gap-2">
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={onCommandClick}
+          className="h-8 gap-2 px-2.5 text-xs text-muted-foreground hidden sm:inline-flex"
+        >
+          <CommandIcon className="h-3.5 w-3.5" />
+          <span className="hidden md:inline">Поиск</span>
+          <kbd className="px-1 py-0.5 rounded bg-muted text-[10px] font-mono border">⌘K</kbd>
+        </Button>
         <NotificationCenter notifications={notifications} setActiveSection={setActiveSection} />
         <Button variant="ghost" size="icon" className="h-8 w-8" onClick={onHelpClick}>
           <HelpCircle className="h-4 w-4" />
@@ -336,6 +492,7 @@ function MainContent({ activeSection }: { activeSection: SectionId }) {
       case 'timeline': return CaseTimeline
       case 'risk': return CaseRisk
       case 'brief': return CaseBrief
+      case 'analytics': return CaseAnalytics
       default: return CaseDashboard
     }
   })()
@@ -358,10 +515,17 @@ function AppFooter() {
 export default function Home() {
   const [activeSection, setActiveSection] = useState<SectionId>('dashboard')
   const [helpOpen, setHelpOpen] = useState(false)
+  const [commandOpen, setCommandOpen] = useState(false)
   const notifications = mockNotifications
 
   // Keyboard shortcuts handler
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
+    // Ctrl+K opens command palette (highest priority)
+    if (e.ctrlKey && (e.key === 'k' || e.key === 'K' || e.key === 'л' || e.key === 'Л')) {
+      e.preventDefault()
+      setCommandOpen(prev => !prev)
+      return
+    }
     // Ctrl+1-8 for section navigation
     if (e.ctrlKey && !e.altKey && !e.shiftKey) {
       const num = parseInt(e.key)
@@ -384,6 +548,11 @@ export default function Home() {
         e.preventDefault()
         setActiveSection('brief')
       }
+      // Ctrl+A for analytics
+      if (e.key === 'a' || e.key === 'A' || e.key === 'ф' || e.key === 'Ф') {
+        e.preventDefault()
+        setActiveSection('analytics')
+      }
     }
     // ? for help
     if (e.key === '?' && !e.ctrlKey && !e.altKey) {
@@ -394,11 +563,12 @@ export default function Home() {
         setHelpOpen(true)
       }
     }
-    // Escape to close help
-    if (e.key === 'Escape' && helpOpen) {
-      setHelpOpen(false)
+    // Escape to close help or command palette
+    if (e.key === 'Escape') {
+      if (helpOpen) setHelpOpen(false)
+      if (commandOpen) setCommandOpen(false)
     }
-  }, [helpOpen])
+  }, [helpOpen, commandOpen])
 
   useEffect(() => {
     window.addEventListener('keydown', handleKeyDown)
@@ -409,7 +579,13 @@ export default function Home() {
     <SidebarProvider>
       <AppSidebar activeSection={activeSection} setActiveSection={setActiveSection} />
       <SidebarInset>
-        <TopHeader activeSection={activeSection} notifications={notifications} setActiveSection={setActiveSection} onHelpClick={() => setHelpOpen(true)} />
+        <TopHeader
+          activeSection={activeSection}
+          notifications={notifications}
+          setActiveSection={setActiveSection}
+          onHelpClick={() => setHelpOpen(true)}
+          onCommandClick={() => setCommandOpen(true)}
+        />
         <div className="flex flex-1 flex-col min-h-0">
           <main className="flex-1 overflow-y-auto p-4 md:p-6">
             <MainContent activeSection={activeSection} />
@@ -418,6 +594,11 @@ export default function Home() {
         </div>
       </SidebarInset>
       <KeyboardShortcutsHelp open={helpOpen} onClose={() => setHelpOpen(false)} />
+      <CommandPalette
+        open={commandOpen}
+        onOpenChange={setCommandOpen}
+        setActiveSection={setActiveSection}
+      />
     </SidebarProvider>
   )
 }

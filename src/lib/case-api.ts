@@ -22,6 +22,7 @@ import {
   CaseTimelineEvent,
   BookmarkData,
   WitnessStatementData,
+  AnalyticsData,
 } from './case-store'
 
 const API_BASE = '/api/case'
@@ -363,5 +364,15 @@ export async function getWitnessStatements(): Promise<WitnessStatementData[]> {
   } catch {
     const { mockWitnessStatements } = await import('./mock-data')
     return mockWitnessStatements
+  }
+}
+
+// === NEW: Get Analytics Data ===
+export async function getAnalytics(): Promise<AnalyticsData> {
+  try {
+    return await fetchApi<AnalyticsData>('/analytics')
+  } catch {
+    const { mockAnalytics } = await import('./mock-data')
+    return mockAnalytics
   }
 }
