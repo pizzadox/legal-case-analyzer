@@ -230,7 +230,7 @@ export function CaseQa() {
               <Badge variant="outline" className="text-xs ml-auto">{SUGGESTED_GROUPS.length} категорий</Badge>
             </CardTitle>
           </CardHeader>
-          <CardContent className="p-4 space-y-3 max-h-[500px] overflow-y-auto scrollbar-thin">
+          <CardContent className="p-4 pb-5 space-y-3 max-h-[500px] overflow-y-auto scrollbar-thin">
             {SUGGESTED_GROUPS.map(group => {
               const Icon = group.icon
               const colorClass = group.color.split(' ')[0]
@@ -259,7 +259,7 @@ export function CaseQa() {
       </div>
 
       {/* Input */}
-      <div className="flex gap-2">
+      <div className="flex gap-2 clear-both mt-2">
         <div className="flex-1 relative">
           <MessageSquare className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <Input

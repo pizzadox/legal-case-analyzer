@@ -461,22 +461,22 @@ function AnimatedStatCard({
   const DeltaIcon = deltaType === 'up' ? TrendingUp : deltaType === 'down' ? AlertTriangle : Activity
   return (
     <Card
-      className={`rounded-xl shadow-sm border-t-2 ${border} bg-gradient-to-br ${gradient} transition-all duration-200 ${onClick ? 'cursor-pointer hover:shadow-md hover:-translate-y-0.5' : ''}`}
+      className={`min-w-0 rounded-xl shadow-sm border-t-2 ${border} bg-gradient-to-br ${gradient} transition-all duration-200 ${onClick ? 'cursor-pointer hover:shadow-md hover:-translate-y-0.5' : ''}`}
       onClick={onClick}
     >
-      <CardContent className="p-4">
+      <CardContent className="p-3 sm:p-4">
         <div className="flex items-start justify-between gap-2">
           <div className="flex-1 min-w-0">
-            <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide truncate">{label}</p>
-            <p className="text-2xl font-bold tracking-tight mt-1 tabular-nums">{animated}</p>
+            <p className="text-[10px] sm:text-xs text-muted-foreground font-medium uppercase tracking-wide truncate">{label}</p>
+            <p className="text-xl sm:text-2xl font-bold tracking-tight mt-1 tabular-nums">{animated}</p>
             {delta && (
-              <div className={`flex items-center gap-1 text-[10px] mt-1 font-medium ${deltaColor}`}>
-                <DeltaIcon className="w-3 h-3" />
-                {delta}
+              <div className={`flex items-center gap-1 text-[10px] mt-1 font-medium ${deltaColor} truncate`}>
+                <DeltaIcon className="w-3 h-3 shrink-0" />
+                <span className="truncate">{delta}</span>
               </div>
             )}
           </div>
-          <div className={`flex items-center justify-center w-9 h-9 rounded-lg ${iconBg} shrink-0`}>
+          <div className={`flex items-center justify-center w-8 h-8 sm:w-9 sm:h-9 rounded-lg ${iconBg} shrink-0`}>
             <Icon className={`w-4 h-4 ${iconColor}`} />
           </div>
         </div>
@@ -498,7 +498,7 @@ function QuickStatsBar({ stats, onNavigate }: {
     : 0
 
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 px-1">
       <AnimatedStatCard
         label="Документы"
         value={s.totalDocuments}

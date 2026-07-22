@@ -184,9 +184,18 @@ export async function getChatHistory(): Promise<ChatMessageData[]> {
   return fetchApi<ChatMessageData[]>('/qa/history')
 }
 
-// Get defense lines for a person
+// Get defense lines for a person.
+// Accepts a real Prisma id or the legacy "p1" sentinel — the server resolves it.
+// Returns the canonical { defenseLines: [...] } shape used across the app.
 export async function getDefenseLines(personId: string): Promise<DefenseLineData[]> {
-  return fetchApi<DefenseLineData[]>(`/defense/${personId}`)
+  try {
+    const res = await fetchApi<{ defenseLines?: DefenseLineData[] } | DefenseLineData[]>(`/defense/${personId}`);
+    // Server may return either a bare array (legacy) or a wrapped object.
+    if (Array.isArray(res)) return res;
+    return res.defenseLines ?? [];
+  } catch {
+    return [];
+  }
 }
 
 // Get compliance results

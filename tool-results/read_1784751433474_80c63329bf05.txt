@@ -1,0 +1,1141 @@
+     1→'use client'
+     2→
+     3→import { useState, useEffect, useCallback } from 'react'
+     4→import {
+     5→  Sidebar,
+     6→  SidebarContent,
+     7→  SidebarFooter,
+     8→  SidebarGroup,
+     9→  SidebarGroupContent,
+    10→  SidebarGroupLabel,
+    11→  SidebarHeader,
+    12→  SidebarInset,
+    13→  SidebarMenu,
+    14→  SidebarMenuButton,
+    15→  SidebarMenuItem,
+    16→  SidebarProvider,
+    17→  SidebarRail,
+    18→  SidebarSeparator,
+    19→  SidebarTrigger,
+    20→  useSidebar,
+    21→} from '@/components/ui/sidebar'
+    22→import { Separator } from '@/components/ui/separator'
+    23→import { Button } from '@/components/ui/button'
+    24→import { Badge } from '@/components/ui/badge'
+    25→import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+    26→import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+    27→import {
+    28→  DropdownMenu,
+    29→  DropdownMenuContent,
+    30→  DropdownMenuItem,
+    31→  DropdownMenuTrigger,
+    32→} from '@/components/ui/dropdown-menu'
+    33→import {
+    34→  CommandDialog,
+    35→  CommandInput,
+    36→  CommandList,
+    37→  CommandEmpty,
+    38→  CommandGroup,
+    39→  CommandItem,
+    40→  CommandSeparator,
+    41→  CommandShortcut,
+    42→} from '@/components/ui/command'
+    43→import { ScrollArea } from '@/components/ui/scroll-area'
+    44→
+    45→import {
+    46→  LayoutDashboard,
+    47→  FileText,
+    48→  Users,
+    49→  BookOpen,
+    50→  Search,
+    51→  MessageSquare,
+    52→  Shield,
+    53→  Scale,
+    54→  Sun,
+    55→  Moon,
+    56→  PanelLeft,
+    57→  ScaleIcon,
+    58→  Bell,
+    59→  HelpCircle,
+    60→  CheckCircle,
+    61→  AlertTriangle,
+    62→  XCircle,
+    63→  Clock,
+    64→  Zap,
+    65→  CalendarClock,
+    66→  TrendingUp,
+    67→  FileBarChart,
+    68→  BarChart3,
+    69→  Command as CommandIcon,
+    70→  Activity,
+    71→  Heart,
+    72→  Sparkles,
+    73→  ArrowRight,
+    74→  Settings,
+    75→  Type,
+    76→  Gauge,
+    77→  Sparkle,
+    78→  RotateCcw,
+    79→  Save,
+    80→  RefreshCw,
+    81→  FolderOpen,
+    82→  ChevronDown,
+    83→  Folder,
+    84→  Plus,
+    85→  CheckCircle2,
+    86→  Link2,
+    87→} from 'lucide-react'
+    88→import { useTheme } from 'next-themes'
+    89→import { toast } from 'sonner'
+    90→import type { SectionId, NotificationData } from '@/lib/case-store'
+    91→import { mockNotifications } from '@/lib/mock-data'
+    92→import { Switch } from '@/components/ui/switch'
+    93→import { Label } from '@/components/ui/label'
+    94→import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+    95→
+    96→import { CaseDashboard } from '@/components/case-dashboard'
+    97→import { CaseDocuments } from '@/components/case-documents'
+    98→import { CasePersons } from '@/components/case-persons'
+    99→import { CaseEpisodes } from '@/components/case-episodes'
+   100→import { CaseSearch } from '@/components/case-search'
+   101→import { CaseQa } from '@/components/case-qa'
+   102→import { CaseDefense } from '@/components/case-defense'
+   103→import { CaseLegalCheck } from '@/components/case-legal-check'
+   104→import { CaseTimeline } from '@/components/case-timeline'
+   105→import { CaseEvidenceChain } from '@/components/case-evidence-chain'
+   106→import { CaseRisk } from '@/components/case-risk'
+   107→import { CaseWitnessMatrix } from '@/components/case-witness-matrix'
+   108→import { CaseBrief } from '@/components/case-brief'
+   109→import { CaseAnalytics } from '@/components/case-analytics'
+   110→
+   111→const NAV_ITEMS: {
+   112→  id: SectionId
+   113→  label: string
+   114→  icon: React.ReactNode
+   115→  description: string
+   116→  shortcut: string
+   117→}[] = [
+   118→  { id: 'dashboard', label: 'Главная', icon: <LayoutDashboard className="h-4 w-4" />, description: 'Обзор дела и статистика', shortcut: '1' },
+   119→  { id: 'documents', label: 'Документы', icon: <FileText className="h-4 w-4" />, description: 'Загрузка и просмотр PDF', shortcut: '2' },
+   120→  { id: 'persons', label: 'Участники', icon: <Users className="h-4 w-4" />, description: 'Участники дела и виновность', shortcut: '3' },
+   121→  { id: 'episodes', label: 'Эпизоды', icon: <BookOpen className="h-4 w-4" />, description: 'Преступные эпизоды', shortcut: '4' },
+   122→  { id: 'search', label: 'Поиск', icon: <Search className="h-4 w-4" />, description: 'Поиск по материалам дела', shortcut: '5' },
+   123→  { id: 'qa', label: 'Вопросы ИИ', icon: <MessageSquare className="h-4 w-4" />, description: 'ИИ-аналитик по делу', shortcut: '6' },
+   124→  { id: 'defense', label: 'Линия защиты', icon: <Shield className="h-4 w-4" />, description: 'Стратегии защиты', shortcut: '7' },
+   125→  { id: 'legal-check', label: 'Правовая проверка', icon: <Scale className="h-4 w-4" />, description: 'Проверка по нормам РФ', shortcut: '8' },
+   126→  { id: 'timeline', label: 'Хронология', icon: <CalendarClock className="h-4 w-4" />, description: 'Полная хронология дела', shortcut: '9' },
+   127→  { id: 'evidence-chain', label: 'Цепочка доказательств', icon: <Link2 className="h-4 w-4" />, description: 'Связи доказательств обвинения и защиты', shortcut: 'E' },
+   128→  { id: 'risk', label: 'Оценка рисков', icon: <TrendingUp className="h-4 w-4" />, description: 'Матрица рисков и наказания', shortcut: '0' },
+   129→  { id: 'witness-matrix', label: 'Матрица показаний', icon: <MessageSquare className="h-4 w-4" />, description: 'Согласованность показаний свидетелей', shortcut: 'M' },
+   130→  { id: 'brief', label: 'Краткое изложение', icon: <FileBarChart className="h-4 w-4" />, description: 'Итоговое резюме дела', shortcut: 'B' },
+   131→  { id: 'analytics', label: 'Аналитика', icon: <BarChart3 className="h-4 w-4" />, description: 'Глубокий анализ и прогнозы', shortcut: 'A' },
+   132→]
+   133→
+   134→const NOTIF_TYPE_ICON: Record<string, React.ReactNode> = {
+   135→  processing: <Clock className="w-4 h-4 text-amber-500" />,
+   136→  compliance: <AlertTriangle className="w-4 h-4 text-orange-600" />,
+   137→  defense: <Shield className="w-4 h-4 text-emerald-600" />,
+   138→  evidence: <FileText className="w-4 h-4 text-red-600" />,
+   139→  system: <Zap className="w-4 h-4 text-stone-500" />,
+   140→}
+   141→
+   142→const NOTIF_TYPE_BADGE: Record<string, string> = {
+   143→  processing: 'bg-amber-600 text-white',
+   144→  compliance: 'bg-orange-600 text-white',
+   145→  defense: 'bg-emerald-700 text-white',
+   146→  evidence: 'bg-red-700 text-white',
+   147→  system: 'bg-stone-600 text-white',
+   148→}
+   149→
+   150→
+   151→
+   152→function ThemeToggle() {
+   153→  const { theme, setTheme } = useTheme()
+   154→
+   155→  return (
+   156→    <DropdownMenu>
+   157→      <DropdownMenuTrigger asChild>
+   158→        <Button variant="ghost" size="icon" className="h-8 w-8">
+   159→          <Sun className="h-4 w-4 rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
+   160→          <Moon className="absolute h-4 w-4 rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
+   161→          <span className="sr-only">Переключить тему</span>
+   162→        </Button>
+   163→      </DropdownMenuTrigger>
+   164→      <DropdownMenuContent align="end">
+   165→        <DropdownMenuItem onClick={() => setTheme('light')}>Светлая</DropdownMenuItem>
+   166→        <DropdownMenuItem onClick={() => setTheme('dark')}>Тёмная</DropdownMenuItem>
+   167→        <DropdownMenuItem onClick={() => setTheme('system')}>Системная</DropdownMenuItem>
+   168→      </DropdownMenuContent>
+   169→    </DropdownMenu>
+   170→  )
+   171→}
+   172→
+   173→function NotificationCenter({ notifications, setActiveSection }: {
+   174→  notifications: NotificationData[]
+   175→  setActiveSection: (section: SectionId) => void
+   176→}) {
+   177→  const [localNotifications, setLocalNotifications] = useState(notifications)
+   178→  const unreadCount = localNotifications.filter(n => !n.isRead).length
+   179→
+   180→  const markAllRead = () => {
+   181→    setLocalNotifications(localNotifications.map(n => ({ ...n, isRead: true })))
+   182→    toast.success('Все уведомления отмечены как прочитанные')
+   183→  }
+   184→
+   185→  const handleClick = (notif: NotificationData) => {
+   186→    setLocalNotifications(localNotifications.map(n => n.id === notif.id ? { ...n, isRead: true } : n))
+   187→    if (notif.relatedSection) {
+   188→      setActiveSection(notif.relatedSection)
+   189→    }
+   190→  }
+   191→
+   192→  return (
+   193→    <Popover>
+   194→      <PopoverTrigger asChild>
+   195→        <Button variant="ghost" size="icon" className="h-8 w-8 relative">
+   196→          <Bell className="h-4 w-4" />
+   197→          {unreadCount > 0 && (
+   198→            <span className="absolute -top-1 -right-1 flex items-center justify-center w-4 h-4 rounded-full bg-red-700 text-white text-xs font-bold">
+   199→              {unreadCount}
+   200→            </span>
+   201→          )}
+   202→          <span className="sr-only">Уведомления</span>
+   203→        </Button>
+   204→      </PopoverTrigger>
+   205→      <PopoverContent align="end" className="w-80 p-0 rounded-xl">
+   206→        <div className="p-3 border-b flex items-center gap-2">
+   207→          <Bell className="w-4 h-4 text-muted-foreground" />
+   208→          <p className="font-semibold text-sm">Уведомления</p>
+   209→          <Badge className="bg-stone-600 text-white text-xs">{unreadCount} новых</Badge>
+   210→          <Button size="sm" variant="ghost" className="ml-auto text-xs" onClick={markAllRead}>
+   211→            <CheckCircle className="w-3 h-3 mr-1" />Прочитать все
+   212→          </Button>
+   213→        </div>
+   214→        <div className="max-h-64 overflow-y-auto">
+   215→          {localNotifications.map(notif => (
+   216→            <div key={notif.id}
+   217→              className={`p-3 border-b last:border-b-0 cursor-pointer transition-colors hover:bg-muted ${!notif.isRead ? 'bg-muted/30' : ''}`}
+   218→              onClick={() => handleClick(notif)}>
+   219→              <div className="flex items-center gap-2">
+   220→                {NOTIF_TYPE_ICON[notif.type] ?? <Bell className="w-4 h-4" />}
+   221→                <div className="flex-1 min-w-0">
+   222→                  <p className="text-sm font-medium truncate">{notif.title}</p>
+   223→                  <p className="text-xs text-muted-foreground truncate">{notif.description}</p>
+   224→                </div>
+   225→                {!notif.isRead && <div className="w-2 h-2 rounded-full bg-red-700 shrink-0" />}
+   226→              </div>
+   227→              <p className="text-xs text-muted-foreground mt-1">{new Date(notif.timestamp).toLocaleString('ru-RU', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}</p>
+   228→            </div>
+   229→          ))}
+   230→          {localNotifications.length === 0 && (
+   231→            <div className="p-6 text-center">
+   232→              <Bell className="w-8 h-8 mx-auto text-muted-foreground" />
+   233→              <p className="text-sm text-muted-foreground mt-2">Нет уведомлений</p>
+   234→            </div>
+   235→          )}
+   236→        </div>
+   237→      </PopoverContent>
+   238→    </Popover>
+   239→  )
+   240→}
+   241→
+   242→function KeyboardShortcutsHelp({ open, onClose }: { open: boolean; onClose: () => void }) {
+   243→  return (
+   244→    <Dialog open={open} onOpenChange={onClose}>
+   245→      <DialogContent className="max-w-md rounded-xl">
+   246→        <DialogHeader>
+   247→          <DialogTitle className="text-sm flex items-center gap-2">
+   248→            <HelpCircle className="w-4 h-4" /> Горячие клавиши
+   249→          </DialogTitle>
+   250→        </DialogHeader>
+   251→        <div className="space-y-2">
+   252→          {NAV_ITEMS.map(item => (
+   253→            <div key={item.id} className="flex items-center gap-2 p-2 rounded-lg bg-muted/50">
+   254→              <kbd className="px-2 py-1 rounded bg-muted text-xs font-mono border">Ctrl+{item.shortcut}</kbd>
+   255→              <span className="text-sm">{item.label}</span>
+   256→              <span className="text-xs text-muted-foreground ml-auto">{item.description}</span>
+   257→            </div>
+   258→          ))}
+   259→          <Separator className="mt-3" />
+   260→          <div className="flex items-center gap-2 p-2 rounded-lg bg-muted/50">
+   261→            <kbd className="px-2 py-1 rounded bg-muted text-xs font-mono border">Ctrl+K</kbd>
+   262→            <span className="text-sm">Командная палитра</span>
+   263→            <span className="text-xs text-muted-foreground ml-auto">Быстрый поиск и действия</span>
+   264→          </div>
+   265→          <div className="flex items-center gap-2 p-2 rounded-lg bg-muted/50">
+   266→            <kbd className="px-2 py-1 rounded bg-muted text-xs font-mono border">Ctrl+,</kbd>
+   267→            <span className="text-sm">Настройки системы</span>
+   268→            <span className="text-xs text-muted-foreground ml-auto">Тема, шрифт, поведение</span>
+   269→          </div>
+   270→          <div className="flex items-center gap-2 p-2 rounded-lg bg-muted/50">
+   271→            <kbd className="px-2 py-1 rounded bg-muted text-xs font-mono border">?</kbd>
+   272→            <span className="text-sm">Показать эту справку</span>
+   273→          </div>
+   274→        </div>
+   275→      </DialogContent>
+   276→    </Dialog>
+   277→  )
+   278→}
+   279→
+   280→function CommandPalette({
+   281→  open,
+   282→  onOpenChange,
+   283→  setActiveSection,
+   284→}: {
+   285→  open: boolean
+   286→  onOpenChange: (v: boolean) => void
+   287→  setActiveSection: (s: SectionId) => void
+   288→}) {
+   289→  // Quick action shortcuts
+   290→  const quickActions = [
+   291→    { id: 'refresh', label: 'Обновить данные', icon: <Activity className="h-4 w-4" />, section: 'dashboard' as SectionId, hint: 'Перейти на главную' },
+   292→    { id: 'qa-ask', label: 'Задать вопрос ИИ', icon: <MessageSquare className="h-4 w-4" />, section: 'qa' as SectionId, hint: 'AI-аналитик' },
+   293→    { id: 'check-compliance', label: 'Проверить соответствие', icon: <Scale className="h-4 w-4" />, section: 'legal-check' as SectionId, hint: 'Правовая проверка' },
+   294→    { id: 'view-risk', label: 'Посмотреть риски', icon: <TrendingUp className="h-4 w-4" />, section: 'risk' as SectionId, hint: 'Матрица рисков' },
+   295→    { id: 'view-witness-matrix', label: 'Матрица показаний', icon: <MessageSquare className="h-4 w-4" />, section: 'witness-matrix' as SectionId, hint: 'Согласованность показаний свидетелей' },
+   296→    { id: 'view-timeline', label: 'Открыть хронологию', icon: <CalendarClock className="h-4 w-4" />, section: 'timeline' as SectionId, hint: 'Все события дела' },
+   297→  ]
+   298→
+   299→  return (
+   300→    <CommandDialog open={open} onOpenChange={onOpenChange}>
+   301→      <CommandInput placeholder="Поиск разделов, действий, документов..." />
+   302→      <CommandList>
+   303→        <CommandEmpty>Ничего не найдено</CommandEmpty>
+   304→        <CommandGroup heading="Разделы дела">
+   305→          {NAV_ITEMS.map(item => (
+   306→            <CommandItem
+   307→              key={item.id}
+   308→              value={`${item.label} ${item.description}`}
+   309→              onSelect={() => {
+   310→                setActiveSection(item.id)
+   311→                onOpenChange(false)
+   312→              }}
+   313→              className="gap-2"
+   314→            >
+   315→              {item.icon}
+   316→              <span className="font-medium">{item.label}</span>
+   317→              <span className="text-xs text-muted-foreground truncate">{item.description}</span>
+   318→              <CommandShortcut>Ctrl+{item.shortcut}</CommandShortcut>
+   319→            </CommandItem>
+   320→          ))}
+   321→        </CommandGroup>
+   322→        <CommandSeparator />
+   323→        <CommandGroup heading="Быстрые действия">
+   324→          {quickActions.map(action => (
+   325→            <CommandItem
+   326→              key={action.id}
+   327→              value={action.label}
+   328→              onSelect={() => {
+   329→                setActiveSection(action.section)
+   330→                onOpenChange(false)
+   331→              }}
+   332→              className="gap-2"
+   333→            >
+   334→              {action.icon}
+   335→              <span className="font-medium">{action.label}</span>
+   336→              <span className="text-xs text-muted-foreground ml-auto">{action.hint}</span>
+   337→              <ArrowRight className="h-3 w-3 text-muted-foreground" />
+   338→            </CommandItem>
+   339→          ))}
+   340→        </CommandGroup>
+   341→      </CommandList>
+   342→    </CommandDialog>
+   343→  )
+   344→}
+   345→
+   346→function CaseHealthBadge() {
+   347→  // Compact health indicator for sidebar footer
+   348→  const [score, setScore] = useState<number | null>(null)
+   349→  useEffect(() => {
+   350→    fetch('/api/case/health-score')
+   351→      .then(r => r.ok ? r.json() : null)
+   352→      .then(d => {
+   353→        if (d && typeof d.score === 'number') setScore(d.score)
+   354→        else if (d && typeof d.overallScore === 'number') setScore(d.overallScore)
+   355→      })
+   356→      .catch(() => setScore(null))
+   357→  }, [])
+   358→
+   359→  if (score === null) {
+   360→    return (
+   361→      <div className="flex items-center gap-2 px-2 py-1.5 rounded-md bg-muted/50 text-xs text-muted-foreground">
+   362→        <Activity className="w-3.5 h-3.5 animate-pulse" />
+   363→        <span className="group-data-[collapsible=icon]:hidden">Загрузка...</span>
+   364→      </div>
+   365→    )
+   366→  }
+   367→
+   368→  // Color thresholds: <50 red, 50-75 amber, >75 emerald
+   369→  const color = score >= 75 ? 'emerald' : score >= 50 ? 'amber' : 'red'
+   370→  const colorClasses = {
+   371→    emerald: 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-900',
+   372→    amber: 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-900',
+   373→    red: 'bg-red-50 text-red-700 border-red-200 dark:bg-red-950/40 dark:text-red-300 dark:border-red-900',
+   374→  }
+   375→  const statusText = score >= 75 ? 'Здоровое' : score >= 50 ? 'Среднее' : 'Проблемное'
+   376→
+   377→  return (
+   378→    <div className={`flex items-center gap-2 px-2 py-1.5 rounded-md border text-xs ${colorClasses[color]}`}>
+   379→      <Heart className="w-3.5 h-3.5 fill-current" />
+   380→      <div className="flex-1 min-w-0 group-data-[collapsible=icon]:hidden">
+   381→        <div className="flex items-center gap-1.5">
+   382→          <span className="font-semibold">{score}/100</span>
+   383→          <span className="opacity-70">·</span>
+   384→          <span className="truncate">{statusText}</span>
+   385→        </div>
+   386→        <div className="mt-1 h-1 rounded-full bg-black/10 dark:bg-white/10 overflow-hidden">
+   387→          <div
+   388→            className={`h-full rounded-full transition-all duration-700 ${
+   389→              color === 'emerald' ? 'bg-emerald-600' : color === 'amber' ? 'bg-amber-600' : 'bg-red-700'
+   390→            }`}
+   391→            style={{ width: `${score}%` }}
+   392→          />
+   393→        </div>
+   394→      </div>
+   395→    </div>
+   396→  )
+   397→}
+   398→
+   399→function AppSidebar({ activeSection, setActiveSection, preferences }: {
+   400→  activeSection: SectionId
+   401→  setActiveSection: (section: SectionId) => void
+   402→  preferences: UserPreferences
+   403→}) {
+   404→  return (
+   405→    <Sidebar collapsible="icon">
+   406→      <SidebarHeader>
+   407→        <SidebarMenu>
+   408→          <SidebarMenuItem>
+   409→            <SidebarMenuButton size="lg" className="gap-2">
+   410→              <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-red-700 text-white">
+   411→                <ScaleIcon className="size-4" />
+   412→              </div>
+   413→              <div className="flex flex-col gap-0.5 leading-none min-w-0">
+   414→                <span className="font-semibold truncate">Уголовное Дело</span>
+   415→                <span className="text-xs text-muted-foreground truncate">№ 2024-00145</span>
+   416→              </div>
+   417→            </SidebarMenuButton>
+   418→          </SidebarMenuItem>
+   419→        </SidebarMenu>
+   420→      </SidebarHeader>
+   421→      <SidebarSeparator />
+   422→      <SidebarContent>
+   423→        <SidebarGroup>
+   424→          <SidebarGroupLabel>Разделы дела</SidebarGroupLabel>
+   425→          <SidebarGroupContent>
+   426→            <SidebarMenu>
+   427→              {NAV_ITEMS.map((item) => (
+   428→                <SidebarMenuItem key={item.id}>
+   429→                  <SidebarMenuButton
+   430→                    isActive={activeSection === item.id}
+   431→                    onClick={() => setActiveSection(item.id)}
+   432→                    tooltip={`${item.label}: ${item.description}`}
+   433→                  >
+   434→                    {item.icon}
+   435→                    <span>{item.label}</span>
+   436→                  </SidebarMenuButton>
+   437→                </SidebarMenuItem>
+   438→              ))}
+   439→            </SidebarMenu>
+   440→          </SidebarGroupContent>
+   441→        </SidebarGroup>
+   442→      </SidebarContent>
+   443→      <SidebarSeparator />
+   444→      <SidebarFooter>
+   445→        <div className="flex flex-col gap-2 px-2 pb-1">
+   446→          {preferences.showHealthBadge && <CaseHealthBadge />}
+   447→          <div className="flex items-center gap-2 px-1">
+   448→            <ThemeToggle />
+   449→            <span className="group-data-[collapsible=icon]:hidden text-xs text-muted-foreground">Тема</span>
+   450→          </div>
+   451→        </div>
+   452→      </SidebarFooter>
+   453→      <SidebarRail />
+   454→    </Sidebar>
+   455→  )
+   456→}
+   457→
+   458→// Mock list of available criminal cases for the switcher
+   459→const AVAILABLE_CASES: Array<{
+   460→  id: string
+   461→  number: string
+   462→  title: string
+   463→  defendant: string
+   464→  status: 'active' | 'archived' | 'closed'
+   465→  articles: string
+   466→  progress: number
+   467→  updatedAt: string
+   468→}> = [
+   469→  {
+   470→    id: 'case-00145',
+   471→    number: '2024-00145',
+   472→    title: 'Мошенничество в крупном размере',
+   473→    defendant: 'Колесниченко Д.А.',
+   474→    status: 'active',
+   475→    articles: 'ст. 159 ч.3, 160 ч.2 УК РФ',
+   476→    progress: 65,
+   477→    updatedAt: '2024-05-22',
+   478→  },
+   479→  {
+   480→    id: 'case-00138',
+   481→    number: '2024-00138',
+   482→    title: 'Присвоение и растрата',
+   483→    defendant: 'Сидоров А.П.',
+   484→    status: 'active',
+   485→    articles: 'ст. 160 ч.3 УК РФ',
+   486→    progress: 42,
+   487→    updatedAt: '2024-05-18',
+   488→  },
+   489→  {
+   490→    id: 'case-00122',
+   491→    number: '2024-00122',
+   492→    title: 'Незаконное предпринимательство',
+   493→    defendant: 'Морозов В.И.',
+   494→    status: 'active',
+   495→    articles: 'ст. 171 УК РФ',
+   496→    progress: 78,
+   497→    updatedAt: '2024-05-10',
+   498→  },
+   499→  {
+   500→    id: 'case-00098',
+   501→    number: '2023-00098',
+   502→    title: 'Кража с незаконным проникновением',
+   503→    defendant: 'Иванов П.С.',
+   504→    status: 'archived',
+   505→    articles: 'ст. 158 ч.2 УК РФ',
+   506→    progress: 100,
+   507→    updatedAt: '2024-03-15',
+   508→  },
+   509→  {
+   510→    id: 'case-00076',
+   511→    number: '2023-00076',
+   512→    title: 'Умышленное уничтожение имущества',
+   513→    defendant: 'Петров К.Л.',
+   514→    status: 'closed',
+   515→    articles: 'ст. 167 ч.2 УК РФ',
+   516→    progress: 100,
+   517→    updatedAt: '2023-12-20',
+   518→  },
+   519→]
+   520→
+   521→const CASE_STATUS_LABEL: Record<string, { label: string; color: string }> = {
+   522→  active: { label: 'Активно', color: 'bg-emerald-700 text-white' },
+   523→  archived: { label: 'Архив', color: 'bg-stone-500 text-white' },
+   524→  closed: { label: 'Закрыто', color: 'bg-red-700 text-white' },
+   525→}
+   526→
+   527→function CaseSwitcher() {
+   528→  const [activeCaseId, setActiveCaseId] = useState('case-00145')
+   529→  const activeCase = AVAILABLE_CASES.find(c => c.id === activeCaseId) ?? AVAILABLE_CASES[0]
+   530→  const activeStatus = CASE_STATUS_LABEL[activeCase.status]
+   531→
+   532→  return (
+   533→    <DropdownMenu>
+   534→      <DropdownMenuTrigger asChild>
+   535→        <Button
+   536→          variant="outline"
+   537→          size="sm"
+   538→          className="h-8 gap-2 px-2.5 text-xs font-medium rounded-lg border-border/60 hover:bg-muted/40 transition-colors"
+   539→          title="Переключить дело"
+   540→        >
+   541→          <FolderOpen className="w-3.5 h-3.5 text-red-700" />
+   542→          <span className="hidden md:inline">Дело № {activeCase.number}</span>
+   543→          <span className="md:hidden">№{activeCase.number}</span>
+   544→          <Badge className={`${activeStatus.color} text-[10px] px-1 py-0 h-4 rounded`}>{activeStatus.label}</Badge>
+   545→          <ChevronDown className="w-3 h-3 text-muted-foreground" />
+   546→        </Button>
+   547→      </DropdownMenuTrigger>
+   548→      <DropdownMenuContent align="end" className="w-80 p-0 rounded-xl overflow-hidden">
+   549→        <div className="p-3 border-b bg-gradient-to-r from-red-900/10 to-transparent">
+   550→          <p className="text-xs font-semibold flex items-center gap-1.5">
+   551→            <Folder className="w-3.5 h-3.5 text-red-700" />
+   552→            Переключение дела
+   553→          </p>
+   554→          <p className="text-xs text-muted-foreground mt-0.5">Выберите уголовное дело для работы</p>
+   555→        </div>
+   556→        <ScrollArea className="max-h-72">
+   557→          {AVAILABLE_CASES.map(c => {
+   558→            const status = CASE_STATUS_LABEL[c.status]
+   559→            const isActive = c.id === activeCaseId
+   560→            return (
+   561→              <DropdownMenuItem
+   562→                key={c.id}
+   563→                onClick={() => {
+   564→                  setActiveCaseId(c.id)
+   565→                  if (c.id !== 'case-00145') {
+   566→                    toast.info(`Дело № ${c.number} загружается...`, {
+   567→                      description: 'Демонстрационная версия. Активное дело: Колесниченко Д.А.',
+   568→                    })
+   569→                  } else {
+   570→                    toast.success(`Активное дело: № ${c.number}`)
+   571→                  }
+   572→                }}
+   573→                className={`p-3 cursor-pointer flex flex-col items-start gap-1 border-b last:border-b-0 transition-colors ${
+   574→                  isActive ? 'bg-red-50 dark:bg-red-950/20' : 'hover:bg-muted/50'
+   575→                }`}
+   576→              >
+   577→                <div className="flex items-center gap-2 w-full">
+   578→                  <Folder className={`w-3.5 h-3.5 ${isActive ? 'text-red-700' : 'text-muted-foreground'}`} />
+   579→                  <span className="text-xs font-mono text-muted-foreground">№ {c.number}</span>
+   580→                  <Badge className={`${status.color} text-[10px] px-1 py-0 h-4 rounded ml-auto`}>{status.label}</Badge>
+   581→                  {isActive && <CheckCircle2 className="w-3.5 h-3.5 text-red-700" />}
+   582→                </div>
+   583→                <p className="text-sm font-medium leading-tight">{c.title}</p>
+   584→                <p className="text-xs text-muted-foreground">Обвиняемый: {c.defendant}</p>
+   585→                <p className="text-[10px] text-muted-foreground/80">{c.articles}</p>
+   586→                <div className="flex items-center gap-2 w-full mt-1">
+   587→                  <div className="flex-1 h-1 rounded-full bg-muted overflow-hidden">
+   588→                    <div
+   589→                      className={`h-full rounded-full ${c.progress === 100 ? 'bg-emerald-600' : c.progress >= 60 ? 'bg-amber-600' : 'bg-red-700'}`}
+   590→                      style={{ width: `${c.progress}%` }}
+   591→                    />
+   592→                  </div>
+   593→                  <span className="text-[10px] text-muted-foreground">{c.progress}%</span>
+   594→                </div>
+   595→              </DropdownMenuItem>
+   596→            )
+   597→          })}
+   598→        </ScrollArea>
+   599→        <div className="p-2 border-t bg-muted/30">
+   600→          <DropdownMenuItem
+   601→            onClick={() => toast.info('Создание нового дела', { description: 'Функция будет доступна в полной версии' })}
+   602→            className="p-2 cursor-pointer rounded-lg gap-2 text-xs text-red-700 hover:bg-red-50 dark:hover:bg-red-950/20"
+   603→          >
+   604→            <Plus className="w-3.5 h-3.5" />
+   605→            Создать новое дело
+   606→          </DropdownMenuItem>
+   607→        </div>
+   608→      </DropdownMenuContent>
+   609→    </DropdownMenu>
+   610→  )
+   611→}
+   612→
+   613→function TopHeader({ activeSection, notifications, setActiveSection, onHelpClick, onCommandClick, onSettingsClick, preferences }: {
+   614→  activeSection: SectionId
+   615→  notifications: NotificationData[]
+   616→  setActiveSection: (section: SectionId) => void
+   617→  onHelpClick: () => void
+   618→  onCommandClick: () => void
+   619→  onSettingsClick: () => void
+   620→  preferences: UserPreferences
+   621→}) {
+   622→  const { toggleSidebar } = useSidebar()
+   623→  const activeItem = NAV_ITEMS.find(item => item.id === activeSection)
+   624→  const unreadCount = notifications.filter(n => !n.isRead).length
+   625→
+   626→  return (
+   627→    <header className="flex h-14 shrink-0 items-center gap-2 border-b px-4 bg-gradient-to-r from-background via-background to-muted/30 backdrop-blur-sm">
+   628→      <Button variant="ghost" size="icon" className="h-8 w-8" onClick={toggleSidebar}>
+   629→        <PanelLeft className="h-4 w-4" />
+   630→      </Button>
+   631→      <Separator orientation="vertical" className="mx-2 h-4" />
+   632→      <div className="flex items-center gap-2 min-w-0">
+   633→        {activeItem?.icon}
+   634→        <h1 className="text-sm font-semibold truncate">{activeItem?.label || 'Главная'}</h1>
+   635→        <Badge variant="outline" className="text-xs shrink-0 hidden md:inline-flex">{activeItem?.description}</Badge>
+   636→        <kbd className="hidden lg:inline-flex px-1.5 py-0.5 rounded bg-muted text-xs font-mono border text-muted-foreground">Ctrl+{activeItem?.shortcut}</kbd>
+   637→      </div>
+   638→      <div className="ml-auto flex items-center gap-2">
+   639→        {preferences.showCommandHint && (
+   640→          <Button
+   641→            variant="outline"
+   642→            size="sm"
+   643→            onClick={onCommandClick}
+   644→            className="h-8 gap-2 px-2.5 text-xs text-muted-foreground hidden sm:inline-flex"
+   645→          >
+   646→            <CommandIcon className="h-3.5 w-3.5" />
+   647→            <span className="hidden md:inline">Поиск</span>
+   648→            <kbd className="px-1 py-0.5 rounded bg-muted text-[10px] font-mono border">⌘K</kbd>
+   649→          </Button>
+   650→        )}
+   651→        <NotificationCenter notifications={notifications} setActiveSection={setActiveSection} />
+   652→        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={onSettingsClick} title="Настройки (Ctrl+,)">
+   653→          <Settings className="h-4 w-4" />
+   654→        </Button>
+   655→        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={onHelpClick} title="Справка (?)">
+   656→          <HelpCircle className="h-4 w-4" />
+   657→        </Button>
+   658→        <Separator orientation="vertical" className="h-4" />
+   659→        <CaseSwitcher />
+   660→        {unreadCount > 0 && (
+   661→          <Badge className="bg-red-700 text-white text-xs">{unreadCount}</Badge>
+   662→        )}
+   663→      </div>
+   664→    </header>
+   665→  )
+   666→}
+   667→
+   668→function MainContent({ activeSection }: { activeSection: SectionId }) {
+   669→  const SectionComponent = (() => {
+   670→    switch (activeSection) {
+   671→      case 'dashboard': return CaseDashboard
+   672→      case 'documents': return CaseDocuments
+   673→      case 'persons': return CasePersons
+   674→      case 'episodes': return CaseEpisodes
+   675→      case 'search': return CaseSearch
+   676→      case 'qa': return CaseQa
+   677→      case 'defense': return CaseDefense
+   678→      case 'legal-check': return CaseLegalCheck
+   679→      case 'timeline': return CaseTimeline
+   680→      case 'evidence-chain': return CaseEvidenceChain
+   681→      case 'risk': return CaseRisk
+   682→      case 'witness-matrix': return CaseWitnessMatrix
+   683→      case 'brief': return CaseBrief
+   684→      case 'analytics': return CaseAnalytics
+   685→      default: return CaseDashboard
+   686→    }
+   687→  })()
+   688→  return (
+   689→      <SectionComponent />
+   690→    )
+   691→}
+   692→
+   693→function AppFooter() {
+   694→  return (
+   695→    <footer className="border-t bg-muted/30 px-4 py-3 mt-auto">
+   696→      <div className="flex items-center justify-between text-xs text-muted-foreground">
+   697→        <span>Система Управления Уголовным Делом • Дело № 2024-00145 • Колесниченко Д.А. и другие</span>
+   698→        <span>ИИ-аналитик v1.0</span>
+   699→      </div>
+   700→    </footer>
+   701→  )
+   702→}
+   703→
+   704→// ===== User Preferences Types =====
+   705→interface UserPreferences {
+   706→  density: 'comfortable' | 'compact'
+   707→  fontSize: 'sm' | 'md' | 'lg'
+   708→  animations: boolean
+   709→  showQuickActions: boolean
+   710→  showHealthBadge: boolean
+   711→  showCommandHint: boolean
+   712→  autoRefresh: boolean
+   713→  defaultSection: SectionId
+   714→}
+   715→
+   716→const DEFAULT_PREFERENCES: UserPreferences = {
+   717→  density: 'comfortable',
+   718→  fontSize: 'md',
+   719→  animations: true,
+   720→  showQuickActions: true,
+   721→  showHealthBadge: true,
+   722→  showCommandHint: true,
+   723→  autoRefresh: false,
+   724→  defaultSection: 'dashboard',
+   725→}
+   726→
+   727→function loadPreferences(): UserPreferences {
+   728→  if (typeof window === 'undefined') return DEFAULT_PREFERENCES
+   729→  try {
+   730→    const raw = localStorage.getItem('case-user-preferences')
+   731→    if (!raw) return DEFAULT_PREFERENCES
+   732→    const parsed = JSON.parse(raw)
+   733→    return { ...DEFAULT_PREFERENCES, ...parsed }
+   734→  } catch {
+   735→    return DEFAULT_PREFERENCES
+   736→  }
+   737→}
+   738→
+   739→function savePreferences(prefs: UserPreferences) {
+   740→  if (typeof window === 'undefined') return
+   741→  localStorage.setItem('case-user-preferences', JSON.stringify(prefs))
+   742→}
+   743→
+   744→function applyPreferencesToBody(prefs: UserPreferences) {
+   745→  if (typeof document === 'undefined') return
+   746→  const body = document.body
+   747→  // Density
+   748→  body.classList.toggle('compact', prefs.density === 'compact')
+   749→  // Font size
+   750→  body.classList.remove('text-size-sm', 'text-size-md', 'text-size-lg')
+   751→  body.classList.add(`text-size-${prefs.fontSize}`)
+   752→  // Animations
+   753→  body.classList.toggle('no-animations', !prefs.animations)
+   754→}
+   755→
+   756→function SettingsDialog({
+   757→  open,
+   758→  onClose,
+   759→  preferences,
+   760→  setPreferences,
+   761→}: {
+   762→  open: boolean
+   763→  onClose: () => void
+   764→  preferences: UserPreferences
+   765→  setPreferences: (p: UserPreferences) => void
+   766→}) {
+   767→  const { theme, setTheme } = useTheme()
+   768→
+   769→  const update = <K extends keyof UserPreferences>(key: K, value: UserPreferences[K]) => {
+   770→    const next = { ...preferences, [key]: value }
+   771→    setPreferences(next)
+   772→    savePreferences(next)
+   773→    applyPreferencesToBody(next)
+   774→  }
+   775→
+   776→  const handleReset = () => {
+   777→    setPreferences(DEFAULT_PREFERENCES)
+   778→    savePreferences(DEFAULT_PREFERENCES)
+   779→    applyPreferencesToBody(DEFAULT_PREFERENCES)
+   780→    toast.success('Настройки сброшены к значениям по умолчанию')
+   781→  }
+   782→
+   783→  const handleSave = () => {
+   784→    savePreferences(preferences)
+   785→    toast.success('Настройки сохранены')
+   786→    onClose()
+   787→  }
+   788→
+   789→  return (
+   790→    <Dialog open={open} onOpenChange={onClose}>
+   791→      <DialogContent className="max-w-2xl rounded-xl">
+   792→        <DialogHeader>
+   793→          <DialogTitle className="text-base flex items-center gap-2">
+   794→            <Settings className="w-4 h-4" /> Настройки системы
+   795→          </DialogTitle>
+   796→        </DialogHeader>
+   797→        <Tabs defaultValue="appearance" className="w-full">
+   798→          <TabsList className="grid w-full grid-cols-3">
+   799→            <TabsTrigger value="appearance" className="text-xs gap-1"><Sparkle className="w-3 h-3" /> Внешний вид</TabsTrigger>
+   800→            <TabsTrigger value="layout" className="text-xs gap-1"><Gauge className="w-3 h-3" /> Макет</TabsTrigger>
+   801→            <TabsTrigger value="behavior" className="text-xs gap-1"><Zap className="w-3 h-3" /> Поведение</TabsTrigger>
+   802→          </TabsList>
+   803→
+   804→          {/* Appearance Tab */}
+   805→          <TabsContent value="appearance" className="space-y-4 mt-4">
+   806→            <div className="space-y-3">
+   807→              <Label className="text-sm font-semibold">Тема оформления</Label>
+   808→              <div className="grid grid-cols-3 gap-3">
+   809→                {([
+   810→                  { id: 'light', label: 'Светлая', icon: <Sun className="w-4 h-4" /> },
+   811→                  { id: 'dark', label: 'Тёмная', icon: <Moon className="w-4 h-4" /> },
+   812→                  { id: 'system', label: 'Системная', icon: <Settings className="w-4 h-4" /> },
+   813→                ] as const).map(opt => (
+   814→                  <button
+   815→                    key={opt.id}
+   816→                    onClick={() => { setTheme(opt.id); toast.success(`Тема: ${opt.label}`) }}
+   817→                    className={`flex flex-col items-center gap-2 p-3 rounded-xl border-2 transition-all ${
+   818→                      theme === opt.id
+   819→                        ? 'border-red-700 bg-red-50 dark:bg-red-950/30'
+   820→                        : 'border-border hover:border-muted-foreground/40 bg-muted/30'
+   821→                    }`}
+   822→                  >
+   823→                    <div className={`theme-preview ${opt.id === 'dark' ? 'theme-preview-dark' : 'theme-preview-light'} w-full h-12 rounded-md`} />
+   824→                    {opt.icon}
+   825→                    <span className="text-xs font-medium">{opt.label}</span>
+   826→                  </button>
+   827→                ))}
+   828→              </div>
+   829→            </div>
+   830→
+   831→            <Separator />
+   832→
+   833→            <div className="space-y-3">
+   834→              <Label className="text-sm font-semibold flex items-center gap-2">
+   835→                <Type className="w-4 h-4" /> Размер шрифта
+   836→              </Label>
+   837→              <div className="grid grid-cols-3 gap-2">
+   838→                {([
+   839→                  { id: 'sm', label: 'Малый', sample: 'text-sm' },
+   840→                  { id: 'md', label: 'Средний', sample: 'text-base' },
+   841→                  { id: 'lg', label: 'Крупный', sample: 'text-lg' },
+   842→                ] as const).map(opt => (
+   843→                  <button
+   844→                    key={opt.id}
+   845→                    onClick={() => update('fontSize', opt.id)}
+   846→                    className={`p-3 rounded-lg border-2 transition-all text-center ${
+   847→                      preferences.fontSize === opt.id
+   848→                        ? 'border-red-700 bg-red-50 dark:bg-red-950/30'
+   849→                        : 'border-border hover:border-muted-foreground/40'
+   850→                    }`}
+   851→                  >
+   852→                    <div className={`${opt.sample} font-medium`}>Аа</div>
+   853→                    <div className="text-xs text-muted-foreground mt-1">{opt.label}</div>
+   854→                  </button>
+   855→                ))}
+   856→              </div>
+   857→            </div>
+   858→
+   859→            <Separator />
+   860→
+   861→            <div className="flex items-center justify-between p-3 rounded-lg bg-muted/30">
+   862→              <div className="flex items-center gap-2">
+   863→                <Sparkle className="w-4 h-4 text-purple-600" />
+   864→                <div>
+   865→                  <Label className="text-sm font-medium cursor-pointer">Анимации интерфейса</Label>
+   866→                  <p className="text-xs text-muted-foreground">Плавные переходы и эффекты</p>
+   867→                </div>
+   868→              </div>
+   869→              <Switch
+   870→                checked={preferences.animations}
+   871→                onCheckedChange={(v) => update('animations', v)}
+   872→              />
+   873→            </div>
+   874→          </TabsContent>
+   875→
+   876→          {/* Layout Tab */}
+   877→          <TabsContent value="layout" className="space-y-4 mt-4">
+   878→            <div className="space-y-3">
+   879→              <Label className="text-sm font-semibold flex items-center gap-2">
+   880→                <Gauge className="w-4 h-4" /> Плотность интерфейса
+   881→              </Label>
+   882→              <div className="grid grid-cols-2 gap-3">
+   883→                {([
+   884→                  { id: 'comfortable', label: 'Комфортная', desc: 'Больше воздуха между элементами' },
+   885→                  { id: 'compact', label: 'Компактная', desc: 'Больше информации на экране' },
+   886→                ] as const).map(opt => (
+   887→                  <button
+   888→                    key={opt.id}
+   889→                    onClick={() => update('density', opt.id)}
+   890→                    className={`p-4 rounded-xl border-2 text-left transition-all ${
+   891→                      preferences.density === opt.id
+   892→                        ? 'border-red-700 bg-red-50 dark:bg-red-950/30'
+   893→                        : 'border-border hover:border-muted-foreground/40'
+   894→                    }`}
+   895→                  >
+   896→                    <div className="text-sm font-semibold">{opt.label}</div>
+   897→                    <div className="text-xs text-muted-foreground mt-1">{opt.desc}</div>
+   898→                    <div className="mt-2 space-y-1">
+   899→                      <div className={`h-1.5 rounded bg-muted-foreground/30 ${opt.id === 'compact' ? 'w-3/4' : 'w-full'}`} />
+   900→                      <div className={`h-1.5 rounded bg-muted-foreground/20 ${opt.id === 'compact' ? 'w-1/2' : 'w-3/4'}`} />
+   901→                    </div>
+   902→                  </button>
+   903→                ))}
+   904→              </div>
+   905→            </div>
+   906→
+   907→            <Separator />
+   908→
+   909→            <div className="space-y-2">
+   910→              <Label className="text-sm font-semibold">Видимые элементы</Label>
+   911→              {[
+   912→                { key: 'showQuickActions' as const, label: 'Быстрые действия на главной', desc: 'Виджет с 4 кнопками' },
+   913→                { key: 'showHealthBadge' as const, label: 'Индекс здоровья дела', desc: 'В нижней части боковой панели' },
+   914→                { key: 'showCommandHint' as const, label: 'Подсказка ⌘K в шапке', desc: 'Кнопка быстрого поиска' },
+   915→              ].map(item => (
+   916→                <div key={item.key} className="flex items-center justify-between p-3 rounded-lg bg-muted/30">
+   917→                  <div>
+   918→                    <Label className="text-sm font-medium cursor-pointer">{item.label}</Label>
+   919→                    <p className="text-xs text-muted-foreground">{item.desc}</p>
+   920→                  </div>
+   921→                  <Switch
+   922→                    checked={preferences[item.key]}
+   923→                    onCheckedChange={(v) => update(item.key, v)}
+   924→                  />
+   925→                </div>
+   926→              ))}
+   927→            </div>
+   928→          </TabsContent>
+   929→
+   930→          {/* Behavior Tab */}
+   931→          <TabsContent value="behavior" className="space-y-4 mt-4">
+   932→            <div className="flex items-center justify-between p-3 rounded-lg bg-muted/30">
+   933→              <div className="flex items-center gap-2">
+   934→                <RefreshCw className="w-4 h-4 text-emerald-600" />
+   935→                <div>
+   936→                  <Label className="text-sm font-medium cursor-pointer">Автообновление данных</Label>
+   937→                  <p className="text-xs text-muted-foreground">Обновлять статистику каждые 30 секунд</p>
+   938→                </div>
+   939→              </div>
+   940→              <Switch
+   941→                checked={preferences.autoRefresh}
+   942→                onCheckedChange={(v) => update('autoRefresh', v)}
+   943→              />
+   944→            </div>
+   945→
+   946→            <Separator />
+   947→
+   948→            <div className="space-y-3">
+   949→              <Label className="text-sm font-semibold">Раздел по умолчанию</Label>
+   950→              <p className="text-xs text-muted-foreground">Какой раздел открывать при запуске</p>
+   951→              <div className="grid grid-cols-3 gap-2 max-h-48 overflow-y-auto">
+   952→                {NAV_ITEMS.map(item => (
+   953→                  <button
+   954→                    key={item.id}
+   955→                    onClick={() => update('defaultSection', item.id)}
+   956→                    className={`flex items-center gap-2 p-2 rounded-lg border text-xs transition-all ${
+   957→                      preferences.defaultSection === item.id
+   958→                        ? 'border-red-700 bg-red-50 dark:bg-red-950/30 text-red-700 dark:text-red-300'
+   959→                        : 'border-border hover:bg-muted/50'
+   960→                    }`}
+   961→                  >
+   962→                    {item.icon}
+   963→                    <span className="truncate">{item.label}</span>
+   964→                  </button>
+   965→                ))}
+   966→              </div>
+   967→            </div>
+   968→
+   969→            <Separator />
+   970→
+   971→            <div className="p-3 rounded-lg bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900">
+   972→              <div className="flex items-start gap-2">
+   973→                <AlertTriangle className="w-4 h-4 text-amber-600 mt-0.5 shrink-0" />
+   974→                <div className="text-xs text-amber-800 dark:text-amber-200">
+   975→                  <p className="font-semibold mb-1">Настройки хранятся локально</p>
+   976→                  <p>Ваши предпочтения сохраняются в браузере (localStorage) и не синхронизируются между устройствами.</p>
+   977→                </div>
+   978→              </div>
+   979→            </div>
+   980→          </TabsContent>
+   981→        </Tabs>
+   982→
+   983→        <Separator />
+   984→
+   985→        <div className="flex items-center justify-between">
+   986→          <Button variant="ghost" size="sm" onClick={handleReset} className="text-xs gap-1">
+   987→            <RotateCcw className="w-3 h-3" /> Сбросить
+   988→          </Button>
+   989→          <div className="flex gap-2">
+   990→            <Button variant="outline" size="sm" onClick={onClose}>Отмена</Button>
+   991→            <Button size="sm" onClick={handleSave} className="gap-1">
+   992→              <Save className="w-3 h-3" /> Сохранить
+   993→            </Button>
+   994→          </div>
+   995→        </div>
+   996→      </DialogContent>
+   997→    </Dialog>
+   998→  )
+   999→}
+  1000→
+  1001→export default function Home() {
+  1002→  // Lazy-load preferences from localStorage on first render (avoids setState-in-effect)
+  1003→  const [preferences, setPreferences] = useState<UserPreferences>(() => {
+  1004→    if (typeof window === 'undefined') return DEFAULT_PREFERENCES
+  1005→    const loaded = loadPreferences()
+  1006→    // Apply to body immediately on first client render
+  1007→    if (typeof document !== 'undefined') {
+  1008→      applyPreferencesToBody(loaded)
+  1009→    }
+  1010→    return loaded
+  1011→  })
+  1012→  const [activeSection, setActiveSection] = useState<SectionId>(() => {
+  1013→    if (typeof window === 'undefined') return 'dashboard'
+  1014→    const loaded = loadPreferences()
+  1015→    return loaded.defaultSection ?? 'dashboard'
+  1016→  })
+  1017→  const [helpOpen, setHelpOpen] = useState(false)
+  1018→  const [commandOpen, setCommandOpen] = useState(false)
+  1019→  const [settingsOpen, setSettingsOpen] = useState(false)
+  1020→  const notifications = mockNotifications
+  1021→
+  1022→  // Auto-refresh handler
+  1023→  useEffect(() => {
+  1024→    if (!preferences.autoRefresh) return
+  1025→    const interval = setInterval(() => {
+  1026→      // Trigger a refetch by dispatching a custom event
+  1027→      window.dispatchEvent(new CustomEvent('case-auto-refresh'))
+  1028→    }, 30000) // 30 seconds
+  1029→    return () => clearInterval(interval)
+  1030→  }, [preferences.autoRefresh])
+  1031→
+  1032→  // Keyboard shortcuts handler
+  1033→  const handleKeyDown = useCallback((e: KeyboardEvent) => {
+  1034→    // Ctrl+K opens command palette (highest priority)
+  1035→    if (e.ctrlKey && (e.key === 'k' || e.key === 'K' || e.key === 'л' || e.key === 'Л')) {
+  1036→      e.preventDefault()
+  1037→      setCommandOpen(prev => !prev)
+  1038→      return
+  1039→    }
+  1040→    // Ctrl+, (comma) opens settings
+  1041→    if (e.ctrlKey && (e.key === ',' || e.key === 'б' || e.key === 'Б')) {
+  1042→      e.preventDefault()
+  1043→      setSettingsOpen(true)
+  1044→      return
+  1045→    }
+  1046→    // Ctrl+1-8 for section navigation
+  1047→    if (e.ctrlKey && !e.altKey && !e.shiftKey) {
+  1048→      const num = parseInt(e.key)
+  1049→      if (num >= 1 && num <= 8) {
+  1050→        e.preventDefault()
+  1051→        setActiveSection(NAV_ITEMS[num - 1].id)
+  1052→      }
+  1053→      // Ctrl+9 for timeline
+  1054→      if (e.key === '9') {
+  1055→        e.preventDefault()
+  1056→        setActiveSection('timeline')
+  1057→      }
+  1058→      // Ctrl+0 for risk
+  1059→      if (e.key === '0') {
+  1060→        e.preventDefault()
+  1061→        setActiveSection('risk')
+  1062→      }
+  1063→      // Ctrl+B for brief
+  1064→      if (e.key === 'b' || e.key === 'B' || e.key === 'и' || e.key === 'И') {
+  1065→        e.preventDefault()
+  1066→        setActiveSection('brief')
+  1067→      }
+  1068→      // Ctrl+A for analytics
+  1069→      if (e.key === 'a' || e.key === 'A' || e.key === 'ф' || e.key === 'Ф') {
+  1070→        e.preventDefault()
+  1071→        setActiveSection('analytics')
+  1072→      }
+  1073→      // Ctrl+E for evidence chain
+  1074→      if (e.key === 'e' || e.key === 'E' || e.key === 'у' || e.key === 'У') {
+  1075→        e.preventDefault()
+  1076→        setActiveSection('evidence-chain')
+  1077→      }
+  1078→      // Ctrl+M for witness matrix
+  1079→      if (e.key === 'm' || e.key === 'M' || e.key === 'ь' || e.key === 'Ь') {
+  1080→        e.preventDefault()
+  1081→        setActiveSection('witness-matrix')
+  1082→      }
+  1083→    }
+  1084→    // ? for help
+  1085→    if (e.key === '?' && !e.ctrlKey && !e.altKey) {
+  1086→      // Only trigger when not in an input/textarea
+  1087→      const target = e.target as HTMLElement
+  1088→      if (target.tagName !== 'INPUT' && target.tagName !== 'TEXTAREA') {
+  1089→        e.preventDefault()
+  1090→        setHelpOpen(true)
+  1091→      }
+  1092→    }
+  1093→    // Escape to close help or command palette
+  1094→    if (e.key === 'Escape') {
+  1095→      if (helpOpen) setHelpOpen(false)
+  1096→      if (commandOpen) setCommandOpen(false)
+  1097→      if (settingsOpen) setSettingsOpen(false)
+  1098→    }
+  1099→  }, [helpOpen, commandOpen, settingsOpen])
+  1100→
+  1101→  useEffect(() => {
+  1102→    window.addEventListener('keydown', handleKeyDown)
+  1103→    return () => window.removeEventListener('keydown', handleKeyDown)
+  1104→  }, [handleKeyDown])
+  1105→
+  1106→  return (
+  1107→    <SidebarProvider>
+  1108→      <AppSidebar activeSection={activeSection} setActiveSection={setActiveSection} preferences={preferences} />
+  1109→      <SidebarInset>
+  1110→        <TopHeader
+  1111→          activeSection={activeSection}
+  1112→          notifications={notifications}
+  1113→          setActiveSection={setActiveSection}
+  1114→          onHelpClick={() => setHelpOpen(true)}
+  1115→          onCommandClick={() => setCommandOpen(true)}
+  1116→          onSettingsClick={() => setSettingsOpen(true)}
+  1117→          preferences={preferences}
+  1118→        />
+  1119→        <div className="flex flex-1 flex-col min-h-0">
+  1120→          <main className="flex-1 overflow-y-auto p-4 md:p-6">
+  1121→            <MainContent activeSection={activeSection} />
+  1122→          </main>
+  1123→          <AppFooter />
+  1124→        </div>
+  1125→      </SidebarInset>
+  1126→      <KeyboardShortcutsHelp open={helpOpen} onClose={() => setHelpOpen(false)} />
+  1127→      <CommandPalette
+  1128→        open={commandOpen}
+  1129→        onOpenChange={setCommandOpen}
+  1130→        setActiveSection={setActiveSection}
+  1131→      />
+  1132→      <SettingsDialog
+  1133→        open={settingsOpen}
+  1134→        onClose={() => setSettingsOpen(false)}
+  1135→        preferences={preferences}
+  1136→        setPreferences={setPreferences}
+  1137→      />
+  1138→    </SidebarProvider>
+  1139→  )
+  1140→}
+  1141→

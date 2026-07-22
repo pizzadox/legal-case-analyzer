@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
 import { Separator } from '@/components/ui/separator'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import {
   Select,
   SelectContent,
@@ -708,7 +709,7 @@ function ConflictsSummary({
               </div>
               <div className="min-w-0 flex-1">
                 <p className="text-xs text-muted-foreground">{s.label}</p>
-                <p className={`font-bold truncate ${s.tone}`} title={String(s.value)}>
+                <p className={`font-bold break-words leading-snug ${s.tone}`} title={String(s.value)}>
                   {s.value}
                 </p>
                 <p className="text-xs text-muted-foreground mt-0.5">{s.hint}</p>
@@ -821,19 +822,28 @@ function MatrixTable({
                 {facts.map(f => (
                   <th
                     key={f.id}
-                    className="sticky top-0 z-20 bg-stone-800 text-white px-2 py-2 text-[11px] font-medium text-center min-w-[80px] max-w-[120px] border-b border-r border-stone-700 last:border-r-0"
+                    className="sticky top-0 z-20 bg-stone-800 text-white px-2 py-2 text-[11px] font-medium text-center min-w-[120px] max-w-[160px] border-b border-r border-stone-700 last:border-r-0"
                   >
-                    <div className="flex flex-col items-center gap-0.5">
-                      <span className="text-[10px] uppercase tracking-wide text-stone-400">
-                        {f.id}
-                      </span>
-                      <span
-                        className="line-clamp-2 leading-tight text-white"
-                        title={f.text}
-                      >
-                        {f.text}
-                      </span>
-                    </div>
+                    <TooltipProvider delayDuration={200}>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <div className="flex flex-col items-center gap-0.5 cursor-help">
+                            <span className="text-[10px] uppercase tracking-wide text-stone-400">
+                              {f.id}
+                            </span>
+                            <span
+                              className="whitespace-normal leading-tight text-white text-[10px] line-clamp-2"
+                            >
+                              {f.text}
+                            </span>
+                          </div>
+                        </TooltipTrigger>
+                        <TooltipContent side="bottom" className="max-w-[240px] text-xs">
+                          <span className="font-semibold text-stone-300">{f.id}:</span>{' '}
+                          <span>{f.text}</span>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
                   </th>
                 ))}
               </tr>

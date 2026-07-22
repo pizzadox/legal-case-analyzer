@@ -108,9 +108,9 @@ export function CaseBrief() {
           <CardContent className="p-4 space-y-2">
             {brief.keyDefendants.map((d, i) => (
               <Card key={i} className="rounded-lg shadow-none border-l-4 border-red-700 transition-all duration-200 hover:scale-[1.02]">
-                <CardContent className="p-3">
+                <CardContent className="p-3 min-w-0">
                   <div className="flex items-center justify-between gap-2">
-                    <p className="font-semibold text-sm flex-1">{d.name}</p>
+                    <p className="font-semibold text-sm flex-1 min-w-0 break-words pr-2 leading-tight">{d.name}</p>
                     <Badge className={GUILT_BADGE[d.guiltLevel] ?? 'bg-stone-500 text-white'}>Вина: {GUILT_LABEL[d.guiltLevel] ?? d.guiltLevel}</Badge>
                   </div>
                   <p className="text-xs text-muted-foreground mt-0.5">Роль: {d.role}</p>

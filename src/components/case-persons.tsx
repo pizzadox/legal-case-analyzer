@@ -451,11 +451,12 @@ function PersonRelationshipGraph() {
           </div>
 
           {/* SVG-граф */}
-          <div className="relative w-full rounded-xl bg-gradient-to-br from-muted/30 to-muted/10 border border-stone-200/60 dark:border-stone-800/60 overflow-hidden">
+          <div className="relative w-full max-w-2xl mx-auto rounded-xl bg-gradient-to-br from-muted/30 to-muted/10 border border-stone-200/60 dark:border-stone-800/60 overflow-hidden">
             <svg
               viewBox={`${viewBox.x} ${viewBox.y} ${viewBox.w} ${viewBox.h}`}
+              preserveAspectRatio="xMidYMid meet"
               className="w-full block"
-              style={{ height: '500px' }}
+              style={{ height: '420px' }}
               role="img"
               aria-label="Граф связей участников уголовного дела"
             >
@@ -492,7 +493,8 @@ function PersonRelationshipGraph() {
                 // Середина ребра — для подписи
                 const midX = (x1 + x2) / 2
                 const midY = (y1 + y2) / 2
-                const labelW = Math.max(60, e.label.length * 6 + 12)
+                const labelW = Math.max(80, e.label.length * 6 + 18)
+                const labelH = 20
                 return (
                   <g
                     key={`edge-${i}`}
@@ -507,14 +509,16 @@ function PersonRelationshipGraph() {
                     {/* Подложка для подписи ребра */}
                     <rect
                       x={midX - labelW / 2}
-                      y={midY - 8}
+                      y={midY - labelH / 2}
                       width={labelW}
-                      height={16}
+                      height={labelH}
                       rx={4}
                       fill="white"
                       stroke={highlighted ? '#ea580c' : '#e7e5e4'}
-                      strokeWidth={0.5}
-                      opacity={0.95}
+                      strokeWidth={0.6}
+                      opacity={0.96}
+                      className="dark:fill-stone-900 dark:stroke-stone-700"
+                      style={{ filter: 'drop-shadow(0 1px 1px rgba(0,0,0,0.12))' } as React.CSSProperties}
                     />
                     <text
                       x={midX}
@@ -522,9 +526,9 @@ function PersonRelationshipGraph() {
                       fontSize={9}
                       textAnchor="middle"
                       dominantBaseline="middle"
-                      fill={highlighted ? '#ea580c' : '#57534e'}
-                      className="font-medium"
-                      style={{ pointerEvents: 'none' }}
+                      fill={highlighted ? '#ea580c' : '#44403c'}
+                      className="font-medium dark:fill-stone-200"
+                      style={{ pointerEvents: 'none' } as React.CSSProperties}
                     >
                       {e.label}
                     </text>
@@ -653,7 +657,7 @@ function PersonRelationshipGraph() {
                               y={pos.y + r + 30}
                               fontSize={9.5}
                               textAnchor="middle"
-                              className="fill-stone-500 dark:fill-stone-400"
+                              className="fill-stone-700 dark:fill-stone-200 font-medium"
                               style={{ pointerEvents: 'none', userSelect: 'none' } as React.CSSProperties}
                             >
                               {line2}

@@ -84,6 +84,9 @@ import {
   Plus,
   CheckCircle2,
   Link2,
+  Package,
+  Swords,
+  Gavel,
 } from 'lucide-react'
 import { useTheme } from 'next-themes'
 import { toast } from 'sonner'
@@ -107,6 +110,9 @@ import { CaseRisk } from '@/components/case-risk'
 import { CaseWitnessMatrix } from '@/components/case-witness-matrix'
 import { CaseBrief } from '@/components/case-brief'
 import { CaseAnalytics } from '@/components/case-analytics'
+import { CaseExportCenter } from '@/components/case-export-center'
+import { CaseBattlePlan } from '@/components/case-battle-plan'
+import { CaseViolations } from '@/components/case-violations'
 
 const NAV_ITEMS: {
   id: SectionId
@@ -129,6 +135,9 @@ const NAV_ITEMS: {
   { id: 'witness-matrix', label: 'Матрица показаний', icon: <MessageSquare className="h-4 w-4" />, description: 'Согласованность показаний свидетелей', shortcut: 'M' },
   { id: 'brief', label: 'Краткое изложение', icon: <FileBarChart className="h-4 w-4" />, description: 'Итоговое резюме дела', shortcut: 'B' },
   { id: 'analytics', label: 'Аналитика', icon: <BarChart3 className="h-4 w-4" />, description: 'Глубокий анализ и прогнозы', shortcut: 'A' },
+  { id: 'export-center', label: 'Экспорт дела', icon: <Package className="h-4 w-4" />, description: 'Экспорт материалов', shortcut: 'X' },
+  { id: 'battle-plan', label: 'Боевой план', icon: <Swords className="h-4 w-4" />, description: 'Стратегия защиты', shortcut: 'G' },
+  { id: 'violations', label: 'Нарушения УПК', icon: <Gavel className="h-4 w-4" />, description: 'Процессуальные нарушения', shortcut: 'V' },
 ]
 
 const NOTIF_TYPE_ICON: Record<string, React.ReactNode> = {
@@ -635,7 +644,7 @@ function TopHeader({ activeSection, notifications, setActiveSection, onHelpClick
         <Badge variant="outline" className="text-xs shrink-0 hidden md:inline-flex">{activeItem?.description}</Badge>
         <kbd className="hidden lg:inline-flex px-1.5 py-0.5 rounded bg-muted text-xs font-mono border text-muted-foreground">Ctrl+{activeItem?.shortcut}</kbd>
       </div>
-      <div className="ml-auto flex items-center gap-2">
+      <div className="ml-auto flex items-center gap-2 mr-1">
         {preferences.showCommandHint && (
           <Button
             variant="outline"
@@ -657,9 +666,6 @@ function TopHeader({ activeSection, notifications, setActiveSection, onHelpClick
         </Button>
         <Separator orientation="vertical" className="h-4" />
         <CaseSwitcher />
-        {unreadCount > 0 && (
-          <Badge className="bg-red-700 text-white text-xs">{unreadCount}</Badge>
-        )}
       </div>
     </header>
   )
@@ -682,6 +688,9 @@ function MainContent({ activeSection }: { activeSection: SectionId }) {
       case 'witness-matrix': return CaseWitnessMatrix
       case 'brief': return CaseBrief
       case 'analytics': return CaseAnalytics
+      case 'export-center': return CaseExportCenter
+      case 'battle-plan': return CaseBattlePlan
+      case 'violations': return CaseViolations
       default: return CaseDashboard
     }
   })()
@@ -693,9 +702,9 @@ function MainContent({ activeSection }: { activeSection: SectionId }) {
 function AppFooter() {
   return (
     <footer className="border-t bg-muted/30 px-4 py-3 mt-auto">
-      <div className="flex items-center justify-between text-xs text-muted-foreground">
-        <span>Система Управления Уголовным Делом • Дело № 2024-00145 • Колесниченко Д.А. и другие</span>
-        <span>ИИ-аналитик v1.0</span>
+      <div className="flex items-center justify-between gap-3 text-xs text-stone-500 dark:text-stone-400">
+        <span className="truncate">Система Управления Уголовным Делом • Дело № 2024-00145 • Колесниченко Д.А. и другие</span>
+        <span className="shrink-0 font-medium text-stone-600 dark:text-stone-300">ИИ-аналитик v1.0</span>
       </div>
     </footer>
   )
@@ -1079,6 +1088,21 @@ export default function Home() {
       if (e.key === 'm' || e.key === 'M' || e.key === 'ь' || e.key === 'Ь') {
         e.preventDefault()
         setActiveSection('witness-matrix')
+      }
+      // Ctrl+X for export center
+      if (e.key === 'x' || e.key === 'X' || e.key === 'ч' || e.key === 'Ч') {
+        e.preventDefault()
+        setActiveSection('export-center')
+      }
+      // Ctrl+G for battle plan (Боевой план)
+      if (e.key === 'g' || e.key === 'G' || e.key === 'п' || e.key === 'П') {
+        e.preventDefault()
+        setActiveSection('battle-plan')
+      }
+      // Ctrl+V for violations (Нарушения УПК)
+      if (e.key === 'v' || e.key === 'V' || e.key === 'м' || e.key === 'М') {
+        e.preventDefault()
+        setActiveSection('violations')
       }
     }
     // ? for help

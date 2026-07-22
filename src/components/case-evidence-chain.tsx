@@ -466,8 +466,8 @@ const SVG_HEIGHT = 460
 const NODE_WIDTH = 132
 const NODE_HEIGHT = 92
 const PADDING_X = 80
-const PROSECUTION_Y = 70 // центр верхнего узла
-const DEFENSE_Y = 390 // центр нижнего узла
+const PROSECUTION_Y = 100 // центр верхнего узла (увеличен, чтобы не перекрывать заголовок)
+const DEFENSE_Y = 380 // центр нижнего узла (немного поднят, чтобы не перекрывать нижний заголовок)
 const AXIS_Y = 230
 
 const ALL_EVIDENCE: EvidenceItem[] = [...PROSECUTION_EVIDENCE, ...DEFENSE_EVIDENCE]
@@ -1303,7 +1303,7 @@ export function CaseEvidenceChain() {
               {/* Подписи дорожек */}
               <text
                 x={PADDING_X}
-                y={24}
+                y={20}
                 fontSize={13}
                 fontWeight={700}
                 className="fill-red-700 dark:fill-red-400"
@@ -1312,7 +1312,7 @@ export function CaseEvidenceChain() {
               </text>
               <text
                 x={PADDING_X}
-                y={SVG_HEIGHT - 12}
+                y={SVG_HEIGHT - 8}
                 fontSize={13}
                 fontWeight={700}
                 className="fill-emerald-700 dark:fill-emerald-400"
@@ -1447,7 +1447,7 @@ export function CaseEvidenceChain() {
                       {new Date(item.date).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: '2-digit' })}
                     </span>
                   </div>
-                  <p className="text-xs font-medium line-clamp-1">{item.name}</p>
+                  <p className="text-xs font-medium line-clamp-2 leading-tight">{item.name}</p>
                   <div className="flex items-center gap-1 mt-1">
                     <div className="h-1 flex-1 rounded-full bg-muted overflow-hidden">
                       <div

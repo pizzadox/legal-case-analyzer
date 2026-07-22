@@ -101,7 +101,7 @@ function CrossRefGraph({ nodes }: { nodes: CrossRefNode[] }) {
         </CardTitle>
       </CardHeader>
       <CardContent className="p-4">
-        <div className="grid sm:grid-cols-2 gap-4 max-h-96 overflow-y-auto">
+        <div className="grid sm:grid-cols-2 gap-4">
           {nodes.map(node => (
             <Card key={node.documentId} className="rounded-xl border-2 border-l-4 shadow-sm transition-shadow hover:shadow-md"
               style={{ borderLeftColor: node.documentType === 'обвинение' ? '#dc2626' : node.documentType === 'показание' ? '#ea580c' : node.documentType === 'протокол' ? '#ca8a04' : '#78716c' }}>

@@ -1,0 +1,200 @@
+4. Add multi-language support (Russian/English toggle)
+5. Implement case comparison mode (compare two cases side-by-side)
+6. Add real-time collaboration features (multiple users editing annotations)
+7. Replace mock case switcher data with real multi-case DB schema
+8. Add evidence chain drag-and-drop reordering
+9. Implement document versioning and audit log persistence (DB tables exist)
+10. Add export to PDF for entire case package
+11. Integrate real LLM-powered analytics insights
+12. Add notification system with WebSocket push
+
+---
+Task ID: 14-a
+Agent: UI Bug Fixer Subagent
+Task: Fix 12 visual bugs identified by VLM analysis across dashboard, persons graph, evidence chain, witness matrix, analytics, timeline, brief, search, legal check, header, footer, Q&A.
+
+Work Log:
+- Read /home/z/my-project/worklog.md (1896 lines, 13 prior tasks) to understand project context: Next.js 16 + TypeScript + Tailwind 4 + shadcn/ui + Recharts + Prisma SQLite Russian-language UI for Колесниченко criminal case (Дело № 2024-00145). 14 section components, NAV_ITEMS array, MainContent switch, SectionId union type, sticky footer pattern with `min-h-screen flex flex-col` + `mt-auto`.
+- Bug 1 — Dashboard stats grid cut-off (case-dashboard.tsx): AnimatedStatCard Card className added `min-w-0` to allow shrink; CardContent padding responsive `p-3 sm:p-4`; icon tile responsive `w-8 h-8 sm:w-9 sm:h-9`; label `text-[10px] sm:text-xs`; value `text-xl sm:text-2xl`; delta wrap in `<span className="truncate">` with `shrink-0` icon; QuickStatsBar container added `px-1` for breathing room. Grid already `grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3`.
+- Bug 2 — Persons graph (case-persons.tsx): SVG container constrained `max-w-2xl mx-auto` to limit width and eliminate empty black space; SVG style height reduced 500px → 420px; added `preserveAspectRatio="xMidYMid meet"`; edge label rect enlarged (`labelW = max(80, len*6 + 18)`, `labelH = 20`, centered `midY - labelH/2`), background `opacity 0.96`, dark-mode aware (`dark:fill-stone-900 dark:stroke-stone-700`), drop-shadow filter for visibility; edge label text color darker (`#44403c` instead of `#57534e`) and theme-aware (`dark:fill-stone-200`); node initials line2 (И.О.) bumped from `fill-stone-500 dark:fill-stone-400` to `fill-stone-700 dark:fill-stone-200 font-medium` for higher contrast.
+- Bug 3 — Evidence Chain header overlap (case-evidence-chain.tsx): constants PROSECUTION_Y changed 70 → 100, DEFENSE_Y changed 390 → 380 to push node cards away from header text; header text Y moved 24 → 20 (top label) and `SVG_HEIGHT - 12` → `SVG_HEIGHT - 8` (bottom label) for tighter placement; mobile fallback card title changed `line-clamp-1` → `line-clamp-2 leading-tight` to prevent truncation.
+- Bug 4 — Witness Matrix truncation (case-witness-matrix.tsx): added Tooltip imports; column header `min-w-[80px]` → `min-w-[120px] max-w-[160px]`; label text class added `whitespace-normal leading-tight text-[10px] line-clamp-2`; wrapped column header in TooltipProvider/Tooltip/TooltipTrigger/TooltipContent showing full fact text on hover (max-w-[240px]); "Самый спорный факт" card value changed `truncate` → `break-words leading-snug`; matrix container already wrapped in `overflow-x-auto scrollbar-thin`.
+- Bug 5 — Analytics chart X-axis labels (case-analytics.tsx): "Тренд обработки документов" AreaChart container height `h-64` → `h-[300px]`; AreaChart margin `{top:8,right:12,left:0,bottom:4}` → `{top:10,right:20,left:10,bottom:30}`; XAxis added `angle={-15} textAnchor="end" height={50} interval={0}` and removed `dy={8}` to let labels render rotated without clipping.
+- Bug 6 — Timeline bottom truncation (case-timeline.tsx): "Лента событий" list container removed `max-h-[600px] overflow-y-auto scrollbar-thin` (kept `pr-2`) — content now grows naturally and outer `<main className="flex-1 overflow-y-auto">` handles scrolling, footer pushes down correctly via `mt-auto` on the flex-col parent.
+- Bug 7 — Brief page text clipping (case-brief.tsx): defendant card CardContent added `min-w-0`; defendant name `<p>` gained `min-w-0 break-words pr-2 leading-tight` to allow wrapping instead of clipping near right edge.
+- Bug 8 — Search page graph cut-off (case-search.tsx): "Граф перекрёстных ссылок" container removed `max-h-96 overflow-y-auto` — cards now display fully without inner scrollbar truncation; outer page scroll handles overflow.
+- Bug 9 — Legal check alert & timeline (case-legal-check.tsx): alert CardContent padding `p-4` → `p-4 pb-5`; alert layout `flex items-center` → `flex items-start` so description text grows naturally; description `<p>` class added `whitespace-normal break-words leading-relaxed`; title `<p>` added `flex-wrap`; description margin `mt-0.5` → `mt-1`; icon tile added `mt-0.5`; "Подробнее" Button added `shrink-0 mt-0.5`. Timeline vertical line in both ComplianceTimeline and AuditLogSection changed `-left-[21px]` → `-left-[19px]` to align with center of the `w-3` (12px) status dot (dot center at x=-18, line center now at x=-18).
+- Bug 10 — Header notification badge overlap (page.tsx): removed duplicate `{unreadCount > 0 && <Badge>}` that was rendered after `<CaseSwitcher />` (NotificationCenter component already shows its own badge with `absolute -top-1 -right-1`); header right-side container `<div className="ml-auto flex items-center gap-2">` → `gap-2 mr-1` for extra right margin.
+- Bug 11 — Footer low contrast (page.tsx): AppFooter `<div className="flex items-center justify-between text-xs text-muted-foreground">` → `text-stone-500 dark:text-stone-400` + `gap-3`; left span added `truncate`; right "ИИ-аналитик v1.0" span added `shrink-0 font-medium text-stone-600 dark:text-stone-300`.
+- Bug 12 — Q&A suggested question button overlap (case-qa.tsx): Suggested Questions Panel CardContent padding `p-4` → `p-4 pb-5` for bottom breathing room; Input bar container `<div className="flex gap-2">` → `flex gap-2 clear-both mt-2` for explicit clearance from grid above.
+- Ran `bun run lint` after all 12 fixes — exit 0, 0 errors, 0 warnings.
+- Started dev server (system server had stopped; ran `node ./node_modules/.bin/next dev -p 3000 --turbopack` in background) — Ready in 671ms, HTTP 200 on /.
+- Used agent-browser to navigate to each section and capture screenshots: dashboard, persons, evidence-chain, witness-matrix, analytics, timeline, brief, search, legal-check, qa, plus header/footer from dashboard view.
+- For each screenshot ran `z-ai vision` with a section-specific brief check prompt — all 11 verifications returned "OK" (no cut-off text, overlaps, or low contrast detected).
+
+Stage Summary:
+- Files modified (10 total, all targeted edits — no full rewrites):
+  1. /home/z/my-project/src/components/case-dashboard.tsx (~20 lines changed in AnimatedStatCard + QuickStatsBar)
+  2. /home/z/my-project/src/components/case-persons.tsx (~25 lines changed in PersonRelationshipGraph SVG container, edge label rect, node initials)
+  3. /home/z/my-project/src/components/case-evidence-chain.tsx (4 lines: PROSECUTION_Y/DEFENSE_Y constants + 2 header text Y positions + 1 line-clamp change)
+  4. /home/z/my-project/src/components/case-witness-matrix.tsx (~30 lines: Tooltip import + column header Tooltip wrapper + min-width change + Самый спорный факт value break-words)
+  5. /home/z/my-project/src/components/case-analytics.tsx (5 lines: ChartContainer height + AreaChart margin + XAxis props)
+  6. /home/z/my-project/src/components/case-timeline.tsx (1 line: removed max-h-[600px] overflow-y-auto from Лента событий container)
+  7. /home/z/my-project/src/components/case-brief.tsx (1 line: defendant name element classes)
+  8. /home/z/my-project/src/components/case-search.tsx (1 line: removed max-h-96 overflow-y-auto from Граф перекрёстных ссылок container)
+  9. /home/z/my-project/src/components/case-legal-check.tsx (~15 lines: alert CardContent + flex items-start + description whitespace-normal + 2 timeline line -left-[19px] alignment fixes)
+  10. /home/z/my-project/src/components/case-qa.tsx (2 lines: CardContent pb-5 + Input bar clear-both mt-2)
+  11. /home/z/my-project/src/app/page.tsx (3 changes: removed duplicate notification badge + header right-side gap-2 mr-1 + footer text-stone-500/600 dark variants)
+- VLM verification results per section (all "OK"):
+  • Dashboard (fix-dashboard.png): OK
+  • Persons (fix-persons.png): OK
+  • Evidence Chain (fix-evidence.png): OK
+  • Witness Matrix (fix-matrix.png): OK
+  • Analytics (fix-analytics.png): OK
+  • Timeline (fix-timeline.png): OK
+  • Brief (fix-brief.png): OK
+  • Search (fix-search.png): OK
+  • Legal Check (fix-legal.png): OK
+  • Q&A (fix-qa.png): OK
+  • Header/Footer (fix-header-footer.png): OK
+- Color rule respected: only stone, amber, emerald, red, orange, purple palette used (no indigo, no blue-700).
+- Russian language preserved throughout all UI strings.
+- Footer remains sticky with `mt-auto` pattern; main content uses `flex-1 overflow-y-auto` + parent `flex flex-1 flex-col min-h-0`.
+- Lint: clean (0 errors, 0 warnings) — exit 0.
+- No remaining issues identified by VLM.
+
+---
+Task ID: 14-b
+Agent: Case Export Center Subagent
+Task: Add new sidebar section "Экспорт дела" — comprehensive export center with PDF/JSON/CSV/HTML format selection, 16-item content picker, options panel, generate action with toast+sheet, recent exports history table.
+
+Work Log:
+- Read /home/z/my-project/worklog.md (1950 lines, 14 prior tasks) — understood project context: Next.js 16 + TypeScript + Tailwind 4 + shadcn/ui + Recharts + Prisma SQLite Russian-language UI for Колесниченко criminal case (Дело № 2024-00145). 14 section components, NAV_ITEMS array, MainContent switch, SectionId union type, sticky footer pattern with `min-h-screen flex flex-col` + `mt-auto`. Color rule: NO indigo/blue-700 — use stone, amber, emerald, red, orange, purple.
+- Read src/app/page.tsx (1137 lines): NAV_ITEMS array structure (id/label/icon/description/shortcut), MainContent switch with `case '<id>': return <Component>`, keyboard shortcuts handler (`Ctrl+1`–`Ctrl+9`, `Ctrl+0`, `Ctrl+B`, `Ctrl+A`, `Ctrl+E`, `Ctrl+M`). Verified Ctrl+X is NOT taken (no `'x'` key handler).
+- Read src/lib/case-store.ts (590 lines): SectionId union type with 14 entries. Added `'export-center'` as 15th entry after `'analytics'`.
+- Read src/components/case-brief.tsx (273 lines) and case-analytics.tsx (413 lines) for layout/styling conventions: Card with `border-l-4 border-{color}-700` accent, `rounded-xl shadow-sm` cards, `hover:-translate-y-0.5 hover:shadow-md` interactive cards, Badge color classes (bg-{color}-700 text-white), gradient banner `bg-gradient-to-r from-{color}-900/30 via-stone-900/20 to-stone-900/20`, Russian text throughout.
+- Read src/components/ui/sheet.tsx (139 lines) to understand Sheet/SheetContent/SheetHeader/SheetTitle/SheetDescription/SheetFooter API and `side="right"` prop.
+- Created /home/z/my-project/src/components/case-export-center.tsx (1558 lines) — full export center with 6 sections:
+  • **Section 1 — Header Banner**: purple-700 left border, gradient bg `from-purple-900/30 via-stone-900/20 to-stone-900/20`, Package icon in purple-700/20 tile, title "Центр экспорта материалов дела", subtitle "Дело № 2024-00145 · Подготовка материалов для печати, передачи и архивирования", "ИИ-помощник" badge with Sparkles icon. Quick info strip with 4 mini-tiles (Форматов=4, Элементов=16, Выбрано=N, Размер=estimated).
+  • **Section 2 — Format Selection Cards**: 4-column responsive grid (`grid-cols-1 sm:grid-cols-2 lg:grid-cols-4`). Each card: large icon in colored tile (PDF=red-700 FileText, JSON=emerald-700 Braces, CSV=amber-600 Table, HTML=orange-600 Code), format name, 2-line description, per-item size estimate, "Выбрать" button. Active state highlights with `ring-2 ring-{color}-700 border-transparent`. Click anywhere on card toggles selection + shows toast.
+  • **Section 3 — Content Selection**: 2-column grid, 4 categories × 4 checkboxes = 16 items. Categories: Основная информация (purple), Участники и эпизоды (red), Документы и доказательства (amber), Правовой анализ (emerald). Each group has icon, title, count (X/Y selected), "Все/Снять" toggle button, divider, 4 checkboxes with label + meta badge (~XX КБ). Selected items get purple-700/10 background. Top: "Выбрано: X из 16" badge with progress bar.
+  • **Section 4 — Export Options**: 2-column grid. 7 options: Язык Select (Русский/English/Оба), ИИ-анализ Switch, Графики как изображения Switch, Формат страницы Select (A4/A3/Letter), Ориентация Select (Книжная/Альбомная), Водяной знак Switch, Шифровать PDF Switch (full-width, lg:col-span-2) with Lock icon. When encrypt=on: amber warning box appears about password protection.
+  • **Section 5 — Action Bar** (sticky bottom-3 z-30): purple-700/30 border, backdrop-blur, summary on left (icon tile + status text + "Формат: X · N элемент. · ~XX МБ" + optional RU+EN/🔒 suffixes + progress bar when generating), buttons on right (Предпросмотр ghost + Сгенерировать экспорт purple-700 primary). Generate runs 6-step simulated progress (15%→35%→55%→75%→90%→100%, 250ms each), adds entry to recent exports, shows Sonner success toast "Экспорт дела сформирован", then opens right Sheet after 900ms.
+  • **Section 6 — Recent Exports History**: Table with 5 mock rows + custom header (Дата, Формат, Элементов, Размер, Статус, Действие). Status badges: Готово=emerald-700, В процессе=amber-600, Ошибка=red-700 with corresponding icons. Download icon button per row (disabled for non-ready). Footer with color legend + total volume calculation.
+- Helpers: `formatFileSize(bytes)` returns "X Б"/"X КБ"/"X.X МБ"; `estimateSize(items, format, options)` calculates bytes with perItem multiplier (PDF 150KB, JSON 50KB, CSV 20KB, HTML 80KB), ×1.2 for AI, ×1.15 for charts (PDF/HTML only), ×2 for both langs, +4KB for encryption; `buildFileName(format, options)` returns `delo-2024-00145-YYYYMMDD-ru.{ext}`; `generateExport()` async with 6-step progress simulation.
+- Sheet panel (right side, w-full sm:max-w-md): purple-700/5 header with checkmark + "Экспорт сформирован" title, file card showing icon + name + badges (format/size/elements), parameters table (8 rows: Формат, Язык, Элементов, ИИ-анализ, Графики, Страница, Водяной знак, Шифрование), "Что дальше?" suggestions list (4 items: Сохранить в загрузки, Передать в архив, Отправить на печать, Подписать ЭЦП), footer with Закрыть + Скачать buttons. Скачать triggers real browser blob download with stub content.
+- Dialog (Предпросмотр, max-w-2xl): mock document preview showing case header, table of contents (only selected items), 3-cell info grid (Язык/Формат страницы/Опции), italic disclaimer, Закрыть + Сгенерировать buttons.
+- Re-download from history: creates blob with stub, triggers browser download, shows toast.
+- Registered component in src/app/page.tsx:
+  • Added `Package` to lucide-react imports
+  • Added `import { CaseExportCenter } from '@/components/case-export-center'` after CaseAnalytics import
+  • Added `{ id: 'export-center', label: 'Экспорт дела', icon: <Package className="h-4 w-4" />, description: 'Экспорт материалов', shortcut: 'X' }` to NAV_ITEMS after analytics
+  • Added `case 'export-center': return CaseExportCenter` to MainContent switch
+  • Added keyboard shortcut handler: `Ctrl+X` (also `ч` for Russian layout) → setActiveSection('export-center')
+- Initial lint: 1 warning "Unused eslint-disable directive" for `no-await-in-loop` (no problems reported). Fixed by removing the eslint-disable comment (lint config doesn't flag the await-in-loop pattern here). Re-ran lint — exit 0, 0 errors, 0 warnings.
+- Initial dev server probe: HTTP 500 because `FilePage` doesn't exist in lucide-react (the icon name was renamed). Error message suggested `FileImage` but used `File as FilePage` instead (aliasing `File` to `FilePage` preserves all usages without renaming). Re-probed: HTTP 200.
+- VLM verification with agent-browser + z-ai vision (5 screenshots, all returned "OK"):
+  1. Initial view (export-center.png): header banner, 4 format cards, content selection — OK
+  2. Scrolled view (export-scrolled.png): all sections visible — OK
+  3. Top view (export-top.png): purple header + format cards with JSON selected (emerald ring) — OK
+  4. Bottom view (export-history.png): sticky action bar + history table — OK
+  5. Options panel (export-options.png): Шаг 3 panel with selects/switches — OK
+  6. Action bar + history (export-actionbar.png): both visible — OK
+  7. PDF format selected (export-pdf.png): red ring around PDF card — OK
+
+Stage Summary:
+- Files created/modified:
+  1. **NEW** /home/z/my-project/src/components/case-export-center.tsx (1558 lines) — comprehensive 6-section export center with state, helpers, format/content/options selection, sticky action bar, history table, preview Dialog, result Sheet
+  2. **MODIFIED** /home/z/my-project/src/lib/case-store.ts (+1 line) — added `'export-center'` to SectionId union
+  3. **MODIFIED** /home/z/my-project/src/app/page.tsx (+9 lines) — added `Package` import, `CaseExportCenter` import, NAV_ITEMS entry, MainContent switch case, Ctrl+X keyboard handler
+- VLM verification: 7 screenshots all returned "OK" — no visual bugs, overlaps, cut-offs, or low contrast detected
+- Color rule respected: primary accent is purple-700 (header, sticky action bar, content checkboxes, primary button); format cards use red-700/emerald-700/amber-600/orange-600; status badges use emerald-700/amber-600/red-700; NO indigo or blue-700 colors used
+- Russian language throughout all UI strings (titles, labels, descriptions, toasts, options)
+- Footer remains sticky at bottom via `mt-auto` pattern (unchanged in page.tsx)
+- Sticky action bar within section uses `sticky bottom-3 z-30` so it floats above history table when scrolled
+- Lint: clean (0 errors, 0 warnings) — exit 0
+- Dev server: HTTP 200, compiles successfully
+- All shadcn/ui components used: Card, CardContent, CardHeader, CardTitle, Badge, Button, Separator, Checkbox, Switch, Label, Progress, Select (Trigger/Content/Item/Value), Table (Header/Body/Row/Head/Cell), Dialog (Content/Header/Title/Description/Footer), Sheet (Content/Header/Title/Description/Footer), Tooltip (Provider/Trigger/Content)
+- 39 lucide-react icons used (all imported correctly, no unused imports)
+- All 16 content items functional with individual toggle + group toggle + select all/clear all
+- 4 export formats functional with click-to-select on entire card + button
+- 7 export options all wired to state (language, includeAI, includeCharts, pageFormat, orientation, watermark, encrypt)
+- Generate flow: progress simulation → toast → Sheet panel → download button triggers real browser blob download
+- History table: 5 mock entries + new entries added on each generate (max 8 kept) + re-download working
+- No remaining issues identified
+
+---
+Task ID: 14-c
+Agent: Defense Strategy Battle Plan Subagent
+Task: Add new sidebar section "Боевой план защиты" — Gantt-style timeline visualization of prosecution vs defense moves, force balance bar, strategic insights, 30-day action plan.
+
+Work Log:
+- Read /home/z/my-project/worklog.md (first 100 + last 500 lines, ~2010 total) to understand project context: Next.js 16 + TypeScript + Tailwind 4 + shadcn/ui + Recharts + Prisma SQLite Russian-language UI for Колесниченко criminal case (Дело № 2024-00145). 14 prior section components, NAV_ITEMS array structure (id/label/icon JSX/description/shortcut), MainContent switch with `case '<id>': return <Component>`, SectionId union type in case-store.ts, sticky footer pattern with `min-h-screen flex flex-col` + `mt-auto`. Color rule: NO indigo/blue-700 — use stone, amber, emerald, red, orange, purple.
+- Read src/app/page.tsx (1146 lines): NAV_ITEMS array (15 entries with shortcuts 1-9, 0, B, A, E, M, X), MainContent switch with section components, keyboard shortcuts handler. Verified Ctrl+B is taken by 'brief' (line 1065), Ctrl+G is free. Russian keyboard layout: 'G' key produces 'П' (lowercase 'п').
+- Read src/lib/case-store.ts (590 lines): SectionId union type with 15 entries. Added `'battle-plan'` as 16th entry after `'export-center'`.
+- Read src/components/case-evidence-chain.tsx (first 200 lines) for SVG visualization pattern: defs with linearGradients, filter for drop shadow, theme-aware className `dark:fill-stone-200` on text, bezier curves with stroke colors, viewBox with preserveAspectRatio.
+- Read src/components/case-risk.tsx (first 100 lines) for layout/styling conventions: Card with `border-l-4 border-{color}-700` accent, `rounded-xl shadow-sm` cards, Badge color classes (bg-{color}-700 text-white), Russian text throughout, `gap-1` badges with icons.
+- Verified lucide-react icon availability: Swords, Shield, Target, AlertTriangle, Gavel, Lock (replaces non-existent Handcuffs for "Арест" event), Calendar, ChevronRight, CheckCircle2, Clock, Activity, Zap, FileText, Filter, ArrowRight, Eye, X, Sparkles, Scale, ClipboardList, TrendingUp, TrendingDown, CircleDot all exist.
+- Created /home/z/my-project/src/components/case-battle-plan.tsx (1865 lines) — CaseBattlePlan component with 5 stacked sections:
+  • **Section 1 — Header Banner**: red-900/30 → purple-900/30 → stone-900/20 gradient, left border-l-4 border-red-700, 56x56 Swords icon in red-700/20 tile, title "Боевой план защиты" + purple "Стратегия" badge, subtitle "Хронология стратегических ходов обвинения и защиты по делу № 2024-00145", article references (ст. 159 ч.3 · ст. 160 ч.2 · Колесниченко Д.А.). Right side: 3 stat tiles in 3-column grid: "Ходов защиты: 8" (emerald-700), "Ходов обвинения: 6" (red-700), "Баланс сил: +2 защита" (purple-700).
+  • **Section 2 — Force Balance Bar**: 100%-wide h-12 bar split horizontally — left 45% red-700→red-800 gradient "ОБВИНЕНИЕ 45%", right 55% emerald-700→emerald-800 gradient "55% ЗАЩИТА". Center "VS" badge (purple-700, 9x9 circle, ring-4 ring-card). Below: 3-column legend grid with red/emerald/purple tinted cards showing "Сила доказательств обвинения 45%", "Сила аргументов защиты 55%", "Прогноз: Защита имеет преимущество". transition-all duration-700 on bar segments.
+  • **Section 3 — Gantt Timeline** (MAIN VISUALIZATION): Custom SVG, viewBox 1400×640, preserveAspectRatio="xMidYMid meet". Layout: 130px left padding for lane labels, 1250px timeline width, 13 months × ~96px each.
+    - Header strip (y=0-70): 13 month labels (Мар 23 — Мар 24) at top, today label colored purple-700/bold.
+    - Top lane (y=80-280, height 200): PROSECUTION — red-700 vertical rect label "ОБВИНЕНИЕ" with "6 ходов" subtitle.
+    - Bottom lane (y=320-520, height 200): DEFENSE — emerald-700 vertical rect label "ЗАЩИТА" with "8 ходов" subtitle.
+    - Separator: dashed line at y=300 (stone-300).
+    - Vertical month grid lines (stone-200/stone-800 dark) at each month boundary.
+    - 6 prosecution bars (red gradient #dc2626→#b91c1c→#991b1c, stroke #7f1d1d): "Возбуждение дела" Мар 23, "Допрос свидетелей обвинения" Апр-Май 23, "Обыск офиса" Май 23, "Предъявление обвинения ст. 159" Июн 23, "Финансовая экспертиза" Июл-Сен 23, "Дополнительные эпизоды ст. 160" Дек 23.
+    - 8 defense bars (emerald gradient #10b981→#047857→#065f46, stroke #064e3b): "Подача ходатайства об ознакомлении" Апр 23, "Заявление об алиби" Май 23, "Ходатайство об исключении доказательств" Июл 23, "Независимая финансовая экспертиза" Авг-Окт 23, "Опрос свидетелей защиты" Сен-Ноя 23, "Ходатайство о переквалификации" Дек 23, "Замечания на обвинительное заключение" Янв-Фев 24, "Подготовка к судебному разбирательству" Фев-Мар 24.
+    - Each bar: rounded rect (rx=4, height 22, gap 2), gradient fill + 1px darker stroke, white text inside (font-size 10, font-weight 600, text-shadow for legibility), top-half white overlay rect at 10% opacity for depth, status icon (CheckCircle2/Activity/Clock) on right when bar wide enough, amber hover ring.
+    - Critical event markers: 2 vertical dashed amber lines — "Арест" (Lock icon) at Мар 23, "Суд 1 инст." (Gavel icon) at Мар 24, with amber-100 circle backgrounds and amber labels.
+    - Current date marker: vertical solid purple-700 (#9333ea) line at Мар 24, "СЕГОДНЯ" badge (purple-700 pill, 56×18, white text) at bottom of chart.
+    - Future bars (startMonth ≥ 12) rendered at 0.7 opacity per spec.
+    - SVG-native hover tooltip (HoverTooltip component): dark stone-900 rect with colored left border, white text shows full title (truncated if >38 chars) + date range + status.
+    - HTML hover info panel below the chart shows side dot + title + status badge + date range + truncated description + "Нажмите для деталей" hint.
+    - Click any bar → opens right Sheet (MoveDetailSheet) with side-themed gradient header (red-900/30 or emerald-900/30 + border-l-4), title, side label (Ход обвинения/Ход защиты with Swords/Shield icon), status badge (Завершён/В работе/Запланирован), date range badge, duration badge, description, related documents list (with FileText icons), "Результат" section (emerald bg, only for completed moves with outcome), "Следующие шаги" section (amber bg, only for planned/active moves with nextSteps), and timeline progress bar at bottom showing move position with purple "Сегодня" marker.
+    - Filter buttons above the chart: "Все ходы" / "Только обвинение" / "Только защита" / "Завершённые" / "Запланированные" — active button gets purple-700 bg. Filter changes both lane bar sets in real-time, empty lanes show "Нет ходов ... для выбранного фильтра" text.
+    - Color legend card below the chart: shows gradient bar samples for both sides, today line style, critical event dashed line, status icons, future-bars opacity hint.
+  • **Section 4 — Strategic Insights Cards** (3-column md grid): each card has gradient bg + left border-l-4 + icon tile + title + body text + "Узнать больше"/"Свернуть" toggle button with expandable detail list.
+    - Card 1 "Слабые места обвинения" (red-700, Target icon): body about witness Petrov contradictions, procedural violations in financial expertise, unproven algorithmic link. 5 detail bullets.
+    - Card 2 "Сильные аргументы защиты" (emerald-700, Shield icon): body about alibi confirmed by train tickets + neighbor testimony, procedural violations during search, mitigating circumstances. 5 detail bullets.
+    - Card 3 "Критические риски" (amber-600, AlertTriangle icon): body about proven episode 1, financial documents directly linking Kolesnichenko, recidivism risk from Sidorov. 5 detail bullets.
+  • **Section 5 — Action Plan Table** (Next 30 Days): shadcn Table with 6 rows. Columns: Дата (25 Мар / 28 Мар / 02 Апр / 05 Апр / 10 Апр / 15 Апр), Ход, Ответственный (Адвокат Петрова / Следователь / Суд), Приоритет (Критическая red-700 / Высокая amber-600 / Средняя stone-600), Статус (В работе amber-600 / Запланировано stone-600). Row hover: bg-stone-50 dark:bg-stone-800/50. Footer legend with priority/status color dots.
+  • **Bonus — Итоговый прогноз по делу** card at bottom: purple-700 border-l-4 + gradient, TrendingUp icon, summary text about +2 move advantage and recommended focus on excluding inadmissible evidence at 15.04.2024 preliminary hearing, 55% success probability display, "Обновить прогноз" button with purple outline + TooltipProvider.
+- State management: useState hooks for `filter: FilterKey`, `selectedMove: BattleMove | null`, `sheetOpen: boolean`, internal GanttChart has `hoveredMoveId: string | null` and `expanded: boolean` per StrategicInsightCard.
+- Helper functions: `monthToX(month)` converts month index to SVG x coordinate; `formatMonthRange(start, duration)` returns "Мар 23" or "Мар 23 — Апр 23" for multi-month moves; `getMoveGradient(side)` returns gradient id + colors + stroke; `isFutureMove(move)` checks if move is at/after today month; `visibleMoves(filter)` returns filtered prosecution/defense arrays based on filter key.
+- Registered component in src/app/page.tsx:
+  • Added `Swords` to lucide-react imports (line 88)
+  • Added `import { CaseBattlePlan } from '@/components/case-battle-plan'` (line 113)
+  • Added `{ id: 'battle-plan', label: 'Боевой план', icon: <Swords className="h-4 w-4" />, description: 'Стратегия защиты', shortcut: 'G' }` to NAV_ITEMS after export-center (line 137) — used shorter "Боевой план" label to fit sidebar width
+  • Added `case 'battle-plan': return CaseBattlePlan` to MainContent switch (line 689)
+  • Added keyboard shortcut handler: `Ctrl+G` (also `п`/`П` for Russian layout) → setActiveSection('battle-plan') (lines 1093-1097)
+- Initial lint: 1 error — Parsing error at line 1160 due to malformed JSX `<hoveredMove ? <CircleDot ...` (wrote ternary as JSX tag). Fixed by removing the redundant ternary (hoveredMove is always truthy inside the `{hoveredMove && (` block) — replaced with plain `<CircleDot className="w-3 h-3" />`. Re-ran lint: exit 0, 0 errors, 0 warnings.
+- Dev server: started via `node ./node_modules/.bin/next dev -p 3000 --turbopack` (system server had stopped), Ready in ~8s, HTTP 200 on /.
+- VLM verification with agent-browser + z-ai vision (4 screenshots, all returned "OK"):
+  1. Top view (battle-plan.png): "Status: OK" — header banner with red/purple gradient, force balance bar with ОБВИНЕНИЕ 45%/55% ЗАЩИТА + VS badge, Gantt SVG with both lanes labeled, red bars top + emerald bars bottom, purple СЕГОДНЯ marker, filter buttons row, strategic insights grid below. "Colors: Strictly adheres to red/emerald/purple palette; no blue or indigo detected. Layout: No text overlap or cut-off elements observed."
+  2. Bottom view (battle-plan-bottom.png): "Status: OK" — 3 strategic insight cards (Слабые места обвинения red / Сильные аргументы защиты emerald / Критические риски amber) with icon tiles and 'Узнать больше' buttons, all 5-bullet count badges, action plan table starts after. "No text overlap observed. No cut-off text."
+  3. Action plan table (battle-plan-action.png): "OK" — full 6-row table with all required columns, color-coded priority/status badges, legend at bottom.
+  4. Sheet panel (battle-plan-sheet2.png): "YES — Sheet panel open titled «Обыск офиса»" with all required sections: header (title + status + date + duration), description, related documents (2), Результат section, position on timeline with Сегодня marker.
+  5. Filter test (battle-plan-filter.png): "OK" — clicked "Только обвинение" filter, sheet closed, filter button active purple, only red bars in ОБВИНЕНИЕ lane, "Нет ходов защиты для выбранного фильтра" message in ЗАЩИТА lane.
+
+Stage Summary:
+- Files created/modified:
+  1. **NEW** /home/z/my-project/src/components/case-battle-plan.tsx (1865 lines) — full 5-section Battle Plan with SVG Gantt chart (1400×640 viewBox), 6 prosecution + 8 defense moves, force balance bar, strategic insights (3 cards with expandable details), 30-day action plan table (6 rows), Sheet detail panel, color legend, 5 filter buttons, today/critical-event markers, hover tooltips
+  2. **MODIFIED** /home/z/my-project/src/lib/case-store.ts (+1 line) — added `'battle-plan'` to SectionId union type after `'export-center'`
+  3. **MODIFIED** /home/z/my-project/src/app/page.tsx (+9 lines) — added `Swords` import, `CaseBattlePlan` import, NAV_ITEMS entry (with shortcut 'G'), MainContent switch case, Ctrl+G (п/П) keyboard handler
+- VLM verification: 5 screenshots all returned "OK" — header banner, force balance bar, Gantt timeline, strategic insights, action plan table, sheet panel, and filter functionality all verified working
+- Color rule respected: only stone, amber, emerald, red, orange, purple palette used (no indigo, no blue-700). Confirmed by VLM: "Strictly adheres to red/emerald/purple palette; no blue or indigo detected."
+- Russian language throughout all UI strings (titles, labels, descriptions, badges, tooltips, sheet panel content)
+- Footer remains sticky at bottom via `mt-auto` pattern (unchanged in page.tsx)
+- SVG Gantt chart is responsive — uses viewBox + preserveAspectRatio="xMidYMid meet" + aspect-ratio CSS, wraps in overflow-x-auto on mobile (min-w-[900px] inside scroll container)
+- Lint: clean (0 errors, 0 warnings) — exit 0
+- Dev server: HTTP 200, compiles successfully
+- All shadcn/ui components used: Card, CardContent, CardHeader, CardTitle, Badge, Button, Separator, Sheet (Content/Header/Title/Description), Table (Header/Body/Row/Head/Cell), Tooltip (Provider/Trigger/Content)
+- 26 lucide-react icons used (all imported correctly, no unused imports)
+- All 14 BattleMove items (6 prosecution + 8 defense) functional with click-to-open Sheet
+- 5 filter buttons all wired to state with real-time bar visibility changes
+- 3 strategic insight cards all expandable/collapsible with detail bullets
+- 6 action plan table rows with color-coded priority + status badges
+- Sheet panel correctly shows different content based on move.status: outcome section for completed moves, nextSteps section for active/planned moves
+- No remaining issues identified

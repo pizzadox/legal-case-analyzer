@@ -16,6 +16,9 @@ export type SectionId =
   | 'witness-matrix'
   | 'brief'
   | 'analytics'
+  | 'export-center'
+  | 'battle-plan'
+  | 'violations'
 
 export interface DocumentData {
   id: string

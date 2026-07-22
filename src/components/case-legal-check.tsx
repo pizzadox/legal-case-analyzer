@@ -99,7 +99,7 @@ function AuditLogSection({ entries }: { entries: AuditLogEntry[] }) {
           {entries.map((entry, i) => (
             <div key={entry.id} className="relative group">
               <div className={`absolute -left-6 top-1 w-3 h-3 rounded-full ${AUDIT_SEV_DOT[entry.severity] ?? 'bg-stone-400'} ring-2 ring-background transition-transform group-hover:scale-125`} />
-              {i < entries.length - 1 && <div className="absolute -left-[21px] top-3 w-0.5 h-full bg-stone-300 dark:bg-stone-600" />}
+              {i < entries.length - 1 && <div className="absolute -left-[19px] top-3 w-0.5 h-full bg-stone-300 dark:bg-stone-600" />}
               <div className="flex items-start gap-2 text-sm">
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-1 flex-wrap">
@@ -158,7 +158,7 @@ function ComplianceTimeline({ items }: { items: LegalComplianceData[] }) {
             return (
               <div key={item.id} className="relative group">
                 <div className={`absolute -left-6 w-3 h-3 rounded-full ${statusConfig.dotColor} ring-2 ring-background transition-transform group-hover:scale-125`} />
-                {i < sorted.length - 1 && <div className="absolute -left-[21px] top-3 w-0.5 h-full bg-stone-300 dark:bg-stone-600" />}
+                {i < sorted.length - 1 && <div className="absolute -left-[19px] top-3 w-0.5 h-full bg-stone-300 dark:bg-stone-600" />}
                 <div className="flex items-start gap-2 text-sm">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-1">
@@ -219,18 +219,18 @@ export function CaseLegalCheck() {
       {/* Critical Violations Alert */}
       {(criticalCount > 0 || majorCount > 0) && (
         <Card className="bg-gradient-to-r from-red-900/30 to-stone-900/10 border-l-4 border-red-700 rounded-xl shadow-md">
-          <CardContent className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-red-700/20 shrink-0 animate-pulse"><Flame className="w-5 h-5 text-red-600" /></div>
-              <div className="flex-1">
-                <p className="font-semibold text-sm flex items-center gap-2">
+          <CardContent className="p-4 pb-5">
+            <div className="flex items-start gap-3">
+              <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-red-700/20 shrink-0 animate-pulse mt-0.5"><Flame className="w-5 h-5 text-red-600" /></div>
+              <div className="flex-1 min-w-0">
+                <p className="font-semibold text-sm flex items-center gap-2 flex-wrap">
                   <span className="text-red-700">Критические нарушения</span>
                   <Badge className="bg-red-700 text-white">{criticalCount} критич.</Badge>
                   {majorCount > 0 && <Badge className="bg-amber-600 text-white">{majorCount} major</Badge>}
                 </p>
-                <p className="text-xs text-muted-foreground mt-0.5">Требуется немедленное внимание — возможны основания для исключения доказательств или прекращения дела</p>
+                <p className="text-xs text-muted-foreground mt-1 whitespace-normal break-words leading-relaxed">Требуется немедленное внимание — возможны основания для исключения доказательств или прекращения дела</p>
               </div>
-              <Button size="sm" variant="outline" className="rounded-xl border-red-300 text-red-700 hover:bg-red-50" onClick={() => setFilterStatus('violation')}>Подробнее</Button>
+              <Button size="sm" variant="outline" className="rounded-xl border-red-300 text-red-700 hover:bg-red-50 shrink-0 mt-0.5" onClick={() => setFilterStatus('violation')}>Подробнее</Button>
             </div>
           </CardContent>
         </Card>

@@ -217,8 +217,8 @@ export function CaseAnalytics() {
           </CardTitle>
         </CardHeader>
         <CardContent className="p-4">
-          <ChartContainer config={trendChartConfig} className="h-64 w-full">
-            <AreaChart data={analytics.processingTrend} margin={{ top: 8, right: 12, left: 0, bottom: 4 }}>
+          <ChartContainer config={trendChartConfig} className="h-[300px] w-full">
+            <AreaChart data={analytics.processingTrend} margin={{ top: 10, right: 20, left: 10, bottom: 30 }}>
               <defs>
                 <linearGradient id="colorProcessed" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="5%" stopColor="#059669" stopOpacity={0.6}/>
@@ -230,7 +230,7 @@ export function CaseAnalytics() {
                 </linearGradient>
               </defs>
               <CartesianGrid strokeDasharray="3 3" className="stroke-muted" vertical={false} />
-              <XAxis dataKey="date" tick={{ fontSize: 11 }} tickLine={false} axisLine={false} dy={8} />
+              <XAxis dataKey="date" tick={{ fontSize: 11 }} tickLine={false} axisLine={false} angle={-15} textAnchor="end" height={50} interval={0} />
               <YAxis tick={{ fontSize: 11 }} tickLine={false} axisLine={false} width={28} />
               <ChartTooltip content={<ChartTooltipContent />} />
               <Area type="monotone" dataKey="processed" stroke="#059669" fill="url(#colorProcessed)" strokeWidth={2.5} name="Обработано" />

@@ -215,7 +215,7 @@ export function CaseTimeline() {
               <p className="text-xs text-muted-foreground">Измените критерии фильтрации</p>
             </div>
           ) : (
-            <div className="space-y-6 max-h-[600px] overflow-y-auto scrollbar-thin pr-2">
+            <div className="space-y-6 pr-2">
               {grouped.map(([monthKey, items]) => (
                 <div key={monthKey}>
                   <div className="sticky top-0 z-10 bg-background/95 backdrop-blur py-1 mb-3">
