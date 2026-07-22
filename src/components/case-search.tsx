@@ -11,10 +11,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Separator } from '@/components/ui/separator'
 import { toast } from 'sonner'
-import { Search, FileText, Users, BookOpen, Link2, Loader2, SearchX } from 'lucide-react'
-import { mockSearchResults, mockDocuments, mockPersons, mockEpisodes } from '@/lib/mock-data'
+import { Search, FileText, Users, BookOpen, Link2, Loader2, SearchX, Network, Download } from 'lucide-react'
+import { mockSearchResults, mockDocuments, mockPersons, mockEpisodes, mockCrossRefNodes } from '@/lib/mock-data'
 import * as caseApi from '@/lib/case-api'
-import type { SearchResultData } from '@/lib/case-store'
+import type { SearchResultData, CrossRefNode } from '@/lib/case-store'
 
 const RESULT_ICON: Record<string, React.ReactNode> = {
   documents: <FileText className="w-3 h-3" />,
@@ -30,6 +30,81 @@ const TYPE_BADGE: Record<string, string> = {
   article: 'bg-stone-600 text-white',
 }
 
+const NODE_TYPE_BADGE: Record<string, string> = {
+  обвинение: 'bg-red-700 text-white',
+  показание: 'bg-orange-600 text-white',
+  протокол: 'bg-amber-600 text-white',
+  экспертиза: 'bg-stone-600 text-white',
+}
+
+const LINK_TYPE_COLOR: Record<string, string> = {
+  доказательство: 'border-emerald-600 text-emerald-700',
+  подтверждение: 'border-blue-600 text-blue-700',
+  цитата: 'border-amber-600 text-amber-700',
+  упоминание: 'border-stone-500 text-stone-600',
+}
+
+// Export helper
+function exportSearchCSV(results: SearchResultData) {
+  const rows: string[] = ['Category,Name,Type,Status']
+  results.documents.forEach(d => rows.push(`Document,"${d.originalName}",${d.documentType ?? ''},${d.processingStatus}`))
+  results.persons.forEach(p => rows.push(`Person,"${p.fullName}",${p.role ?? ''},${p.status ?? ''}`))
+  results.episodes.forEach(e => rows.push(`Episode,"${e.title}",${e.severity ?? ''},${e.status ?? ''}`))
+  results.crossReferences.forEach(cr => rows.push(`CrossRef,"${cr.referenceText}",${cr.referenceType ?? ''},"${cr.sourceDocument.originalName} → ${cr.targetDocument.originalName}"`))
+  const blob = new Blob([rows.join('\n')], { type: 'text/csv;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = 'search_results.csv'
+  a.click()
+  URL.revokeObjectURL(url)
+  toast.success('CSV экспорт выполнен')
+}
+
+function CrossRefGraph({ nodes }: { nodes: CrossRefNode[] }) {
+  return (
+    <Card className="rounded-xl shadow-sm">
+      <CardHeader className="pb-2">
+        <CardTitle className="text-sm flex items-center gap-2">
+          <Network className="w-4 h-4 text-amber-600" /> Граф перекрёстных ссылок
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="p-4">
+        <div className="grid sm:grid-cols-2 gap-4 max-h-96 overflow-y-auto">
+          {nodes.map(node => (
+            <Card key={node.documentId} className="rounded-xl border-2 border-l-4 shadow-sm transition-shadow hover:shadow-md"
+              style={{ borderLeftColor: node.documentType === 'обвинение' ? '#dc2626' : node.documentType === 'показание' ? '#ea580c' : node.documentType === 'протокол' ? '#ca8a04' : '#78716c' }}>
+              <CardContent className="p-3">
+                <div className="flex items-center gap-2 mb-2">
+                  <FileText className="w-4 h-4 text-muted-foreground" />
+                  <p className="font-medium text-sm truncate">{node.documentName}</p>
+                  {node.documentType && <Badge className={NODE_TYPE_BADGE[node.documentType] ?? 'bg-stone-500 text-white'}>{node.documentType}</Badge>}
+                </div>
+                {node.linkedDocuments.length > 0 && (
+                  <div className="space-y-1.5">
+                    <p className="text-xs font-medium text-muted-foreground flex items-center gap-1">
+                      <Link2 className="w-3 h-3" /> Связи ({node.linkedDocuments.length}):
+                    </p>
+                    {node.linkedDocuments.map(link => (
+                      <div key={link.id} className={`flex items-center gap-1.5 px-2 py-1 rounded-lg border text-xs ${LINK_TYPE_COLOR[link.refType ?? ''] ?? 'border-stone-300 text-stone-500'}`}>
+                        <span className="truncate">{link.name}</span>
+                        <Badge variant="outline" className="text-xs shrink-0">{link.refType ?? '—'}</Badge>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {node.linkedDocuments.length === 0 && (
+                  <p className="text-xs text-muted-foreground">Нет перекрёстных ссылок</p>
+                )}
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
 export function CaseSearch() {
   const [query, setQuery] = useState('')
   const [filterType, setFilterType] = useState('all')
@@ -38,6 +113,13 @@ export function CaseSearch() {
     mutationFn: () => caseApi.search({ query, filterType }),
     onError: () => toast.error('Ошибка поиска'),
   })
+
+  const { data: graphData } = useQuery({
+    queryKey: ['cross-ref-graph'],
+    queryFn: caseApi.getCrossRefGraph,
+    retry: 1,
+  })
+  const crossRefNodes = graphData ?? mockCrossRefNodes
 
   // Default to structured mock results
   const emptyResults: SearchResultData = { documents: [], persons: [], episodes: [], crossReferences: [] }
@@ -96,6 +178,9 @@ export function CaseSearch() {
         </CardContent>
       </Card>
 
+      {/* Cross-Reference Graph */}
+      <CrossRefGraph nodes={crossRefNodes} />
+
       {/* Empty state with illustration */}
       {!query.trim() && !searchMutation.data && totalCount === 0 && (
         <Card className="rounded-xl shadow-sm">
@@ -116,11 +201,17 @@ export function CaseSearch() {
         </div>
       )}
 
-      {/* Result count badge */}
+      {/* Result count badge + Export */}
       {totalCount > 0 && (
         <div className="flex items-center gap-2">
           <Badge className="bg-stone-600 text-white">{totalCount} результатов</Badge>
           <Separator className="flex-1" />
+          <Button size="sm" variant="outline" className="rounded-xl gap-1" onClick={() => exportSearchCSV(results)}>
+            <Download className="w-3 h-3" />Export CSV
+          </Button>
+          <Button size="sm" variant="outline" className="rounded-xl gap-1" onClick={() => toast.info('PDF экспорт будет доступен в будущих версиях')}>
+            <FileText className="w-3 h-3" />Export PDF
+          </Button>
         </div>
       )}
 

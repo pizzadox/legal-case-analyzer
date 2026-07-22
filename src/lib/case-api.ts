@@ -8,6 +8,12 @@ import {
   LegalComplianceData,
   DashboardStats,
   ProcessingQueueData,
+  CaseHealthScore,
+  EvidenceTimelineEvent,
+  PersonRelationship,
+  DefenseImprovementData,
+  NotificationData,
+  CrossRefNode,
 } from './case-store'
 
 const API_BASE = '/api/case'
@@ -194,5 +200,77 @@ export async function advancedSearch(params: {
   return fetchApi<SearchResultData>('/search', {
     method: 'POST',
     body: JSON.stringify(params),
+  })
+}
+
+// Get case health score
+export async function getCaseHealthScore(): Promise<CaseHealthScore> {
+  try {
+    return await fetchApi<CaseHealthScore>('/health-score')
+  } catch {
+    // Fallback to mock data
+    const { mockCaseHealthScore } = await import('./mock-data')
+    return mockCaseHealthScore
+  }
+}
+
+// Get evidence timeline
+export async function getEvidenceTimeline(): Promise<EvidenceTimelineEvent[]> {
+  try {
+    return await fetchApi<EvidenceTimelineEvent[]>('/timeline')
+  } catch {
+    const { mockEvidenceTimeline } = await import('./mock-data')
+    return mockEvidenceTimeline
+  }
+}
+
+// Get person relationships
+export async function getPersonRelationships(): Promise<PersonRelationship[]> {
+  try {
+    return await fetchApi<PersonRelationship[]>('/relationships')
+  } catch {
+    const { mockPersonRelationships } = await import('./mock-data')
+    return mockPersonRelationships
+  }
+}
+
+// Get defense improvement suggestions
+export async function getDefenseImprovements(personId?: string): Promise<DefenseImprovementData[]> {
+  try {
+    return await fetchApi<DefenseImprovementData[]>('/defense-improvements', {
+      method: 'POST',
+      body: JSON.stringify({ personId }),
+    })
+  } catch {
+    const { mockDefenseImprovements } = await import('./mock-data')
+    return mockDefenseImprovements
+  }
+}
+
+// Get notifications
+export async function getNotifications(): Promise<NotificationData[]> {
+  try {
+    return await fetchApi<NotificationData[]>('/notifications')
+  } catch {
+    const { mockNotifications } = await import('./mock-data')
+    return mockNotifications
+  }
+}
+
+// Get cross-reference graph
+export async function getCrossRefGraph(): Promise<CrossRefNode[]> {
+  try {
+    return await fetchApi<CrossRefNode[]>('/cross-ref-graph')
+  } catch {
+    const { mockCrossRefNodes } = await import('./mock-data')
+    return mockCrossRefNodes
+  }
+}
+
+// Request AI analysis for defense improvements
+export async function requestDefenseAnalysis(personId: string): Promise<DefenseImprovementData[]> {
+  return fetchApi<DefenseImprovementData[]>('/defense-improvements', {
+    method: 'POST',
+    body: JSON.stringify({ personId, requestAnalysis: true }),
   })
 }

@@ -9,7 +9,7 @@ import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Separator } from '@/components/ui/separator'
 import { toast } from 'sonner'
-import { MessageSquare, Send, Loader2, Sparkles, Download, Cpu, FileText, Scale } from 'lucide-react'
+import { MessageSquare, Send, Loader2, Sparkles, Download, Cpu, FileText, Scale, Bot, Clock } from 'lucide-react'
 import { mockChatMessages } from '@/lib/mock-data'
 import * as caseApi from '@/lib/case-api'
 import type { ChatMessageData } from '@/lib/case-store'
@@ -84,7 +84,29 @@ export function CaseQa() {
 
   return (
     <div className="space-y-6">
-      {/* Header: AI Status + Context + Export */}
+      {/* Section Header Banner */}
+      <Card className="bg-gradient-to-r from-red-900/30 via-amber-900/15 to-stone-900/5 border-l-4 border-amber-600 rounded-xl shadow-md overflow-hidden">
+        <CardContent className="p-5">
+          <div className="flex items-center gap-3">
+            <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-amber-600/20 shadow-sm">
+              <MessageSquare className="w-5 h-5 text-amber-600" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="font-semibold text-sm">Вопросы ИИ-аналитику</p>
+              <p className="text-xs text-muted-foreground">Задайте вопросы по материалам уголовного дела</p>
+            </div>
+            {/* AI Status indicator with pulsing dot */}
+            <div className="flex items-center gap-2 shrink-0">
+              <div className={`w-2 h-2 rounded-full ${askMutation.isPending ? 'bg-amber-500 animate-pulse' : 'bg-emerald-700 animate-pulse'}`} />
+              <Badge className={askMutation.isPending ? 'bg-amber-600 text-white text-xs font-semibold' : 'bg-emerald-700 text-white text-xs font-semibold'}>
+                {askMutation.isPending ? 'ИИ думает...' : 'ИИ готов'}
+              </Badge>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Header: Context + Export */}
       <div className="flex items-center gap-2">
         <Select value={contextType} onValueChange={setContextType}>
           <SelectTrigger className="w-40 rounded-xl"><SelectValue /></SelectTrigger>
@@ -92,56 +114,57 @@ export function CaseQa() {
             {CONTEXTS.map(c => <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>)}
           </SelectContent>
         </Select>
-        <div className="flex items-center gap-1">
-          <Cpu className="w-3 h-3 text-amber-500" />
-          <Badge className={askMutation.isPending ? 'bg-amber-600 text-white' : 'bg-emerald-700 text-white'}>
-            {askMutation.isPending ? 'ИИ думает...' : 'ИИ готов'}
-          </Badge>
-        </div>
-        <Badge className="bg-stone-600 text-white">{messages.length} сообщений</Badge>
-        <Button size="sm" variant="outline" className="ml-auto rounded-xl" onClick={handleExport}>
+        <Badge className="bg-stone-600 text-white text-xs font-semibold">{messages.length} сообщений</Badge>
+        <Button size="sm" variant="outline" className="ml-auto rounded-xl transition-all duration-200 hover:bg-stone-100 font-medium" onClick={handleExport}>
           <Download className="w-3 h-3 mr-1" />Экспорт
         </Button>
       </div>
 
       {/* Chat Messages */}
-      <Card className="rounded-xl shadow-sm">
-        <CardHeader className="pb-2">
-          <CardTitle className="text-sm flex items-center gap-2">
-            <MessageSquare className="w-4 h-4" />Вопросы и ответы ИИ-аналитика
+      <Card className="rounded-xl shadow-sm border-stone-200/50">
+        <CardHeader className="pb-2 px-4 pt-4">
+          <CardTitle className="text-sm font-semibold flex items-center gap-2">
+            <MessageSquare className="w-4 h-4 text-amber-600" />Вопросы и ответы ИИ-аналитика
           </CardTitle>
         </CardHeader>
         <CardContent className="p-4">
-          <div ref={scrollRef} className="space-y-3 max-h-[500px] overflow-y-auto">
+          <div ref={scrollRef} className="space-y-4 max-h-[500px] overflow-y-auto [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-stone-300">
             {messages.map(msg => (
               <div key={msg.id} className="space-y-2">
                 {/* User question */}
                 <div className="flex justify-end">
-                  <div className="bg-gradient-to-r from-stone-700 to-stone-800 text-white rounded-xl px-3 py-2 max-w-[80%] text-sm shadow-sm">
+                  <div className="bg-gradient-to-r from-red-700/90 to-red-800/90 text-white rounded-xl rounded-br-sm px-4 py-2.5 max-w-[80%] text-sm shadow-sm">
                     {msg.question}
                   </div>
                 </div>
                 {/* AI answer */}
                 {msg.answer && (
                   <div className="flex justify-start">
-                    <div className="bg-muted/80 rounded-xl px-3 py-2 max-w-[80%] text-sm shadow-sm border">
-                      <div className="whitespace-pre-wrap">{msg.answer}</div>
+                    <div className="bg-gradient-to-br from-stone-100/80 to-stone-50/80 rounded-xl rounded-bl-sm px-4 py-2.5 max-w-[80%] text-sm shadow-sm border border-stone-200/50">
+                      <div className="flex items-center gap-1.5 mb-1">
+                        <Bot className="w-3 h-3 text-amber-600" />
+                        <span className="text-xs font-semibold text-amber-600">ИИ-аналитик</span>
+                      </div>
+                      <div className="whitespace-pre-wrap leading-relaxed">{msg.answer}</div>
                       {/* Referenced documents/persons */}
                       {msg.referencedDocuments?.length > 0 && (
                         <div className="flex flex-wrap gap-1 mt-2">
                           {msg.referencedDocuments.map(dId => (
-                            <Badge key={dId} variant="outline" className="text-xs"><FileText className="w-2 h-2 mr-1" />{dId}</Badge>
+                            <Badge key={dId} variant="outline" className="text-xs border-red-300/50 font-medium"><FileText className="w-2 h-2 mr-1" />{dId}</Badge>
                           ))}
                         </div>
                       )}
                       {msg.referencedArticles?.length > 0 && (
                         <div className="flex flex-wrap gap-1 mt-1">
                           {msg.referencedArticles.map(art => (
-                            <Badge key={art} variant="outline" className="text-xs"><Scale className="w-2 h-2 mr-1" />{art}</Badge>
+                            <Badge key={art} variant="outline" className="text-xs border-stone-300/50 font-medium"><Scale className="w-2 h-2 mr-1" />{art}</Badge>
                           ))}
                         </div>
                       )}
-                      <p className="text-xs text-muted-foreground mt-1">{new Date(msg.createdAt).toLocaleString('ru')}</p>
+                      <p className="text-xs text-muted-foreground mt-1.5 flex items-center gap-1">
+                        <Clock className="w-2 h-2" />
+                        {new Date(msg.createdAt).toLocaleString('ru')}
+                      </p>
                     </div>
                   </div>
                 )}
@@ -149,8 +172,11 @@ export function CaseQa() {
             ))}
             {askMutation.isPending && (
               <div className="flex justify-start">
-                <div className="bg-muted rounded-xl px-3 py-2 text-sm border shadow-sm">
-                  <Loader2 className="w-4 h-4 animate-spin" /> ИИ анализирует...
+                <div className="bg-gradient-to-br from-stone-100/80 to-stone-50/80 rounded-xl px-4 py-3 text-sm border border-stone-200/50 shadow-sm">
+                  <div className="flex items-center gap-2">
+                    <Loader2 className="w-4 h-4 animate-spin text-amber-600" />
+                    <span className="text-amber-600 font-medium">ИИ анализирует...</span>
+                  </div>
                 </div>
               </div>
             )}
@@ -162,8 +188,8 @@ export function CaseQa() {
       {messages.length <= 2 && (
         <div className="flex flex-wrap gap-2">
           {SUGGESTED.map(q => (
-            <Button key={q} size="sm" variant="outline" className="rounded-xl" onClick={() => { setQuestion(q) }}>
-              <Sparkles className="w-3 h-3 mr-1" />{q}
+            <Button key={q} size="sm" variant="outline" className="rounded-xl transition-all duration-200 hover:bg-amber-50 hover:border-amber-300 font-medium" onClick={() => { setQuestion(q) }}>
+              <Sparkles className="w-3 h-3 mr-1 text-amber-600" />{q}
             </Button>
           ))}
         </div>
@@ -171,15 +197,18 @@ export function CaseQa() {
 
       {/* Input */}
       <div className="flex gap-2">
-        <Input
-          placeholder="Задайте вопрос по делу..."
-          value={question}
-          onChange={e => setQuestion(e.target.value)}
-          onKeyDown={e => e.key === 'Enter' && handleSend()}
-          className="flex-1 rounded-xl"
-          disabled={askMutation.isPending}
-        />
-        <Button className="rounded-xl bg-gradient-to-r from-red-700 to-red-800 text-white shadow-sm" onClick={handleSend} disabled={askMutation.isPending || !question.trim()}>
+        <div className="flex-1 relative">
+          <MessageSquare className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+          <Input
+            placeholder="Задайте вопрос по делу..."
+            value={question}
+            onChange={e => setQuestion(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && handleSend()}
+            className="pl-10 rounded-xl"
+            disabled={askMutation.isPending}
+          />
+        </div>
+        <Button className="rounded-xl bg-gradient-to-r from-red-700 to-red-800 text-white shadow-sm hover:shadow-md transition-all duration-200 font-medium" onClick={handleSend} disabled={askMutation.isPending || !question.trim()}>
           {askMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
         </Button>
       </div>

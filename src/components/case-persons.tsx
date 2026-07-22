@@ -11,10 +11,11 @@ import { Separator } from '@/components/ui/separator'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from '@/components/ui/chart'
 import { Bar, BarChart, XAxis, YAxis, Cell } from 'recharts'
-import { Users, Shield, Star, ChevronDown, ChevronUp, AlertTriangle, Gavel } from 'lucide-react'
-import { mockPersons } from '@/lib/mock-data'
-import { getPersons } from '@/lib/case-api'
-import type { PersonData } from '@/lib/case-store'
+import { Users, Shield, Star, ChevronDown, ChevronUp, AlertTriangle, Gavel, Download, FileText, Link2 } from 'lucide-react'
+import { mockPersons, mockPersonRelationships } from '@/lib/mock-data'
+import { getPersons, getPersonRelationships } from '@/lib/case-api'
+import type { PersonData, PersonRelationship } from '@/lib/case-store'
+import { toast } from 'sonner'
 
 const GUILT: Record<string, { badge: string; color: string; pct: number; label: string }> = {
   high: { badge: 'bg-red-700 text-white', color: '#dc2626', pct: 85, label: 'Высокая' },
@@ -40,16 +41,97 @@ const ROLE_LABEL: Record<string, string> = {
   следователь: 'Следователь',
 }
 
+const REL_TYPE_BADGE: Record<string, string> = {
+  'соучастники': 'bg-orange-600 text-white',
+  'обвиняемый-потерпевшая': 'bg-red-700 text-white',
+  'обвиняемый-свидетель': 'bg-amber-600 text-white',
+  'соучастник-потерпевшая': 'bg-orange-500 text-white',
+  'организатор-соучастник': 'bg-red-600 text-white',
+}
+
 const guiltChartConfig = Object.fromEntries(
   Object.entries(GUILT).map(([k, v]) => [v.label, { label: v.label, color: v.color }])
 )
+
+// Export helper
+function exportPersonsCSV(persons: PersonData[]) {
+  const rows = ['Name,Role,Status,GuiltLevel,Occupation']
+  persons.forEach(p => {
+    rows.push(`"${p.fullName}",${p.role ?? ''},${p.status ?? ''},${p.guiltLevel ?? 'none'},${p.occupation ?? ''}`)
+  })
+  const blob = new Blob([rows.join('\n')], { type: 'text/csv;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = 'persons.csv'
+  a.click()
+  URL.revokeObjectURL(url)
+  toast.success('CSV экспорт выполнен')
+}
+
+// Relationship map section
+function RelationshipMap({ relationships, persons }: { relationships: PersonRelationship[]; persons: PersonData[] }) {
+  // Group relationships by person
+  const personRelMap = useMemo(() => {
+    const map: Record<string, PersonRelationship[]> = {}
+    relationships.forEach(r => {
+      if (!map[r.sourcePersonId]) map[r.sourcePersonId] = []
+      map[r.sourcePersonId].push(r)
+    })
+    return map
+  }, [relationships])
+
+  return (
+    <Card className="rounded-xl shadow-sm">
+      <CardHeader className="pb-2">
+        <CardTitle className="text-sm flex items-center gap-2">
+          <Link2 className="w-4 h-4 text-amber-600" /> Связи между участниками
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="p-4">
+        <div className="grid sm:grid-cols-2 gap-4 max-h-96 overflow-y-auto">
+          {persons.map(person => {
+            const rels = personRelMap[person.id] ?? []
+            return (
+              <Card key={person.id} className="rounded-xl border shadow-sm transition-shadow hover:shadow-md">
+                <CardContent className="p-3">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Users className="w-4 h-4 text-muted-foreground" />
+                    <p className="font-medium text-sm truncate">{person.shortName ?? person.fullName}</p>
+                    <Badge className={ROLE_BADGE[person.role ?? ''] ?? 'bg-stone-500 text-white'}>{ROLE_LABEL[person.role ?? ''] ?? person.role}</Badge>
+                  </div>
+                  {rels.length > 0 ? (
+                    <div className="space-y-1.5">
+                      {rels.map(rel => (
+                        <div key={rel.id} className="flex items-center gap-1.5 text-xs">
+                          <span className="text-muted-foreground truncate">{person.shortName ?? person.fullName}</span>
+                          <span className="text-muted-foreground">→</span>
+                          <span className="font-medium truncate">{rel.targetPersonName}</span>
+                          <Badge className={`${REL_TYPE_BADGE[rel.relationshipType] ?? 'bg-stone-500 text-white'} text-xs shrink-0`}>{rel.relationshipType}</Badge>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">Нет связей</p>
+                  )}
+                </CardContent>
+              </Card>
+            )
+          })}
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
 
 export function CasePersons() {
   const [roleFilter, setRoleFilter] = useState('all')
   const [expandedId, setExpandedId] = useState<string | null>(null)
 
   const { data, isLoading } = useQuery({ queryKey: ['persons'], queryFn: getPersons, retry: 1 })
+  const { data: relData } = useQuery({ queryKey: ['person-relationships'], queryFn: getPersonRelationships, retry: 1 })
   const persons = data ?? mockPersons
+  const relationships = relData ?? mockPersonRelationships
 
   const filtered = useMemo(() =>
     roleFilter === 'all' ? persons : persons.filter(p => p.role === roleFilter),
@@ -99,7 +181,7 @@ export function CasePersons() {
         </CardContent>
       </Card>
 
-      {/* Filter */}
+      {/* Filter + Export */}
       <div className="flex items-center gap-2">
         <Select value={roleFilter} onValueChange={setRoleFilter}>
           <SelectTrigger className="w-40 rounded-xl"><SelectValue placeholder="Роль" /></SelectTrigger>
@@ -112,7 +194,17 @@ export function CasePersons() {
           </SelectContent>
         </Select>
         <Badge className="bg-stone-600 text-white">{filtered.length} участников</Badge>
+        <Separator orientation="vertical" className="h-4 mx-2" />
+        <Button size="sm" variant="outline" className="rounded-xl gap-1" onClick={() => exportPersonsCSV(persons)}>
+          <Download className="w-3 h-3" />Export CSV
+        </Button>
+        <Button size="sm" variant="outline" className="rounded-xl gap-1" onClick={() => toast.info('PDF экспорт будет доступен в будущих версиях')}>
+          <FileText className="w-3 h-3" />Export PDF
+        </Button>
       </div>
+
+      {/* Relationship Map */}
+      <RelationshipMap relationships={relationships} persons={persons} />
 
       {/* Guilt Chart */}
       <Card className="rounded-xl shadow-sm">

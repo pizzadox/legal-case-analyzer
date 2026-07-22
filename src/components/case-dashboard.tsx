@@ -7,14 +7,16 @@ import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Separator } from '@/components/ui/separator'
+import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from '@/components/ui/tooltip'
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from '@/components/ui/chart'
 import { Pie, PieChart, Cell, Bar, BarChart, XAxis, YAxis } from 'recharts'
 import {
-  FileText, Users, BookOpen, AlertTriangle, Clock, CheckCircle, Upload, Zap, Shield, Scale, RefreshCw, XCircle, Gavel, Activity, MapPin
+  FileText, Users, BookOpen, AlertTriangle, Clock, CheckCircle, Upload, Zap, Shield, Scale, RefreshCw, XCircle, Gavel, Activity, MapPin, UploadCloud, BrainCircuit, ScaleIcon, FileSearch
 } from 'lucide-react'
-import { mockDashboardStats } from '@/lib/mock-data'
-import { getDashboardStats } from '@/lib/case-api'
+import { mockDashboardStats, mockCaseHealthScore, mockEvidenceTimeline } from '@/lib/mock-data'
+import { getDashboardStats, getCaseHealthScore, getEvidenceTimeline } from '@/lib/case-api'
 import { useCaseStore } from '@/lib/case-store'
+import type { CaseHealthScore, EvidenceTimelineEvent } from '@/lib/case-store'
 
 const GUILT_COLORS: Record<string, string> = { high: '#dc2626', moderate: '#ea580c', low: '#ca8a04', none: '#525252' }
 const GUILT_LABEL: Record<string, string> = { high: 'Высокая', moderate: 'Средняя', low: 'Низкая', none: 'Нет' }
@@ -44,6 +46,93 @@ const STATUS_ICON: Record<string, React.ReactNode> = {
   failed: <XCircle className="w-3 h-3 text-red-600" />,
 }
 
+// Health score ring component (SVG-based)
+function HealthScoreRing({ score }: { score: number }) {
+  const radius = 58
+  const circumference = 2 * Math.PI * radius
+  const offset = circumference - (score / 100) * circumference
+  const color = score >= 70 ? '#059669' : score >= 50 ? '#d97706' : '#dc2626'
+
+  return (
+    <div className="flex items-center justify-center">
+      <svg width="140" height="140" className="transform -rotate-90">
+        <circle cx="70" cy="70" r={radius} stroke="#e5e7eb" strokeWidth="8" fill="none" className="dark:stroke-stone-700" />
+        <circle cx="70" cy="70" r={radius} stroke={color} strokeWidth="8" fill="none"
+          strokeDasharray={circumference} strokeDashoffset={offset}
+          strokeLinecap="round" className="transition-all duration-700" />
+      </svg>
+      <div className="absolute flex flex-col items-center">
+        <span className="text-2xl font-bold" style={{ color }}>{score}</span>
+        <span className="text-xs text-muted-foreground">из 100</span>
+      </div>
+    </div>
+  )
+}
+
+// Factor breakdown with tooltip
+function FactorRow({ factor }: { factor: { value: number; label: string; tooltip: string } }) {
+  const color = factor.value >= 70 ? 'bg-emerald-700 text-white' : factor.value >= 50 ? 'bg-amber-600 text-white' : 'bg-red-700 text-white'
+  const progressColor = factor.value >= 70 ? '[&>div]:bg-emerald-600' : factor.value >= 50 ? '[&>div]:bg-amber-500' : '[&>div]:bg-red-600'
+
+  return (
+    <TooltipProvider delayDuration={200}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <div className="flex items-center gap-2 cursor-help">
+            <span className="text-xs font-medium min-w-[120px]">{factor.label}</span>
+            <Progress value={factor.value} className={`h-2 flex-1 ${progressColor}`} />
+            <Badge className={color}>{factor.value}%</Badge>
+          </div>
+        </TooltipTrigger>
+        <TooltipContent side="right" className="max-w-[280px] text-xs">
+          <p>{factor.tooltip}</p>
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  )
+}
+
+// Evidence timeline event type config
+const EVENT_TYPE_CONFIG: Record<string, { icon: React.ReactNode; dotColor: string }> = {
+  document_upload: { icon: <UploadCloud className="w-3 h-3 text-amber-600" />, dotColor: 'bg-amber-500' },
+  analysis_complete: { icon: <CheckCircle className="w-3 h-3 text-emerald-600" />, dotColor: 'bg-emerald-500' },
+  compliance_check: { icon: <Scale className="w-3 h-3 text-orange-600" />, dotColor: 'bg-orange-500' },
+  defense_update: { icon: <Shield className="w-3 h-3 text-blue-500" />, dotColor: 'bg-blue-500' },
+  episode_found: { icon: <BookOpen className="w-3 h-3 text-red-600" />, dotColor: 'bg-red-500' },
+}
+
+function EvidenceTimelineSection({ events }: { events: EvidenceTimelineEvent[] }) {
+  return (
+    <Card className="rounded-xl shadow-sm">
+      <CardHeader className="pb-2">
+        <CardTitle className="text-sm flex items-center gap-2">
+          <FileSearch className="w-4 h-4 text-amber-600" /> Хронология событий
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="p-4">
+        <div className="relative pl-6 space-y-3 max-h-80 overflow-y-auto scrollbar-thin">
+          {events.map((event, i) => {
+            const config = EVENT_TYPE_CONFIG[event.eventType] ?? { icon: <Clock className="w-3 h-3" />, dotColor: 'bg-stone-400' }
+            return (
+              <div key={event.id} className="relative group">
+                <div className={`absolute -left-6 w-3 h-3 rounded-full ${config.dotColor} ring-2 ring-background transition-transform group-hover:scale-125`} />
+                {i < events.length - 1 && <div className="absolute -left-[21px] top-3 w-0.5 h-full bg-stone-300 dark:bg-stone-600" />}
+                <div className="flex items-start gap-2 text-sm">
+                  <div className="flex items-center gap-1 shrink-0">{config.icon}</div>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium text-xs">{event.description}</p>
+                    <p className="text-xs text-muted-foreground">{new Date(event.date).toLocaleDateString('ru-RU', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</p>
+                  </div>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
 export function CaseDashboard() {
   const { setActiveSection } = useCaseStore()
   const { data, isLoading } = useQuery({
@@ -51,7 +140,19 @@ export function CaseDashboard() {
     queryFn: getDashboardStats,
     retry: 1,
   })
+  const { data: healthData } = useQuery({
+    queryKey: ['health-score'],
+    queryFn: getCaseHealthScore,
+    retry: 1,
+  })
+  const { data: timelineData } = useQuery({
+    queryKey: ['evidence-timeline'],
+    queryFn: getEvidenceTimeline,
+    retry: 1,
+  })
   const stats = data ?? mockDashboardStats
+  const healthScore = healthData ?? mockCaseHealthScore
+  const timelineEvents = timelineData ?? mockEvidenceTimeline
 
   if (isLoading) return (
     <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -118,7 +219,7 @@ export function CaseDashboard() {
         ))}
       </div>
 
-      {/* Health indicator + Compliance */}
+      {/* Health Score Widget + Quick Actions */}
       <div className="grid md:grid-cols-2 gap-4">
         <Card className="rounded-xl shadow-sm">
           <CardHeader className="pb-2">
@@ -126,19 +227,20 @@ export function CaseDashboard() {
               <Activity className="w-4 h-4 text-amber-600" /> Здоровье дела
             </CardTitle>
           </CardHeader>
-          <CardContent className="p-4 space-y-3">
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-medium">Обработано документов:</span>
-              <Progress value={Math.round(((stats.documents.byStatus.completed ?? 0) / stats.documents.total) * 100)} className="h-2 flex-1" />
-              <Badge className="bg-amber-600 text-white text-xs">{Math.round(((stats.documents.byStatus.completed ?? 0) / stats.documents.total) * 100)}%</Badge>
+          <CardContent className="p-4">
+            <div className="flex items-start gap-4">
+              <div className="relative shrink-0">
+                <HealthScoreRing score={healthScore.score} />
+              </div>
+              <div className="flex-1 space-y-2 pt-1">
+                <FactorRow factor={healthScore.factors.documentProcessing} />
+                <FactorRow factor={healthScore.factors.complianceRate} />
+                <FactorRow factor={healthScore.factors.evidenceStrength} />
+                <FactorRow factor={healthScore.factors.defenseCoverage} />
+              </div>
             </div>
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-medium">Соответствие нормам:</span>
-              <Progress value={complianceScore} className="h-2 flex-1" />
-              <Badge className={complianceScore >= 70 ? 'bg-emerald-700 text-white' : complianceScore >= 40 ? 'bg-amber-600 text-white' : 'bg-red-700 text-white'}>{complianceScore}%</Badge>
-            </div>
-            <Separator />
-            <div className="flex flex-wrap gap-2 text-xs">
+            <Separator className="mt-3" />
+            <div className="flex flex-wrap gap-2 text-xs mt-2">
               <Badge variant="outline"><MapPin className="w-3 h-3 mr-1" />{stats.summary.totalLocations} мест</Badge>
               <Badge variant="outline"><AlertTriangle className="w-3 h-3 mr-1" />{stats.summary.totalCrossReferences} ссылок</Badge>
               <Badge variant="outline"><Shield className="w-3 h-3 mr-1" />{stats.defenseLines.total} стратегий</Badge>
@@ -203,6 +305,9 @@ export function CaseDashboard() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Evidence Timeline */}
+      <EvidenceTimelineSection events={timelineEvents} />
 
       {/* Processing Queue */}
       {stats.processingQueue.inProgress.length > 0 && (

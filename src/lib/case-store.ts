@@ -142,6 +142,69 @@ export interface ProcessingQueueData {
   document?: DocumentData
 }
 
+// Case health score factors
+export interface CaseHealthScore {
+  score: number
+  factors: {
+    documentProcessing: { value: number; label: string; tooltip: string }
+    complianceRate: { value: number; label: string; tooltip: string }
+    evidenceStrength: { value: number; label: string; tooltip: string }
+    defenseCoverage: { value: number; label: string; tooltip: string }
+  }
+}
+
+// Evidence timeline event
+export interface EvidenceTimelineEvent {
+  id: string
+  date: string
+  eventType: 'document_upload' | 'analysis_complete' | 'compliance_check' | 'defense_update' | 'episode_found'
+  description: string
+  relatedEntityId?: string
+  relatedEntityName?: string
+}
+
+// Person relationship
+export interface PersonRelationship {
+  id: string
+  sourcePersonId: string
+  targetPersonId: string
+  relationshipType: string
+  description: string
+  sourcePersonName: string
+  targetPersonName: string
+}
+
+// Defense improvement suggestion
+export interface DefenseImprovementData {
+  id: string
+  defenseLineId: string
+  suggestion: string
+  expectedImpact: string
+  probabilityChange: string
+  difficulty: 'easy' | 'moderate' | 'hard'
+  category: string
+}
+
+// Notification
+export interface NotificationData {
+  id: string
+  type: 'processing' | 'compliance' | 'defense' | 'evidence' | 'system'
+  title: string
+  description: string
+  timestamp: string
+  isRead: boolean
+  relatedSection?: SectionId
+  relatedEntityId?: string
+}
+
+// Cross-reference graph node
+export interface CrossRefNode {
+  documentId: string
+  documentName: string
+  documentType: string | null
+  linkedDocuments: { id: string; name: string; type: string | null; refType: string | null }[]
+}
+
 // Structured search results matching the API response
 export interface SearchResultData {
   documents: DocumentData[]

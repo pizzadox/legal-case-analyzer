@@ -9,11 +9,30 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/
 import { Skeleton } from '@/components/ui/skeleton'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import {
-  BookOpen, MapPin, Users, Scale, Clock, CheckCircle, AlertTriangle, XCircle, Calendar, FileText, Link2
+  BookOpen, MapPin, Users, Scale, Clock, CheckCircle, AlertTriangle, XCircle, Calendar, FileText, Link2, Download
 } from 'lucide-react'
 import { mockEpisodes } from '@/lib/mock-data'
 import { getEpisodes } from '@/lib/case-api'
 import type { EpisodeData } from '@/lib/case-store'
+import { toast } from 'sonner'
+import { Button } from '@/components/ui/button'
+
+function exportEpisodesCSV(episodes: EpisodeData[]) {
+  const rows = ['Title,Severity,Status,Date,Persons,Articles']
+  episodes.forEach(e => {
+    const persons = e.persons.map(p => `${p.person.shortName ?? p.person.fullName} (${p.involvement ?? ''})`).join('; ')
+    const articles = e.articles.map(a => a.article.code).join('; ')
+    rows.push(`"${e.title}",${e.severity ?? ''},${e.status ?? ''},${e.date ?? ''},"${persons}","${articles}"`)
+  })
+  const blob = new Blob([rows.join('\n')], { type: 'text/csv;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = 'episodes.csv'
+  a.click()
+  URL.revokeObjectURL(url)
+  toast.success('CSV экспорт выполнен')
+}
 
 const SEVERITY: Record<string, string> = {
   'особо тяжкое': 'bg-red-700 text-white',
@@ -21,11 +40,27 @@ const SEVERITY: Record<string, string> = {
   'средней тяжести': 'bg-orange-600 text-white',
   'небольшое': 'bg-amber-600 text-white',
 }
+
+const SEVERITY_DOT: Record<string, string> = {
+  'особо тяжкое': 'bg-red-700',
+  'тяжкое': 'bg-red-600',
+  'средней тяжести': 'bg-orange-600',
+  'небольшое': 'bg-amber-600',
+}
+
+const SEVERITY_BG: Record<string, string> = {
+  'особо тяжкое': 'bg-red-700/10 border-red-700/30',
+  'тяжкое': 'bg-red-600/10 border-red-600/30',
+  'средней тяжести': 'bg-orange-600/10 border-orange-600/30',
+  'небольшое': 'bg-amber-600/10 border-amber-600/30',
+}
+
 const STATUS_BADGE: Record<string, string> = {
   'расследуется': 'bg-amber-600 text-white',
   'доказано': 'bg-emerald-700 text-white',
   'сомнительно': 'bg-red-700 text-white',
 }
+
 const INVOLVEMENT: Record<string, string> = {
   'организатор': 'bg-red-700 text-white',
   'соучастник': 'bg-orange-600 text-white',
@@ -52,22 +87,43 @@ export function CaseEpisodes() {
     investigating: episodes.filter(e => e.status === 'расследуется').length,
   }), [episodes])
 
-  if (isLoading) return <div className="space-y-4">{[1, 2, 3].map(i => <Skeleton key={i} className="h-24" />)}</div>
+  if (isLoading) return <div className="space-y-4">{[1, 2, 3].map(i => <Skeleton key={i} className="h-24 rounded-xl" />)}</div>
 
   return (
     <div className="space-y-6">
+      {/* Section Header Banner */}
+      <Card className="bg-gradient-to-r from-amber-900/30 via-amber-900/15 to-stone-900/5 border-l-4 border-amber-600 rounded-xl shadow-md overflow-hidden">
+        <CardContent className="p-5">
+          <div className="flex items-center gap-3">
+            <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-amber-600/20 shadow-sm">
+              <BookOpen className="w-5 h-5 text-amber-600" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="font-semibold text-sm">Преступные эпизоды</p>
+              <p className="text-xs text-muted-foreground">Хронология, тяжесть и участники каждого эпизода</p>
+            </div>
+            <Badge className="bg-stone-600 text-white text-xs font-semibold">{episodes.length} эпизодов</Badge>
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Summary */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {[
-          { label: 'Всего', value: summary.total, icon: BookOpen, gradient: 'from-stone-800/20 to-stone-900/10', border: 'border-stone-600' },
-          { label: 'Тяжкие', value: summary.severe, icon: AlertTriangle, gradient: 'from-red-900/20 to-stone-900/10', border: 'border-red-700' },
-          { label: 'Доказано', value: summary.proven, icon: CheckCircle, gradient: 'from-emerald-900/20 to-stone-900/10', border: 'border-emerald-700' },
-          { label: 'Расследуется', value: summary.investigating, icon: Clock, gradient: 'from-amber-900/20 to-stone-900/10', border: 'border-amber-600' },
-        ].map(({ label, value, icon: Icon, gradient, border }) => (
-          <Card key={label} className={`border-l-4 ${border} bg-gradient-to-r ${gradient} rounded-xl shadow-sm`}>
+          { label: 'Всего', value: summary.total, icon: BookOpen, gradient: 'from-stone-800/30 via-stone-800/10 to-transparent', border: 'border-stone-600', iconBg: 'bg-stone-600/15', iconColor: 'text-stone-600' },
+          { label: 'Тяжкие', value: summary.severe, icon: AlertTriangle, gradient: 'from-red-900/30 via-red-900/10 to-transparent', border: 'border-red-700', iconBg: 'bg-red-700/15', iconColor: 'text-red-700' },
+          { label: 'Доказано', value: summary.proven, icon: CheckCircle, gradient: 'from-emerald-900/30 via-emerald-900/10 to-transparent', border: 'border-emerald-700', iconBg: 'bg-emerald-700/15', iconColor: 'text-emerald-700' },
+          { label: 'Расследуется', value: summary.investigating, icon: Clock, gradient: 'from-amber-900/30 via-amber-900/10 to-transparent', border: 'border-amber-600', iconBg: 'bg-amber-600/15', iconColor: 'text-amber-600' },
+        ].map(({ label, value, icon: Icon, gradient, border, iconBg, iconColor }) => (
+          <Card key={label} className={`border-l-4 ${border} bg-gradient-to-r ${gradient} rounded-xl shadow-sm transition-all duration-200 hover:shadow-md hover:scale-[1.02]`}>
             <CardContent className="p-3">
-              <div className="flex items-center gap-2"><Icon className="w-4 h-4 text-muted-foreground" /><span className="text-xl font-bold">{value}</span></div>
-              <p className="text-xs text-muted-foreground">{label}</p>
+              <div className="flex items-center gap-2">
+                <div className={`flex items-center justify-center w-8 h-8 rounded-lg ${iconBg}`}>
+                  <Icon className={`w-4 h-4 ${iconColor}`} />
+                </div>
+                <span className="text-xl font-bold tracking-tight">{value}</span>
+              </div>
+              <p className="text-xs text-muted-foreground font-medium mt-1">{label}</p>
             </CardContent>
           </Card>
         ))}
@@ -85,23 +141,33 @@ export function CaseEpisodes() {
             <SelectItem value="небольшое">Небольшое</SelectItem>
           </SelectContent>
         </Select>
-        <Badge className="bg-stone-600 text-white">{filtered.length} эпизодов</Badge>
+        <Badge className="bg-stone-600 text-white text-xs font-semibold">{filtered.length} эпизодов</Badge>
+        <Separator orientation="vertical" className="h-4 mx-2" />
+        <Button size="sm" variant="outline" className="rounded-xl gap-1" onClick={() => exportEpisodesCSV(episodes)}>
+          <Download className="w-3 h-3" />Export CSV
+        </Button>
+        <Button size="sm" variant="outline" className="rounded-xl gap-1" onClick={() => toast.info('PDF экспорт будет доступен в будущих версиях')}>
+          <FileText className="w-3 h-3" />Export PDF
+        </Button>
       </div>
 
       {/* Timeline */}
-      <Card className="rounded-xl shadow-sm">
-        <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2"><Calendar className="w-4 h-4" />Хронология эпизодов</CardTitle></CardHeader>
+      <Card className="rounded-xl shadow-sm border-stone-200/50">
+        <CardHeader className="pb-2 px-4 pt-4"><CardTitle className="text-sm font-semibold flex items-center gap-2"><Calendar className="w-4 h-4 text-amber-600" />Хронология эпизодов</CardTitle></CardHeader>
         <CardContent className="p-4">
-          <div className="relative pl-6 space-y-3 max-h-64 overflow-y-auto">
+          <div className="relative pl-8 space-y-4 max-h-64 overflow-y-auto [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-stone-300">
             {filtered.map((ep, i) => (
-              <div key={ep.id} className="relative">
-                <div className={`absolute -left-6 w-3 h-3 rounded-full ${SEVERITY[ep.severity ?? ''] ?? 'bg-stone-500'}`} />
-                {i < filtered.length - 1 && <div className="absolute -left-[21px] top-3 w-0.5 h-full bg-stone-300" />}
-                <div className="flex items-center gap-2">
-                  <p className="text-sm font-medium">{ep.title}</p>
-                  <Badge className={SEVERITY[ep.severity ?? ''] ?? 'bg-stone-500 text-white'}>{ep.severity}</Badge>
+              <div key={ep.id} className="relative group">
+                {/* Timeline dot */}
+                <div className={`absolute -left-8 top-1 w-4 h-4 rounded-full ${SEVERITY_DOT[ep.severity ?? ''] ?? 'bg-stone-500'} border-2 border-white shadow-sm transition-transform duration-200 group-hover:scale-1.2`} />
+                {/* Timeline line */}
+                {i < filtered.length - 1 && <div className="absolute -left-[29px] top-5 w-0.5 h-[calc(100%+8px)] bg-gradient-to-b from-stone-300 to-stone-200" />}
+                {/* Episode entry */}
+                <div className="flex items-center gap-2 transition-all duration-200">
+                  <p className="text-sm font-semibold">{ep.title}</p>
+                  <Badge className={`${SEVERITY[ep.severity ?? ''] ?? 'bg-stone-500 text-white'} text-xs font-semibold`}>{ep.severity}</Badge>
                 </div>
-                <p className="text-xs text-muted-foreground flex items-center gap-1"><Calendar className="w-3 h-3" />{ep.date ?? '—'}</p>
+                <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5"><Calendar className="w-3 h-3" />{ep.date ?? '—'}</p>
               </div>
             ))}
           </div>
@@ -111,24 +177,25 @@ export function CaseEpisodes() {
       {/* Episode Accordion */}
       <Accordion type="multiple" className="space-y-2">
         {filtered.map(episode => (
-          <AccordionItem key={episode.id} value={episode.id} className="border rounded-xl px-4 shadow-sm">
+          <AccordionItem key={episode.id} value={episode.id} className={`border rounded-xl px-4 shadow-sm transition-all duration-200 hover:shadow-md ${SEVERITY_BG[episode.severity ?? ''] ?? 'border-stone-200/50'}`}>
             <AccordionTrigger className="py-3 text-sm hover:no-underline">
               <div className="flex items-center gap-2 flex-1">
-                <BookOpen className="w-4 h-4 text-muted-foreground" />
-                <span className="truncate">{episode.title}</span>
-                <Badge className={SEVERITY[episode.severity ?? '']}>{episode.severity ?? '—'}</Badge>
-                <Badge className={STATUS_BADGE[episode.status ?? ''] ?? 'bg-stone-500 text-white'}>{episode.status ?? '—'}</Badge>
+                <div className={`w-2 h-2 rounded-full shrink-0 ${SEVERITY_DOT[episode.severity ?? ''] ?? 'bg-stone-500'}`} />
+                <BookOpen className="w-4 h-4 text-muted-foreground shrink-0" />
+                <span className="truncate font-medium">{episode.title}</span>
+                <Badge className={`${SEVERITY[episode.severity ?? ''] ?? 'bg-stone-500 text-white'} text-xs font-semibold shrink-0`}>{episode.severity ?? '—'}</Badge>
+                <Badge className={`${STATUS_BADGE[episode.status ?? ''] ?? 'bg-stone-500 text-white'} text-xs font-semibold shrink-0`}>{episode.status ?? '—'}</Badge>
               </div>
             </AccordionTrigger>
             <AccordionContent className="space-y-3 text-sm">
-              <p className="text-muted-foreground">{episode.description}</p>
-              <div className="flex items-center gap-1 text-xs"><Calendar className="w-3 h-3" /><span>Период: {episode.date ?? '—'}</span></div>
+              <p className="text-muted-foreground leading-relaxed">{episode.description}</p>
+              <div className="flex items-center gap-1 text-xs"><Calendar className="w-3 h-3 text-amber-600" /><span className="font-medium">Период: {episode.date ?? '—'}</span></div>
               {episode.persons.length > 0 && (
                 <div>
-                  <p className="font-medium flex items-center gap-1 mb-1"><Users className="w-3 h-3" />Участники:</p>
+                  <p className="font-medium flex items-center gap-1 mb-1 text-xs"><Users className="w-3 h-3 text-orange-600" />Участники:</p>
                   <div className="flex flex-wrap gap-1">
                     {episode.persons.map(p => (
-                      <Badge key={p.personId} className={INVOLVEMENT[p.involvement ?? ''] ?? 'bg-stone-500 text-white'}>
+                      <Badge key={p.personId} className={`${INVOLVEMENT[p.involvement ?? ''] ?? 'bg-stone-500 text-white'} text-xs font-semibold`}>
                         {p.person.shortName ?? p.person.fullName} ({p.involvement ?? '—'})
                       </Badge>
                     ))}
@@ -137,19 +204,19 @@ export function CaseEpisodes() {
               )}
               {episode.articles.length > 0 && (
                 <div>
-                  <p className="font-medium flex items-center gap-1 mb-1"><Scale className="w-3 h-3" />Статьи:</p>
+                  <p className="font-medium flex items-center gap-1 mb-1 text-xs"><Scale className="w-3 h-3 text-stone-600" />Статьи:</p>
                   <div className="flex flex-wrap gap-1">
                     {episode.articles.map(a => (
-                      <Badge key={a.articleId} variant="outline" className="text-xs">{a.article.code}</Badge>
+                      <Badge key={a.articleId} variant="outline" className="text-xs border-stone-300/50 font-medium">{a.article.code}</Badge>
                     ))}
                   </div>
                 </div>
               )}
               {episode.locations.length > 0 && (
                 <div>
-                  <p className="font-medium flex items-center gap-1 mb-1"><MapPin className="w-3 h-3" />Места:</p>
+                  <p className="font-medium flex items-center gap-1 mb-1 text-xs"><MapPin className="w-3 h-3 text-red-700" />Места:</p>
                   {episode.locations.map(l => (
-                    <p key={l.locationId} className="text-xs text-muted-foreground flex items-center gap-1"><MapPin className="w-2 h-2" />{l.location.name} — {l.location.address ?? '—'}</p>
+                    <p key={l.locationId} className="text-xs text-muted-foreground flex items-center gap-1"><MapPin className="w-2 h-2 text-red-700" />{l.location.name} — {l.location.address ?? '—'}</p>
                   ))}
                 </div>
               )}

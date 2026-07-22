@@ -12,17 +12,17 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Separator } from '@/components/ui/separator'
 import { toast } from 'sonner'
 import {
-  Scale, CheckCircle, AlertTriangle, Info, XCircle, Loader2, Zap, Shield, BarChart3
+  Scale, CheckCircle, AlertTriangle, Info, XCircle, Loader2, Zap, Shield, BarChart3, Download, FileText, Clock
 } from 'lucide-react'
 import { mockComplianceChecks, mockDocuments } from '@/lib/mock-data'
 import { checkCompliance, getComplianceResults, getDocuments } from '@/lib/case-api'
 import type { LegalComplianceData } from '@/lib/case-store'
 
-const STATUS: Record<string, { icon: React.ReactNode; badge: string; label: string; severityIcon: React.ReactNode }> = {
-  compliant: { icon: <CheckCircle className="w-3 h-3 text-emerald-600" />, badge: 'bg-emerald-700 text-white', label: 'Соответствует', severityIcon: <CheckCircle className="w-4 h-4 text-emerald-600" /> },
-  warning: { icon: <AlertTriangle className="w-3 h-3 text-amber-500" />, badge: 'bg-amber-600 text-white', label: 'Предупреждение', severityIcon: <AlertTriangle className="w-4 h-4 text-amber-500" /> },
-  violation: { icon: <XCircle className="w-3 h-3 text-red-600" />, badge: 'bg-red-700 text-white', label: 'Нарушение', severityIcon: <XCircle className="w-4 h-4 text-red-600" /> },
-  needs_review: { icon: <Info className="w-3 h-3 text-stone-500" />, badge: 'bg-stone-600 text-white', label: 'Требует проверки', severityIcon: <Info className="w-4 h-4 text-stone-500" /> },
+const STATUS: Record<string, { icon: React.ReactNode; badge: string; label: string; severityIcon: React.ReactNode; dotColor: string }> = {
+  compliant: { icon: <CheckCircle className="w-3 h-3 text-emerald-600" />, badge: 'bg-emerald-700 text-white', label: 'Соответствует', severityIcon: <CheckCircle className="w-4 h-4 text-emerald-600" />, dotColor: 'bg-emerald-500' },
+  warning: { icon: <AlertTriangle className="w-3 h-3 text-amber-500" />, badge: 'bg-amber-600 text-white', label: 'Предупреждение', severityIcon: <AlertTriangle className="w-4 h-4 text-amber-500" />, dotColor: 'bg-amber-500' },
+  violation: { icon: <XCircle className="w-3 h-3 text-red-600" />, badge: 'bg-red-700 text-white', label: 'Нарушение', severityIcon: <XCircle className="w-4 h-4 text-red-600" />, dotColor: 'bg-red-500' },
+  needs_review: { icon: <Info className="w-3 h-3 text-stone-500" />, badge: 'bg-stone-600 text-white', label: 'Требует проверки', severityIcon: <Info className="w-4 h-4 text-stone-500" />, dotColor: 'bg-stone-400' },
 }
 
 const TYPE_LABEL: Record<string, string> = {
@@ -37,6 +37,60 @@ const TYPE_ICON: Record<string, React.ReactNode> = {
   procedure_compliance: <Shield className="w-3 h-3" />,
   evidence_admissibility: <CheckCircle className="w-3 h-3" />,
   statute_limitations: <AlertTriangle className="w-3 h-3" />,
+}
+
+// Export CSV helper
+function exportComplianceCSV(items: LegalComplianceData[]) {
+  const rows = ['Document,CheckType,Status,Description,Recommendation,LegalBasis,CheckedAt']
+  items.forEach(c => {
+    rows.push(`"${c.documentId}",${TYPE_LABEL[c.checkType] ?? c.checkType},${c.label ?? c.status},"${c.description}",${c.recommendation ?? ''},${c.legalBasis ?? ''},${c.checkedAt}`)
+  })
+  const blob = new Blob([rows.join('\n')], { type: 'text/csv;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = 'compliance.csv'
+  a.click()
+  URL.revokeObjectURL(url)
+  toast.success('CSV экспорт выполнен')
+}
+
+// Compliance Timeline component
+function ComplianceTimeline({ items }: { items: LegalComplianceData[] }) {
+  const sorted = [...items].sort((a, b) => new Date(b.checkedAt).getTime() - new Date(a.checkedAt).getTime())
+
+  return (
+    <Card className="rounded-xl shadow-sm">
+      <CardHeader className="pb-2">
+        <CardTitle className="text-sm flex items-center gap-2">
+          <Clock className="w-4 h-4 text-amber-600" /> Хронология проверок
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="p-4">
+        <div className="relative pl-6 space-y-3 max-h-80 overflow-y-auto">
+          {sorted.map((item, i) => {
+            const statusConfig = STATUS[item.status] ?? STATUS.needs_review
+            return (
+              <div key={item.id} className="relative group">
+                <div className={`absolute -left-6 w-3 h-3 rounded-full ${statusConfig.dotColor} ring-2 ring-background transition-transform group-hover:scale-125`} />
+                {i < sorted.length - 1 && <div className="absolute -left-[21px] top-3 w-0.5 h-full bg-stone-300 dark:bg-stone-600" />}
+                <div className="flex items-start gap-2 text-sm">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-1">
+                      <Badge className={statusConfig.badge}>{statusConfig.label}</Badge>
+                      <span className="text-xs font-medium">{TYPE_LABEL[item.checkType] ?? item.checkType}</span>
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-1">{item.description}</p>
+                    <p className="text-xs text-muted-foreground">{new Date(item.checkedAt).toLocaleString('ru-RU', { day: '2-digit', month: 'short', year: 'numeric' })}</p>
+                  </div>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      </CardContent>
+    </Card>
+  )
 }
 
 export function CaseLegalCheck() {
@@ -123,7 +177,10 @@ export function CaseLegalCheck() {
         </CardContent>
       </Card>
 
-      {/* Filter */}
+      {/* Compliance Timeline */}
+      <ComplianceTimeline items={compliance} />
+
+      {/* Filter + Export */}
       <div className="flex items-center gap-2">
         <Select value={filterStatus} onValueChange={setFilterStatus}>
           <SelectTrigger className="w-40 rounded-xl"><SelectValue placeholder="Статус" /></SelectTrigger>
@@ -136,6 +193,13 @@ export function CaseLegalCheck() {
           </SelectContent>
         </Select>
         <Badge className="bg-stone-600 text-white">{filtered.length} проверок</Badge>
+        <Separator orientation="vertical" className="h-4 mx-2" />
+        <Button size="sm" variant="outline" className="rounded-xl gap-1" onClick={() => exportComplianceCSV(compliance)}>
+          <Download className="w-3 h-3" />Export CSV
+        </Button>
+        <Button size="sm" variant="outline" className="rounded-xl gap-1" onClick={() => toast.info('PDF экспорт будет доступен в будущих версиях')}>
+          <FileText className="w-3 h-3" />Export PDF
+        </Button>
       </div>
 
       {/* Results */}

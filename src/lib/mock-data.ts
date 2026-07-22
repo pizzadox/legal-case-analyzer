@@ -2,6 +2,8 @@ import {
   DocumentData, PersonData, EpisodeData, DefenseLineData,
   LegalComplianceData, ChatMessageData, DashboardStats,
   ProcessingQueueData, SearchResultData, GuiltAssessmentData,
+  EvidenceTimelineEvent, PersonRelationship, DefenseImprovementData,
+  NotificationData, CaseHealthScore, CrossRefNode,
 } from './case-store'
 
 export const mockDocuments: DocumentData[] = [
@@ -158,5 +160,92 @@ export const mockSearchResults: SearchResultData = {
   documents: [mockDocuments[0]],
   persons: [mockPersons[0]],
   episodes: [mockEpisodes[0]],
-  crossReferences: [],
+  crossReferences: [
+    { id: 'cr1', referenceText: 'Обвинение ссылается на показания Колесниченко', referenceType: 'доказательство', sourceDocument: mockDocuments[0], targetDocument: mockDocuments[1] },
+    { id: 'cr2', referenceText: 'Протокол обыска подтверждает обвинение', referenceType: 'подтверждение', sourceDocument: mockDocuments[2], targetDocument: mockDocuments[0] },
+  ],
 }
+
+// Case Health Score
+export const mockCaseHealthScore: CaseHealthScore = {
+  score: 62,
+  factors: {
+    documentProcessing: { value: 60, label: 'Обработка документов', tooltip: 'Процент завершённых обработок документов из общего числа загруженных' },
+    complianceRate: { value: 50, label: 'Соответствие нормам', tooltip: 'Доля проверок, показавших полное соответствие правовым нормам РФ' },
+    evidenceStrength: { value: 55, label: 'Сила доказательств', tooltip: 'Средняя оценка силы доказательств по всем эпизодам дела' },
+    defenseCoverage: { value: 80, label: 'Покрытие линии защиты', tooltip: 'Процент эпизодов, для которых разработана стратегия защиты' },
+  },
+}
+
+// Evidence Timeline Events
+export const mockEvidenceTimeline: EvidenceTimelineEvent[] = [
+  { id: 'et1', date: '2024-01-10T08:00:00Z', eventType: 'document_upload', description: 'Загружено: Обвинительное заключение - Том 1', relatedEntityId: 'doc1', relatedEntityName: 'Обвинительное заключение' },
+  { id: 'et2', date: '2024-01-10T08:15:00Z', eventType: 'analysis_complete', description: 'Анализ завершён: Обвинительное заключение', relatedEntityId: 'doc1', relatedEntityName: 'Обвинительное заключение' },
+  { id: 'et3', date: '2024-01-15T10:00:00Z', eventType: 'document_upload', description: 'Загружено: Показания Колесниченко Д.А.', relatedEntityId: 'doc2', relatedEntityName: 'Показания Колесниченко' },
+  { id: 'et4', date: '2024-01-15T10:20:00Z', eventType: 'analysis_complete', description: 'Анализ завершён: Показания Колесниченко', relatedEntityId: 'doc2', relatedEntityName: 'Показания Колесниченко' },
+  { id: 'et5', date: '2024-02-20T14:00:00Z', eventType: 'document_upload', description: 'Загружено: Протокол обыска', relatedEntityId: 'doc3', relatedEntityName: 'Протокол обыска' },
+  { id: 'et6', date: '2024-02-20T14:10:00Z', eventType: 'analysis_complete', description: 'Анализ завершён: Протокол обыска', relatedEntityId: 'doc3', relatedEntityName: 'Протокол обыска' },
+  { id: 'et7', date: '2024-03-20T10:00:00Z', eventType: 'episode_found', description: 'Выявлен эпизод: Мошенничество с инвестициями', relatedEntityId: 'ep1', relatedEntityName: 'Мошенничество с инвестициями' },
+  { id: 'et8', date: '2024-04-10T09:00:00Z', eventType: 'document_upload', description: 'Загружено: Заключение эксперта', relatedEntityId: 'doc4', relatedEntityName: 'Заключение эксперта' },
+  { id: 'et9', date: '2024-05-15T10:00:00Z', eventType: 'compliance_check', description: 'Правовая проверка: Обнаружено нарушение — обыск без адвоката', relatedEntityId: 'lc2', relatedEntityName: 'Правовая проверка' },
+  { id: 'et10', date: '2024-05-15T10:30:00Z', eventType: 'compliance_check', description: 'Правовая проверка: Предупреждение — возможна переквалификация ст. 159', relatedEntityId: 'lc1', relatedEntityName: 'Правовая проверка' },
+  { id: 'et11', date: '2024-05-20T09:00:00Z', eventType: 'defense_update', description: 'Обновлена стратегия защиты: Процессуальные нарушения', relatedEntityId: 'dl3', relatedEntityName: 'Процессуальные нарушения' },
+]
+
+// Person Relationships
+export const mockPersonRelationships: PersonRelationship[] = [
+  { id: 'pr1', sourcePersonId: 'p1', targetPersonId: 'p2', relationshipType: 'соучастники', description: 'Колесниченко и Сидоров — соучастники по эпизоду 1', sourcePersonName: 'Колесниченко Д.А.', targetPersonName: 'Сидоров А.П.' },
+  { id: 'pr2', sourcePersonId: 'p1', targetPersonId: 'p4', relationshipType: 'обвиняемый-потерпевшая', description: 'Колесниченко обвиняется в мошенничестве против Иванова', sourcePersonName: 'Колесниченко Д.А.', targetPersonName: 'Иванова М.С.' },
+  { id: 'pr3', sourcePersonId: 'p1', targetPersonId: 'p3', relationshipType: 'обвиняемый-свидетель', description: 'Петров — свидетель по делу Колесниченко', sourcePersonName: 'Колесниченко Д.А.', targetPersonName: 'Петров И.В.' },
+  { id: 'pr4', sourcePersonId: 'p1', targetPersonId: 'p5', relationshipType: 'обвиняемый-свидетель', description: 'Козлов — свидетель алиби Колесниченко', sourcePersonName: 'Колесниченко Д.А.', targetPersonName: 'Козлов В.Н.' },
+  { id: 'pr5', sourcePersonId: 'p2', targetPersonId: 'p4', relationshipType: 'соучастник-потерпевшая', description: 'Сидоров — соучастник хищения средств Ивановой', sourcePersonName: 'Сидоров А.П.', targetPersonName: 'Иванова М.С.' },
+  { id: 'pr6', sourcePersonId: 'p1', targetPersonId: 'p2', relationshipType: 'организатор-соучастник', description: 'Колесниченко — организатор, Сидоров — соучастник', sourcePersonName: 'Колесниченко Д.А.', targetPersonName: 'Сидоров А.П.' },
+]
+
+// Defense Improvement Suggestions
+export const mockDefenseImprovements: DefenseImprovementData[] = [
+  { id: 'di1', defenseLineId: 'dl1', suggestion: 'Представить дополнительные доказательства алиби: видео с камер наблюдения, электронные билеты', expectedImpact: 'Усиление алиби', probabilityChange: '+15%', difficulty: 'moderate', category: 'доказательства' },
+  { id: 'di2', defenseLineId: 'dl2', suggestion: 'Собрать доказательства отсутствия значительного вреда для переквалификации на ч.1 ст. 159', expectedImpact: 'Успешная переквалификация', probabilityChange: '+20%', difficulty: 'hard', category: 'переквалификация' },
+  { id: 'di3', defenseLineId: 'dl3', suggestion: 'Подать ходатайство о признании результатов обыска недопустимым доказательством', expectedImpact: 'Исключение ключевого доказательства', probabilityChange: '+25%', difficulty: 'easy', category: 'процессуальные' },
+  { id: 'di4', defenseLineId: 'dl4', suggestion: 'Выявить дополнительные противоречия в показаниях свидетелей Петрова и Козлова', expectedImpact: 'Ослабление обвинения', probabilityChange: '+10%', difficulty: 'moderate', category: 'доказательства' },
+  { id: 'di5', defenseLineId: 'dl5', suggestion: 'Получить положительные характеристики от дополнительных источников (соседи, бывшие коллеги)', expectedImpact: 'Усиление смягчающих', probabilityChange: '+5%', difficulty: 'easy', category: 'характеристика' },
+]
+
+// Notifications
+export const mockNotifications: NotificationData[] = [
+  { id: 'n1', type: 'processing', title: 'Документ в обработке', description: 'Заключение эксперта — обработка запущена', timestamp: '2024-04-10T09:00:00Z', isRead: false, relatedSection: 'documents', relatedEntityId: 'doc4' },
+  { id: 'n2', type: 'compliance', title: 'Нарушение выявлено', description: 'Обыск без участия адвоката — ст. 48 УПК РФ', timestamp: '2024-05-15T10:00:00Z', isRead: false, relatedSection: 'legal-check', relatedEntityId: 'lc2' },
+  { id: 'n3', type: 'compliance', title: 'Предупреждение', description: 'Ст. 159 ч.3 может быть переквалифицирована', timestamp: '2024-05-15T10:30:00Z', isRead: false, relatedSection: 'legal-check', relatedEntityId: 'lc1' },
+  { id: 'n4', type: 'processing', title: 'Документ в очереди', description: 'Показания свидетеля Петрова — ожидает обработки', timestamp: '2024-05-01T11:00:00Z', isRead: true, relatedSection: 'documents', relatedEntityId: 'doc5' },
+  { id: 'n5', type: 'defense', title: 'Стратегия обновлена', description: 'Процессуальные нарушения — сильная позиция', timestamp: '2024-05-20T09:00:00Z', isRead: true, relatedSection: 'defense', relatedEntityId: 'dl3' },
+]
+
+// Cross-reference Graph Nodes
+export const mockCrossRefNodes: CrossRefNode[] = [
+  {
+    documentId: 'doc1', documentName: 'Обвинительное заключение', documentType: 'обвинение',
+    linkedDocuments: [
+      { id: 'doc2', name: 'Показания Колесниченко', type: 'показание', refType: 'доказательство' },
+      { id: 'doc3', name: 'Протокол обыска', type: 'протокол', refType: 'подтверждение' },
+    ],
+  },
+  {
+    documentId: 'doc2', documentName: 'Показания Колесниченко', documentType: 'показание',
+    linkedDocuments: [
+      { id: 'doc1', name: 'Обвинительное заключение', type: 'обвинение', refType: 'цитата' },
+    ],
+  },
+  {
+    documentId: 'doc3', documentName: 'Протокол обыска', documentType: 'протокол',
+    linkedDocuments: [
+      { id: 'doc1', name: 'Обвинительное заключение', type: 'обвинение', refType: 'подтверждение' },
+      { id: 'doc2', name: 'Показания Колесниченко', type: 'показание', refType: 'упоминание' },
+    ],
+  },
+  {
+    documentId: 'doc4', documentName: 'Заключение эксперта', documentType: 'экспертиза',
+    linkedDocuments: [
+      { id: 'doc1', name: 'Обвинительное заключение', type: 'обвинение', refType: 'доказательство' },
+    ],
+  },
+]

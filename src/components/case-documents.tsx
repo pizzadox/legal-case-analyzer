@@ -11,7 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Separator } from '@/components/ui/separator'
 import { toast } from 'sonner'
 import {
-  FileText, Upload, RefreshCw, Eye, CheckCircle, Clock, AlertTriangle, Loader2, Zap, XCircle, Trash2, Scale, BookOpen, Gavel
+  FileText, Upload, RefreshCw, Eye, CheckCircle, Clock, AlertTriangle, Loader2, Zap, XCircle, Trash2, Scale, BookOpen, Gavel, GitCompare, Download
 } from 'lucide-react'
 import { mockDocuments } from '@/lib/mock-data'
 import * as caseApi from '@/lib/case-api'
@@ -45,11 +45,96 @@ const TYPE_BADGE: Record<string, string> = {
   экспертиза: 'bg-stone-600 text-white',
 }
 
+// Export CSV helper
+function exportDocumentsCSV(docs: DocumentData[]) {
+  const rows = ['Name,Type,Date,Status,Size,Summary']
+  docs.forEach(d => {
+    rows.push(`"${d.originalName}",${d.documentType ?? ''},${d.documentDate ?? ''},${d.processingStatus},${fmtSize(d.fileSize)},${d.summary ?? ''}`)
+  })
+  const blob = new Blob([rows.join('\n')], { type: 'text/csv;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = 'documents.csv'
+  a.click()
+  URL.revokeObjectURL(url)
+  toast.success('CSV экспорт выполнен')
+}
+
+// Document comparison dialog
+function DocumentCompareDialog({ doc1, doc2, onClose }: { doc1: DocumentData; doc2: DocumentData; onClose: () => void }) {
+  const fields = [
+    { label: 'Название', key1: doc1.originalName, key2: doc2.originalName },
+    { label: 'Тип', key1: doc1.documentType ?? '—', key2: doc2.documentType ?? '—' },
+    { label: 'Дата документа', key1: doc1.documentDate ?? '—', key2: doc2.documentDate ?? '—' },
+    { label: 'Статус', key1: doc1.processingStatus, key2: doc2.processingStatus },
+    { label: 'Размер', key1: fmtSize(doc1.fileSize), key2: fmtSize(doc2.fileSize) },
+    { label: 'Источник', key1: doc1.sourceReference ?? '—', key2: doc2.sourceReference ?? '—' },
+  ]
+
+  return (
+    <Dialog open={true} onOpenChange={onClose}>
+      <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto rounded-xl">
+        <DialogHeader>
+          <DialogTitle className="text-sm flex items-center gap-2">
+            <GitCompare className="w-4 h-4" /> Сравнение документов
+          </DialogTitle>
+        </DialogHeader>
+        <div className="grid grid-cols-2 gap-4 text-sm">
+          {/* Left doc */}
+          <div className="space-y-3">
+            <div className="p-3 rounded-lg bg-muted">
+              <p className="font-medium text-xs mb-1">Документ A</p>
+              {doc1.documentType && <Badge className={TYPE_BADGE[doc1.documentType] ?? 'bg-stone-500 text-white'}>{doc1.documentType}</Badge>}
+            </div>
+            {fields.map(f => (
+              <div key={f.label} className={`p-2 rounded-lg ${f.key1 !== f.key2 ? 'bg-red-100 dark:bg-red-900/30 border border-red-300 dark:border-red-700' : 'bg-muted/50'}`}>
+                <p className="text-xs font-medium text-muted-foreground">{f.label}</p>
+                <p className="text-xs font-semibold">{f.key1}</p>
+              </div>
+            ))}
+            {doc1.summary && (
+              <div className="p-2 rounded-lg bg-muted">
+                <p className="text-xs font-medium text-muted-foreground">Краткое содержание</p>
+                <p className="text-xs">{doc1.summary}</p>
+              </div>
+            )}
+          </div>
+          {/* Right doc */}
+          <div className="space-y-3">
+            <div className="p-3 rounded-lg bg-muted">
+              <p className="font-medium text-xs mb-1">Документ B</p>
+              {doc2.documentType && <Badge className={TYPE_BADGE[doc2.documentType] ?? 'bg-stone-500 text-white'}>{doc2.documentType}</Badge>}
+            </div>
+            {fields.map(f => (
+              <div key={f.label} className={`p-2 rounded-lg ${f.key1 !== f.key2 ? 'bg-red-100 dark:bg-red-900/30 border border-red-300 dark:border-red-700' : 'bg-muted/50'}`}>
+                <p className="text-xs font-medium text-muted-foreground">{f.label}</p>
+                <p className="text-xs font-semibold">{f.key2}</p>
+              </div>
+            ))}
+            {doc2.summary && (
+              <div className="p-2 rounded-lg bg-muted">
+                <p className="text-xs font-medium text-muted-foreground">Краткое содержание</p>
+                <p className="text-xs">{doc2.summary}</p>
+              </div>
+            )}
+          </div>
+        </div>
+        <Separator className="mt-3" />
+        <p className="text-xs text-muted-foreground">Отличия выделены красным фоном</p>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 export function CaseDocuments() {
   const [isUploading, setIsUploading] = useState(false)
   const [isDragOver, setIsDragOver] = useState(false)
   const [selectedDoc, setSelectedDoc] = useState<DocumentData | null>(null)
   const [analyzingId, setAnalyzingId] = useState<string | null>(null)
+  const [compareMode, setCompareMode] = useState(false)
+  const [compareDocs, setCompareDocs] = useState<[DocumentData, DocumentData] | null>(null)
+  const [selectedForCompare, setSelectedForCompare] = useState<string[]>([])
   const fileRef = useRef<HTMLInputElement>(null)
 
   const { data, isLoading, refetch } = useQuery({
@@ -88,6 +173,28 @@ export function CaseDocuments() {
     } catch { toast.error('Ошибка удаления') }
   }
 
+  const handleCompareSelect = (docId: string) => {
+    if (selectedForCompare.includes(docId)) {
+      setSelectedForCompare(selectedForCompare.filter(id => id !== docId))
+    } else if (selectedForCompare.length < 2) {
+      setSelectedForCompare([...selectedForCompare, docId])
+    }
+  }
+
+  const handleCompare = () => {
+    if (selectedForCompare.length === 2) {
+      const d1 = documents.find(d => d.id === selectedForCompare[0])
+      const d2 = documents.find(d => d.id === selectedForCompare[1])
+      if (d1 && d2) {
+        setCompareDocs([d1, d2])
+        setCompareMode(false)
+        setSelectedForCompare([])
+      }
+    } else {
+      toast.error('Выберите 2 документа для сравнения')
+    }
+  }
+
   if (isLoading) return <div className="grid grid-cols-2 gap-4">{[1, 2, 3, 4].map(i => <Skeleton key={i} className="h-32" />)}</div>
 
   return (
@@ -115,10 +222,33 @@ export function CaseDocuments() {
         </CardContent>
       </Card>
 
+      {/* Compare / Export controls */}
+      <div className="flex items-center gap-2">
+        <Button size="sm" variant={compareMode ? 'default' : 'outline'} className="rounded-xl"
+          onClick={() => { setCompareMode(!compareMode); setSelectedForCompare([]) }}>
+          <GitCompare className="w-3 h-3 mr-1" />{compareMode ? 'Отмена сравнения' : 'Сравнить'}
+        </Button>
+        {compareMode && selectedForCompare.length === 2 && (
+          <Button size="sm" className="rounded-xl bg-gradient-to-r from-red-700 to-red-800 text-white" onClick={handleCompare}>
+            <GitCompare className="w-3 h-3 mr-1" />Сравнить выбранные
+          </Button>
+        )}
+        {compareMode && (
+          <Badge variant="outline" className="text-xs">Выбрано: {selectedForCompare.length} / 2</Badge>
+        )}
+        <Separator orientation="vertical" className="h-4 mx-2" />
+        <Button size="sm" variant="outline" className="rounded-xl gap-1" onClick={() => exportDocumentsCSV(documents)}>
+          <Download className="w-3 h-3" />Export CSV
+        </Button>
+        <Button size="sm" variant="outline" className="rounded-xl gap-1" onClick={() => toast.info('PDF экспорт будет доступен в будущих версиях')}>
+          <FileText className="w-3 h-3" />Export PDF
+        </Button>
+      </div>
+
       {/* Document List */}
       <div className="grid sm:grid-cols-2 gap-4">
         {documents.map(doc => (
-          <Card key={doc.id} className="rounded-xl shadow-sm transition-shadow hover:shadow-md">
+          <Card key={doc.id} className={`rounded-xl shadow-sm transition-shadow hover:shadow-md ${compareMode && selectedForCompare.includes(doc.id) ? 'border-2 border-amber-500 ring-1 ring-amber-500/30' : ''}`}>
             <CardContent className="p-4">
               <div className="flex items-start gap-3">
                 <div className="flex items-center justify-center w-9 h-9 rounded-xl bg-muted/50">
@@ -137,18 +267,28 @@ export function CaseDocuments() {
               </div>
               <Separator className="mt-3" />
               <div className="flex gap-1 mt-3">
-                {doc.processingStatus === 'completed' && (
-                  <Button size="sm" variant="outline" className="rounded-lg" onClick={() => setSelectedDoc(doc)}><Eye className="w-3 h-3 mr-1" />Просмотр</Button>
-                )}
-                {doc.processingStatus === 'pending' && (
-                  <Button size="sm" className="rounded-lg bg-gradient-to-r from-red-700 to-red-800 text-white" onClick={() => handleAnalyze(doc.id)} disabled={analyzingId === doc.id}>
-                    {analyzingId === doc.id ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : <Zap className="w-3 h-3 mr-1" />}Анализ
+                {compareMode ? (
+                  <Button size="sm" variant={selectedForCompare.includes(doc.id) ? 'default' : 'outline'} className="rounded-xl"
+                    onClick={() => handleCompareSelect(doc.id)}>
+                    {selectedForCompare.includes(doc.id) ? <CheckCircle className="w-3 h-3 mr-1" /> : <GitCompare className="w-3 h-3 mr-1" />}
+                    {selectedForCompare.includes(doc.id) ? 'Выбран' : 'Выбрать'}
                   </Button>
+                ) : (
+                  <>
+                    {doc.processingStatus === 'completed' && (
+                      <Button size="sm" variant="outline" className="rounded-lg" onClick={() => setSelectedDoc(doc)}><Eye className="w-3 h-3 mr-1" />Просмотр</Button>
+                    )}
+                    {doc.processingStatus === 'pending' && (
+                      <Button size="sm" className="rounded-lg bg-gradient-to-r from-red-700 to-red-800 text-white" onClick={() => handleAnalyze(doc.id)} disabled={analyzingId === doc.id}>
+                        {analyzingId === doc.id ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : <Zap className="w-3 h-3 mr-1" />}Анализ
+                      </Button>
+                    )}
+                    {doc.processingStatus === 'failed' && (
+                      <Button size="sm" variant="outline" className="rounded-lg" onClick={() => handleAnalyze(doc.id)}><RefreshCw className="w-3 h-3 mr-1" />Повторить</Button>
+                    )}
+                    <Button size="sm" variant="ghost" className="rounded-lg" onClick={() => handleDelete(doc.id)}><Trash2 className="w-3 h-3" /></Button>
+                  </>
                 )}
-                {doc.processingStatus === 'failed' && (
-                  <Button size="sm" variant="outline" className="rounded-lg" onClick={() => handleAnalyze(doc.id)}><RefreshCw className="w-3 h-3 mr-1" />Повторить</Button>
-                )}
-                <Button size="sm" variant="ghost" className="rounded-lg" onClick={() => handleDelete(doc.id)}><Trash2 className="w-3 h-3" /></Button>
               </div>
             </CardContent>
           </Card>
@@ -192,6 +332,11 @@ export function CaseDocuments() {
             </div>
           </DialogContent>
         </Dialog>
+      )}
+
+      {/* Document Comparison Dialog */}
+      {compareDocs && (
+        <DocumentCompareDialog doc1={compareDocs[0]} doc2={compareDocs[1]} onClose={() => setCompareDocs(null)} />
       )}
     </div>
   )

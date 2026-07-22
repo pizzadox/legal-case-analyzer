@@ -120,3 +120,34 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* CSS-only fade-in animation for section transitions */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Custom scrollbar styling for overflow containers */
+.overflow-y-auto,
+.max-h-96,
+.max-h-48,
+.max-h-64,
+.max-h-\[500px\] {
+  scrollbar-width: thin;
+  scrollbar-color: #a8a29e transparent;
+}
+
+/* Smooth scrollbar for dark mode */
+.dark .overflow-y-auto,
+.dark .max-h-96,
+.dark .max-h-48,
+.dark .max-h-64,
+.dark .max-h-\[500px\] {
+  scrollbar-color: #57534e transparent;
+}

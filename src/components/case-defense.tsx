@@ -10,10 +10,10 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/
 import { Skeleton } from '@/components/ui/skeleton'
 import { Separator } from '@/components/ui/separator'
 import { toast } from 'sonner'
-import { Shield, Scale, Loader2, Star, Zap, CheckCircle, AlertTriangle, Swords, Trophy } from 'lucide-react'
-import { mockDefenseLines, mockPersons } from '@/lib/mock-data'
+import { Shield, Scale, Loader2, Star, Zap, CheckCircle, AlertTriangle, Swords, Trophy, BrainCircuit, Download, FileText } from 'lucide-react'
+import { mockDefenseLines, mockPersons, mockDefenseImprovements } from '@/lib/mock-data'
 import * as caseApi from '@/lib/case-api'
-import type { DefenseLineData } from '@/lib/case-store'
+import type { DefenseLineData, DefenseImprovementData } from '@/lib/case-store'
 
 const STRENGTH: Record<string, { badge: string; pct: number; color: string; label: string }> = {
   strong: { badge: 'bg-emerald-700 text-white', pct: 80, color: '#059669', label: 'Сильная' },
@@ -31,18 +31,33 @@ const TYPE_LABEL: Record<string, string> = {
   innocence: 'Невиновность',
 }
 
+const DIFFICULTY: Record<string, { badge: string; label: string }> = {
+  easy: { badge: 'bg-emerald-700 text-white', label: 'Легко' },
+  moderate: { badge: 'bg-amber-600 text-white', label: 'Средне' },
+  hard: { badge: 'bg-red-700 text-white', label: 'Трудно' },
+}
+
 export function CaseDefense() {
+  const [showImprovements, setShowImprovements] = useState(false)
   const { data: personsData, isLoading: personsLoading } = useQuery({ queryKey: ['persons'], queryFn: caseApi.getPersons, retry: 1 })
   const { data: defenseData, isLoading: defenseLoading } = useQuery({ queryKey: ['defense'], queryFn: () => caseApi.getDefenseLines('p1'), retry: 1 })
+  const { data: improvementsData } = useQuery({ queryKey: ['defense-improvements'], queryFn: () => caseApi.getDefenseImprovements('p1'), retry: 1 })
 
   const persons = personsData ?? mockPersons
   const defenseLines = defenseData ?? mockDefenseLines
+  const improvements = improvementsData ?? mockDefenseImprovements
   const kolesnichenko = persons.find(p => p.isKolesnichenko)
 
   const analyzeMutation = useMutation({
     mutationFn: () => caseApi.analyzeDefense(kolesnichenko?.id ?? 'p1'),
     onSuccess: () => toast.success('Анализ защиты выполнен'),
     onError: () => toast.error('Ошибка анализа защиты'),
+  })
+
+  const aiAnalysisMutation = useMutation({
+    mutationFn: () => caseApi.requestDefenseAnalysis(kolesnichenko?.id ?? 'p1'),
+    onSuccess: (data) => { toast.success('ИИ-анализ выполнен'); setShowImprovements(true) },
+    onError: () => toast.error('Ошибка ИИ-анализа. Попробуйте позже.'),
   })
 
   // Calculate defense strength score and ranking (before early return)
@@ -86,10 +101,14 @@ export function CaseDefense() {
               {overallStrength}%
             </Badge>
           </div>
-          <div className="mt-2">
+          <div className="mt-2 flex gap-2">
             <Button className="rounded-xl bg-gradient-to-r from-emerald-700 to-emerald-800 text-white shadow-sm" onClick={() => analyzeMutation.mutate()} disabled={analyzeMutation.isPending}>
               {analyzeMutation.isPending ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <Zap className="w-4 h-4 mr-1" />}
               Запустить анализ защиты
+            </Button>
+            <Button variant="outline" className="rounded-xl shadow-sm" onClick={() => aiAnalysisMutation.mutate()} disabled={aiAnalysisMutation.isPending}>
+              {aiAnalysisMutation.isPending ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <BrainCircuit className="w-4 h-4 mr-1" />}
+              Запросить ИИ-анализ
             </Button>
           </div>
         </CardContent>
@@ -112,6 +131,38 @@ export function CaseDefense() {
           </CardContent>
         </Card>
       )}
+
+      {/* AI Suggested Defense Improvements */}
+      <Card className="rounded-xl shadow-sm">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm flex items-center gap-2">
+            <BrainCircuit className="w-4 h-4 text-amber-600" /> ИИ-предложения по улучшению защиты
+            <Badge variant="outline" className="text-xs">{improvements.length} предложений</Badge>
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="p-4">
+          <div className="space-y-3 max-h-80 overflow-y-auto">
+            {improvements.map(imp => {
+              const defenseLine = defenseLines.find(dl => dl.id === imp.defenseLineId)
+              return (
+                <div key={imp.id} className="p-3 rounded-xl border bg-muted/30 transition-colors hover:bg-muted/50">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Badge variant="outline" className="text-xs shrink-0">{defenseLine?.title ?? imp.category}</Badge>
+                    <Badge className={DIFFICULTY[imp.difficulty]?.badge ?? 'bg-stone-500 text-white'}>{DIFFICULTY[imp.difficulty]?.label ?? imp.difficulty}</Badge>
+                    <Badge variant="outline" className="text-xs shrink-0">{imp.probabilityChange}</Badge>
+                  </div>
+                  <p className="text-sm font-medium">{imp.suggestion}</p>
+                  <Separator className="mt-2" />
+                  <div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground">
+                    <span>Ожидаемый эффект:</span>
+                    <span className="font-medium">{imp.expectedImpact}</span>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Strategy Accordion */}
       <Accordion type="multiple" className="space-y-2">
