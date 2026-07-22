@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 
-// Types matching the Prisma schema
-export type SectionId = 
+// Types matching the Prisma schema and API responses
+export type SectionId =
   | 'dashboard'
   | 'documents'
   | 'persons'
@@ -125,6 +125,9 @@ export interface ChatMessageData {
   contextType: string | null
   contextId: string | null
   createdAt: string
+  referencedDocuments?: string[]
+  referencedPersons?: string[]
+  referencedArticles?: string[]
 }
 
 export interface ProcessingQueueData {
@@ -139,6 +142,7 @@ export interface ProcessingQueueData {
   document?: DocumentData
 }
 
+// Structured search results matching the API response
 export interface SearchResultData {
   documents: DocumentData[]
   persons: PersonData[]
@@ -152,24 +156,99 @@ export interface SearchResultData {
   }[]
 }
 
+// DashboardStats matching the actual API response at /api/case/dashboard
 export interface DashboardStats {
-  totalDocuments: number
-  processedDocuments: number
-  totalPersons: number
-  totalEpisodes: number
-  totalArticles: number
-  pendingInQueue: number
-  guiltDistribution: { level: string; count: number }[]
-  documentTypeDistribution: { type: string; count: number }[]
-  recentDocuments: DocumentData[]
-  processingQueue: ProcessingQueueData[]
+  summary: {
+    totalDocuments: number
+    totalPersons: number
+    totalEpisodes: number
+    totalArticles: number
+    totalLocations: number
+    totalCrossReferences: number
+    totalChatMessages: number
+    totalComplianceChecks: number
+    totalDefenseLines: number
+    totalGuiltAssessments: number
+  }
+  documents: {
+    total: number
+    byStatus: Record<string, number>
+    byType: Record<string, number>
+    recent: DocumentData[]
+  }
+  persons: {
+    total: number
+    byRole: Record<string, number>
+    kolesnichenko: {
+      id: string
+      fullName: string
+      role: string | null
+      status: string | null
+      defenseStrategy: string | null
+    } | null
+  }
+  episodes: {
+    total: number
+    bySeverity: Record<string, number>
+    byStatus: Record<string, number>
+  }
+  processingQueue: {
+    byStatus: Record<string, number>
+    inProgress: Array<{
+      id: string
+      documentId: string
+      originalName: string
+      queuePosition: number
+      startedAt: string | null
+    }>
+  }
+  guiltAssessments: {
+    total: number
+    byGuiltLevel: Record<string, number>
+    byEvidenceStrength: Record<string, number>
+    details: Array<{
+      id: string
+      personFullName: string
+      personRole: string | null
+      isKolesnichenko: boolean
+      episodeTitle: string | null
+      guiltLevel: string
+      evidenceStrength: string
+      forecast: string | null
+      confidence: string | null
+    }>
+  }
+  defenseLines: {
+    total: number
+    byType: Record<string, number>
+    byStrength: Record<string, number>
+    details: Array<{
+      id: string
+      strategyType: string
+      title: string
+      description: string
+      strength: string | null
+      probability: string | null
+    }>
+  }
+  complianceChecks: {
+    total: number
+    byStatus: Record<string, number>
+    byType: Record<string, number>
+    details: Array<{
+      id: string
+      documentOriginalName: string
+      checkType: string
+      status: string
+      description: string
+      recommendation: string | null
+      articleCode: string | null
+    }>
+  }
 }
 
 interface CaseStoreState {
-  // Navigation
   activeSection: SectionId
-  
-  // Data
   documents: DocumentData[]
   persons: PersonData[]
   episodes: EpisodeData[]
@@ -179,8 +258,6 @@ interface CaseStoreState {
   complianceResults: LegalComplianceData[]
   dashboardStats: DashboardStats | null
   processingQueue: ProcessingQueueData[]
-  
-  // Loading states
   isLoadingDocuments: boolean
   isLoadingPersons: boolean
   isLoadingEpisodes: boolean
@@ -190,17 +267,11 @@ interface CaseStoreState {
   isLoadingCompliance: boolean
   isLoadingDashboard: boolean
   isUploadingDocuments: boolean
-  
-  // Search filters
   searchQuery: string
   searchFilterType: 'all' | 'documents' | 'persons' | 'episodes' | 'articles' | 'cross-references'
   searchDateFrom: string | null
   searchDateTo: string | null
-  
-  // Chat
   currentQuestion: string
-  
-  // Sidebar
   sidebarCollapsed: boolean
 }
 
@@ -216,7 +287,6 @@ interface CaseStoreActions {
   setComplianceResults: (results: LegalComplianceData[]) => void
   setDashboardStats: (stats: DashboardStats) => void
   setProcessingQueue: (queue: ProcessingQueueData[]) => void
-  
   setLoadingDocuments: (loading: boolean) => void
   setLoadingPersons: (loading: boolean) => void
   setLoadingEpisodes: (loading: boolean) => void
@@ -226,22 +296,17 @@ interface CaseStoreActions {
   setLoadingCompliance: (loading: boolean) => void
   setLoadingDashboard: (loading: boolean) => void
   setUploadingDocuments: (uploading: boolean) => void
-  
   setSearchQuery: (query: string) => void
   setSearchFilterType: (type: CaseStoreState['searchFilterType']) => void
   setSearchDateFrom: (date: string | null) => void
   setSearchDateTo: (date: string | null) => void
-  
   setCurrentQuestion: (question: string) => void
   setSidebarCollapsed: (collapsed: boolean) => void
   toggleSidebar: () => void
 }
 
 export const useCaseStore = create<CaseStoreState & CaseStoreActions>((set) => ({
-  // Navigation
   activeSection: 'dashboard',
-  
-  // Data
   documents: [],
   persons: [],
   episodes: [],
@@ -251,8 +316,6 @@ export const useCaseStore = create<CaseStoreState & CaseStoreActions>((set) => (
   complianceResults: [],
   dashboardStats: null,
   processingQueue: [],
-  
-  // Loading states
   isLoadingDocuments: false,
   isLoadingPersons: false,
   isLoadingEpisodes: false,
@@ -262,20 +325,12 @@ export const useCaseStore = create<CaseStoreState & CaseStoreActions>((set) => (
   isLoadingCompliance: false,
   isLoadingDashboard: false,
   isUploadingDocuments: false,
-  
-  // Search filters
   searchQuery: '',
   searchFilterType: 'all',
   searchDateFrom: null,
   searchDateTo: null,
-  
-  // Chat
   currentQuestion: '',
-  
-  // Sidebar
   sidebarCollapsed: false,
-  
-  // Actions
   setActiveSection: (section) => set({ activeSection: section }),
   setDocuments: (documents) => set({ documents }),
   setPersons: (persons) => set({ persons }),
@@ -287,7 +342,6 @@ export const useCaseStore = create<CaseStoreState & CaseStoreActions>((set) => (
   setComplianceResults: (results) => set({ complianceResults: results }),
   setDashboardStats: (stats) => set({ dashboardStats: stats }),
   setProcessingQueue: (queue) => set({ processingQueue: queue }),
-  
   setLoadingDocuments: (loading) => set({ isLoadingDocuments: loading }),
   setLoadingPersons: (loading) => set({ isLoadingPersons: loading }),
   setLoadingEpisodes: (loading) => set({ isLoadingEpisodes: loading }),
@@ -297,12 +351,10 @@ export const useCaseStore = create<CaseStoreState & CaseStoreActions>((set) => (
   setLoadingCompliance: (loading) => set({ isLoadingCompliance: loading }),
   setLoadingDashboard: (loading) => set({ isLoadingDashboard: loading }),
   setUploadingDocuments: (uploading) => set({ isUploadingDocuments: uploading }),
-  
   setSearchQuery: (query) => set({ searchQuery: query }),
   setSearchFilterType: (type) => set({ searchFilterType: type }),
   setSearchDateFrom: (date) => set({ searchDateFrom: date }),
   setSearchDateTo: (date) => set({ searchDateTo: date }),
-  
   setCurrentQuestion: (question) => set({ currentQuestion: question }),
   setSidebarCollapsed: (collapsed) => set({ sidebarCollapsed: collapsed }),
   toggleSidebar: () => set((state) => ({ sidebarCollapsed: !state.sidebarCollapsed })),

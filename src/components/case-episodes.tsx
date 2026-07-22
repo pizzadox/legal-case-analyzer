@@ -4,12 +4,12 @@ import { useState, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
+import { Separator } from '@/components/ui/separator'
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import {
-  BookOpen, MapPin, Users, Scale, Clock, CheckCircle, AlertTriangle, XCircle, ChevronDown, ChevronUp
+  BookOpen, MapPin, Users, Scale, Clock, CheckCircle, AlertTriangle, XCircle, Calendar, FileText, Link2
 } from 'lucide-react'
 import { mockEpisodes } from '@/lib/mock-data'
 import { getEpisodes } from '@/lib/case-api'
@@ -27,11 +27,12 @@ const STATUS_BADGE: Record<string, string> = {
   'сомнительно': 'bg-red-700 text-white',
 }
 const INVOLVEMENT: Record<string, string> = {
-  'органиатор': 'bg-red-700 text-white',
+  'организатор': 'bg-red-700 text-white',
   'соучастник': 'bg-orange-600 text-white',
   'исполнитель': 'bg-red-600 text-white',
   'подозреваемый': 'bg-amber-600 text-white',
   'свидетель': 'bg-stone-600 text-white',
+  'потерпевшая': 'bg-emerald-700 text-white',
 }
 
 export function CaseEpisodes() {
@@ -54,16 +55,16 @@ export function CaseEpisodes() {
   if (isLoading) return <div className="space-y-4">{[1, 2, 3].map(i => <Skeleton key={i} className="h-24" />)}</div>
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       {/* Summary */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {[
-          { label: 'Всего', value: summary.total, icon: BookOpen, color: 'border-stone-600' },
-          { label: 'Тяжкие', value: summary.severe, icon: AlertTriangle, color: 'border-red-700' },
-          { label: 'Доказано', value: summary.proven, icon: CheckCircle, color: 'border-emerald-700' },
-          { label: 'Расследуется', value: summary.investigating, icon: Clock, color: 'border-amber-600' },
-        ].map(({ label, value, icon: Icon, color }) => (
-          <Card key={label} className={`border-l-4 ${color}`}>
+          { label: 'Всего', value: summary.total, icon: BookOpen, gradient: 'from-stone-800/20 to-stone-900/10', border: 'border-stone-600' },
+          { label: 'Тяжкие', value: summary.severe, icon: AlertTriangle, gradient: 'from-red-900/20 to-stone-900/10', border: 'border-red-700' },
+          { label: 'Доказано', value: summary.proven, icon: CheckCircle, gradient: 'from-emerald-900/20 to-stone-900/10', border: 'border-emerald-700' },
+          { label: 'Расследуется', value: summary.investigating, icon: Clock, gradient: 'from-amber-900/20 to-stone-900/10', border: 'border-amber-600' },
+        ].map(({ label, value, icon: Icon, gradient, border }) => (
+          <Card key={label} className={`border-l-4 ${border} bg-gradient-to-r ${gradient} rounded-xl shadow-sm`}>
             <CardContent className="p-3">
               <div className="flex items-center gap-2"><Icon className="w-4 h-4 text-muted-foreground" /><span className="text-xl font-bold">{value}</span></div>
               <p className="text-xs text-muted-foreground">{label}</p>
@@ -73,20 +74,23 @@ export function CaseEpisodes() {
       </div>
 
       {/* Filter */}
-      <Select value={severityFilter} onValueChange={setSeverityFilter}>
-        <SelectTrigger className="w-40"><SelectValue placeholder="Тяжесть" /></SelectTrigger>
-        <SelectContent>
-          <SelectItem value="all">Все</SelectItem>
-          <SelectItem value="особо тяжкое">Особо тяжкое</SelectItem>
-          <SelectItem value="тяжкое">Тяжкое</SelectItem>
-          <SelectItem value="средней тяжести">Средней тяжести</SelectItem>
-          <SelectItem value="небольшое">Небольшое</SelectItem>
-        </SelectContent>
-      </Select>
+      <div className="flex items-center gap-2">
+        <Select value={severityFilter} onValueChange={setSeverityFilter}>
+          <SelectTrigger className="w-40 rounded-xl"><SelectValue placeholder="Тяжесть" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Все</SelectItem>
+            <SelectItem value="особо тяжкое">Особо тяжкое</SelectItem>
+            <SelectItem value="тяжкое">Тяжкое</SelectItem>
+            <SelectItem value="средней тяжести">Средней тяжести</SelectItem>
+            <SelectItem value="небольшое">Небольшое</SelectItem>
+          </SelectContent>
+        </Select>
+        <Badge className="bg-stone-600 text-white">{filtered.length} эпизодов</Badge>
+      </div>
 
       {/* Timeline */}
-      <Card>
-        <CardHeader className="pb-2"><CardTitle className="text-sm">Хронология эпизодов</CardTitle></CardHeader>
+      <Card className="rounded-xl shadow-sm">
+        <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2"><Calendar className="w-4 h-4" />Хронология эпизодов</CardTitle></CardHeader>
         <CardContent className="p-4">
           <div className="relative pl-6 space-y-3 max-h-64 overflow-y-auto">
             {filtered.map((ep, i) => (
@@ -97,7 +101,7 @@ export function CaseEpisodes() {
                   <p className="text-sm font-medium">{ep.title}</p>
                   <Badge className={SEVERITY[ep.severity ?? ''] ?? 'bg-stone-500 text-white'}>{ep.severity}</Badge>
                 </div>
-                <p className="text-xs text-muted-foreground">{ep.date ?? '—'}</p>
+                <p className="text-xs text-muted-foreground flex items-center gap-1"><Calendar className="w-3 h-3" />{ep.date ?? '—'}</p>
               </div>
             ))}
           </div>
@@ -107,7 +111,7 @@ export function CaseEpisodes() {
       {/* Episode Accordion */}
       <Accordion type="multiple" className="space-y-2">
         {filtered.map(episode => (
-          <AccordionItem key={episode.id} value={episode.id} className="border rounded-lg px-4">
+          <AccordionItem key={episode.id} value={episode.id} className="border rounded-xl px-4 shadow-sm">
             <AccordionTrigger className="py-3 text-sm hover:no-underline">
               <div className="flex items-center gap-2 flex-1">
                 <BookOpen className="w-4 h-4 text-muted-foreground" />
@@ -118,6 +122,7 @@ export function CaseEpisodes() {
             </AccordionTrigger>
             <AccordionContent className="space-y-3 text-sm">
               <p className="text-muted-foreground">{episode.description}</p>
+              <div className="flex items-center gap-1 text-xs"><Calendar className="w-3 h-3" /><span>Период: {episode.date ?? '—'}</span></div>
               {episode.persons.length > 0 && (
                 <div>
                   <p className="font-medium flex items-center gap-1 mb-1"><Users className="w-3 h-3" />Участники:</p>
@@ -135,7 +140,7 @@ export function CaseEpisodes() {
                   <p className="font-medium flex items-center gap-1 mb-1"><Scale className="w-3 h-3" />Статьи:</p>
                   <div className="flex flex-wrap gap-1">
                     {episode.articles.map(a => (
-                      <Badge key={a.articleId} variant="outline">{a.article.code}</Badge>
+                      <Badge key={a.articleId} variant="outline" className="text-xs">{a.article.code}</Badge>
                     ))}
                   </div>
                 </div>
@@ -144,14 +149,20 @@ export function CaseEpisodes() {
                 <div>
                   <p className="font-medium flex items-center gap-1 mb-1"><MapPin className="w-3 h-3" />Места:</p>
                   {episode.locations.map(l => (
-                    <p key={l.locationId} className="text-xs text-muted-foreground">{l.location.name} — {l.location.address ?? '—'}</p>
+                    <p key={l.locationId} className="text-xs text-muted-foreground flex items-center gap-1"><MapPin className="w-2 h-2" />{l.location.name} — {l.location.address ?? '—'}</p>
                   ))}
                 </div>
               )}
+              {/* Linked Documents section */}
+              <Separator />
+              <p className="text-xs text-muted-foreground flex items-center gap-1"><FileText className="w-3 h-3" />Связанные документы: Эпизод № {episode.episodeNumber ?? '—'}</p>
             </AccordionContent>
           </AccordionItem>
         ))}
       </Accordion>
+
+      <Separator />
+      <p className="text-xs text-muted-foreground">Показано {filtered.length} из {episodes.length} преступных эпизодов</p>
     </div>
   )
 }

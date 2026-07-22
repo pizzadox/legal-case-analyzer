@@ -29,15 +29,6 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 
-const CaseDashboard = lazy(() => import('@/components/case-dashboard').then(m => ({ default: m.CaseDashboard })))
-const CaseDocuments = lazy(() => import('@/components/case-documents').then(m => ({ default: m.CaseDocuments })))
-const CasePersons = lazy(() => import('@/components/case-persons').then(m => ({ default: m.CasePersons })))
-const CaseEpisodes = lazy(() => import('@/components/case-episodes').then(m => ({ default: m.CaseEpisodes })))
-const CaseSearch = lazy(() => import('@/components/case-search').then(m => ({ default: m.CaseSearch })))
-const CaseQa = lazy(() => import('@/components/case-qa').then(m => ({ default: m.CaseQa })))
-const CaseDefense = lazy(() => import('@/components/case-defense').then(m => ({ default: m.CaseDefense })))
-const CaseLegalCheck = lazy(() => import('@/components/case-legal-check').then(m => ({ default: m.CaseLegalCheck })))
-
 import {
   LayoutDashboard,
   FileText,
@@ -51,9 +42,19 @@ import {
   Moon,
   PanelLeft,
   ScaleIcon,
+  Loader2,
 } from 'lucide-react'
 import { useTheme } from 'next-themes'
 import type { SectionId } from '@/lib/case-store'
+
+const CaseDashboard = lazy(() => import('@/components/case-dashboard').then(m => ({ default: m.CaseDashboard })))
+const CaseDocuments = lazy(() => import('@/components/case-documents').then(m => ({ default: m.CaseDocuments })))
+const CasePersons = lazy(() => import('@/components/case-persons').then(m => ({ default: m.CasePersons })))
+const CaseEpisodes = lazy(() => import('@/components/case-episodes').then(m => ({ default: m.CaseEpisodes })))
+const CaseSearch = lazy(() => import('@/components/case-search').then(m => ({ default: m.CaseSearch })))
+const CaseQa = lazy(() => import('@/components/case-qa').then(m => ({ default: m.CaseQa })))
+const CaseDefense = lazy(() => import('@/components/case-defense').then(m => ({ default: m.CaseDefense })))
+const CaseLegalCheck = lazy(() => import('@/components/case-legal-check').then(m => ({ default: m.CaseLegalCheck })))
 
 const NAV_ITEMS: {
   id: SectionId
@@ -70,6 +71,15 @@ const NAV_ITEMS: {
   { id: 'defense', label: 'Линия защиты', icon: <Shield className="h-4 w-4" />, description: 'Стратегии защиты' },
   { id: 'legal-check', label: 'Правовая проверка', icon: <Scale className="h-4 w-4" />, description: 'Проверка по нормам РФ' },
 ]
+
+function SuspenseFallback() {
+  return (
+    <div className="flex flex-col items-center justify-center py-20 gap-3">
+      <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      <p className="text-sm text-muted-foreground">Загрузка раздела...</p>
+    </div>
+  )
+}
 
 function ThemeToggle() {
   const { theme, setTheme } = useTheme()
@@ -186,7 +196,7 @@ function MainContent({ activeSection }: { activeSection: SectionId }) {
     }
   })()
   return (
-    <Suspense fallback={<div className="flex items-center justify-center py-20"><div className="animate-spin h-8 w-8 border-4 border-muted-foreground border-t-transparent rounded-full" /></div>}>
+    <Suspense fallback={<SuspenseFallback />}>
       <SectionComponent />
     </Suspense>
   )

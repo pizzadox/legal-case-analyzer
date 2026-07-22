@@ -13,11 +13,12 @@ import {
 const API_BASE = '/api/case'
 
 async function fetchApi<T>(endpoint: string, options?: RequestInit): Promise<T> {
+  const isGet = !options?.method || options?.method === 'GET'
   const response = await fetch(`${API_BASE}${endpoint}`, {
     ...options,
     headers: {
       ...options?.headers,
-      'Content-Type': 'application/json',
+      ...(isGet ? {} : { 'Content-Type': 'application/json' }),
     },
   })
 
@@ -49,17 +50,20 @@ export async function uploadDocuments(files: File[]): Promise<DocumentData[]> {
 
 // Get all documents
 export async function getDocuments(): Promise<DocumentData[]> {
-  return fetchApi<DocumentData[]>('/documents')
+  const result = await fetchApi<{documents: DocumentData[], total: number}>('/documents')
+  return result.documents ?? []
 }
 
 // Get all persons
 export async function getPersons(): Promise<PersonData[]> {
-  return fetchApi<PersonData[]>('/persons')
+  const result = await fetchApi<{persons: PersonData[], total: number}>('/persons')
+  return result.persons ?? []
 }
 
 // Get all episodes
 export async function getEpisodes(): Promise<EpisodeData[]> {
-  return fetchApi<EpisodeData[]>('/episodes')
+  const result = await fetchApi<{episodes: EpisodeData[], total: number}>('/episodes')
+  return result.episodes ?? []
 }
 
 // Search across case data
@@ -144,7 +148,11 @@ export async function getDefenseLines(personId: string): Promise<DefenseLineData
 
 // Get compliance results
 export async function getComplianceResults(): Promise<LegalComplianceData[]> {
-  return fetchApi<LegalComplianceData[]>('/compliance')
+  // GET compliance results from dashboard stats or a dedicated endpoint
+  try {
+    const stats = await fetchApi<DashboardStats>('/dashboard')
+    return stats.complianceChecks?.details ?? []
+  } catch { return [] }
 }
 
 // Get cross references

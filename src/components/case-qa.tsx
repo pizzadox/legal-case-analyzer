@@ -6,19 +6,19 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { ScrollArea } from '@/components/ui/scroll-area'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Separator } from '@/components/ui/separator'
 import { toast } from 'sonner'
-import { MessageSquare, Send, Loader2, Sparkles, Users, FileText, BookOpen } from 'lucide-react'
+import { MessageSquare, Send, Loader2, Sparkles, Download, Cpu, FileText, Scale } from 'lucide-react'
 import { mockChatMessages } from '@/lib/mock-data'
 import * as caseApi from '@/lib/case-api'
 import type { ChatMessageData } from '@/lib/case-store'
 
 const CONTEXTS = [
-  { value: 'general', label: 'Общий' },
-  { value: 'person_specific', label: 'По участнику' },
-  { value: 'episode_specific', label: 'По эпизоду' },
-  { value: 'article_specific', label: 'По статье' },
+  { value: 'general', label: 'Общий', icon: <MessageSquare className="w-3 h-3" /> },
+  { value: 'person_specific', label: 'По участнику', icon: <Sparkles className="w-3 h-3" /> },
+  { value: 'episode_specific', label: 'По эпизоду', icon: <FileText className="w-3 h-3" /> },
+  { value: 'article_specific', label: 'По статье', icon: <Scale className="w-3 h-3" /> },
 ]
 
 const SUGGESTED = [
@@ -38,7 +38,6 @@ export function CaseQa() {
     mutationFn: () => caseApi.askQuestion({ question, contextType }),
     onSuccess: (data) => { setMessages(prev => [...prev, data]) },
     onError: () => {
-      // Fallback mock response
       const mock: ChatMessageData = {
         id: `mock-${Date.now()}`,
         question,
@@ -58,7 +57,6 @@ export function CaseQa() {
 
   const handleSend = () => {
     if (!question.trim()) return
-    // Add user question immediately
     const userMsg: ChatMessageData = {
       id: `q-${Date.now()}`,
       question,
@@ -72,24 +70,45 @@ export function CaseQa() {
     askMutation.mutate()
   }
 
+  const handleExport = () => {
+    const text = messages.map(m => `Вопрос: ${m.question}\nОтвет: ${m.answer}\nДата: ${new Date(m.createdAt).toLocaleString('ru')}\n---`).join('\n')
+    const blob = new Blob([text], { type: 'text/plain' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `chat-export-${Date.now()}.txt`
+    a.click()
+    URL.revokeObjectURL(url)
+    toast.success('Чат экспортирован')
+  }
+
   return (
-    <div className="space-y-4">
-      {/* Context Selector */}
+    <div className="space-y-6">
+      {/* Header: AI Status + Context + Export */}
       <div className="flex items-center gap-2">
         <Select value={contextType} onValueChange={setContextType}>
-          <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
+          <SelectTrigger className="w-40 rounded-xl"><SelectValue /></SelectTrigger>
           <SelectContent>
             {CONTEXTS.map(c => <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>)}
           </SelectContent>
         </Select>
+        <div className="flex items-center gap-1">
+          <Cpu className="w-3 h-3 text-amber-500" />
+          <Badge className={askMutation.isPending ? 'bg-amber-600 text-white' : 'bg-emerald-700 text-white'}>
+            {askMutation.isPending ? 'ИИ думает...' : 'ИИ готов'}
+          </Badge>
+        </div>
         <Badge className="bg-stone-600 text-white">{messages.length} сообщений</Badge>
+        <Button size="sm" variant="outline" className="ml-auto rounded-xl" onClick={handleExport}>
+          <Download className="w-3 h-3 mr-1" />Экспорт
+        </Button>
       </div>
 
       {/* Chat Messages */}
-      <Card className="flex-1">
+      <Card className="rounded-xl shadow-sm">
         <CardHeader className="pb-2">
           <CardTitle className="text-sm flex items-center gap-2">
-            <MessageSquare className="w-4 h-4" />Вопросы и ответы
+            <MessageSquare className="w-4 h-4" />Вопросы и ответы ИИ-аналитика
           </CardTitle>
         </CardHeader>
         <CardContent className="p-4">
@@ -98,15 +117,30 @@ export function CaseQa() {
               <div key={msg.id} className="space-y-2">
                 {/* User question */}
                 <div className="flex justify-end">
-                  <div className="bg-stone-700 text-white rounded-lg px-3 py-2 max-w-[80%] text-sm">
+                  <div className="bg-gradient-to-r from-stone-700 to-stone-800 text-white rounded-xl px-3 py-2 max-w-[80%] text-sm shadow-sm">
                     {msg.question}
                   </div>
                 </div>
                 {/* AI answer */}
                 {msg.answer && (
                   <div className="flex justify-start">
-                    <div className="bg-muted rounded-lg px-3 py-2 max-w-[80%] text-sm">
+                    <div className="bg-muted/80 rounded-xl px-3 py-2 max-w-[80%] text-sm shadow-sm border">
                       <div className="whitespace-pre-wrap">{msg.answer}</div>
+                      {/* Referenced documents/persons */}
+                      {msg.referencedDocuments?.length > 0 && (
+                        <div className="flex flex-wrap gap-1 mt-2">
+                          {msg.referencedDocuments.map(dId => (
+                            <Badge key={dId} variant="outline" className="text-xs"><FileText className="w-2 h-2 mr-1" />{dId}</Badge>
+                          ))}
+                        </div>
+                      )}
+                      {msg.referencedArticles?.length > 0 && (
+                        <div className="flex flex-wrap gap-1 mt-1">
+                          {msg.referencedArticles.map(art => (
+                            <Badge key={art} variant="outline" className="text-xs"><Scale className="w-2 h-2 mr-1" />{art}</Badge>
+                          ))}
+                        </div>
+                      )}
                       <p className="text-xs text-muted-foreground mt-1">{new Date(msg.createdAt).toLocaleString('ru')}</p>
                     </div>
                   </div>
@@ -115,7 +149,7 @@ export function CaseQa() {
             ))}
             {askMutation.isPending && (
               <div className="flex justify-start">
-                <div className="bg-muted rounded-lg px-3 py-2 text-sm">
+                <div className="bg-muted rounded-xl px-3 py-2 text-sm border shadow-sm">
                   <Loader2 className="w-4 h-4 animate-spin" /> ИИ анализирует...
                 </div>
               </div>
@@ -128,7 +162,7 @@ export function CaseQa() {
       {messages.length <= 2 && (
         <div className="flex flex-wrap gap-2">
           {SUGGESTED.map(q => (
-            <Button key={q} size="sm" variant="outline" onClick={() => { setQuestion(q) }}>
+            <Button key={q} size="sm" variant="outline" className="rounded-xl" onClick={() => { setQuestion(q) }}>
               <Sparkles className="w-3 h-3 mr-1" />{q}
             </Button>
           ))}
@@ -142,13 +176,16 @@ export function CaseQa() {
           value={question}
           onChange={e => setQuestion(e.target.value)}
           onKeyDown={e => e.key === 'Enter' && handleSend()}
-          className="flex-1"
+          className="flex-1 rounded-xl"
           disabled={askMutation.isPending}
         />
-        <Button onClick={handleSend} disabled={askMutation.isPending || !question.trim()}>
+        <Button className="rounded-xl bg-gradient-to-r from-red-700 to-red-800 text-white shadow-sm" onClick={handleSend} disabled={askMutation.isPending || !question.trim()}>
           {askMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
         </Button>
       </div>
+
+      <Separator />
+      <p className="text-xs text-muted-foreground">ИИ-аналитик по уголовному делу № 2024-00145 • Ответы основаны на материалах дела</p>
     </div>
   )
 }
