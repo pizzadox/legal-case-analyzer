@@ -1,0 +1,309 @@
+import { create } from 'zustand'
+
+// Types matching the Prisma schema
+export type SectionId = 
+  | 'dashboard'
+  | 'documents'
+  | 'persons'
+  | 'episodes'
+  | 'search'
+  | 'qa'
+  | 'defense'
+  | 'legal-check'
+
+export interface DocumentData {
+  id: string
+  fileName: string
+  originalName: string
+  fileSize: number
+  mimeType: string
+  extractedText: string | null
+  summary: string | null
+  documentDate: string | null
+  documentType: string | null
+  sourceReference: string | null
+  processingStatus: 'pending' | 'processing' | 'completed' | 'failed'
+  processingError: string | null
+  uploadedAt: string
+  processedAt: string | null
+}
+
+export interface PersonData {
+  id: string
+  fullName: string
+  shortName: string | null
+  role: string | null
+  status: string | null
+  description: string | null
+  birthDate: string | null
+  occupation: string | null
+  alias: string | null
+  isKolesnichenko: boolean
+  defenseStrategy: string | null
+  guiltLevel?: string
+  guiltAssessments?: GuiltAssessmentData[]
+}
+
+export interface GuiltAssessmentData {
+  id: string
+  personId: string
+  episodeId: string | null
+  guiltLevel: string
+  evidenceStrength: string
+  forecast: string | null
+  confidence: string | null
+  mitigating: string | null
+  aggravating: string | null
+  analysisDate: string
+  notes: string | null
+}
+
+export interface EpisodeData {
+  id: string
+  title: string
+  description: string
+  date: string | null
+  episodeNumber: string | null
+  severity: string | null
+  status: string | null
+  persons: { personId: string; involvement: string | null; person: PersonData }[]
+  articles: { articleId: string; article: ArticleData }[]
+  locations: { locationId: string; location: LocationData; context: string | null }[]
+}
+
+export interface LocationData {
+  id: string
+  name: string
+  address: string | null
+  type: string | null
+  description: string | null
+  coordinates: string | null
+}
+
+export interface ArticleData {
+  id: string
+  code: string
+  number: string
+  codeType: string
+  description: string
+  category: string | null
+  punishmentMin: string | null
+  punishmentMax: string | null
+  isCurrent: boolean
+}
+
+export interface DefenseLineData {
+  id: string
+  personId: string
+  strategyType: string
+  title: string
+  description: string
+  evidence: string | null
+  strength: string | null
+  probability: string | null
+  articleReferences: string | null
+}
+
+export interface LegalComplianceData {
+  id: string
+  documentId: string
+  articleId: string | null
+  checkType: string
+  status: string
+  description: string
+  recommendation: string | null
+  legalBasis: string | null
+  checkedAt: string
+  document?: DocumentData
+  article?: ArticleData
+}
+
+export interface ChatMessageData {
+  id: string
+  question: string
+  answer: string
+  contextType: string | null
+  contextId: string | null
+  createdAt: string
+}
+
+export interface ProcessingQueueData {
+  id: string
+  documentId: string
+  queuePosition: number
+  status: string
+  startedAt: string | null
+  completedAt: string | null
+  error: string | null
+  priority: number
+  document?: DocumentData
+}
+
+export interface SearchResultData {
+  documents: DocumentData[]
+  persons: PersonData[]
+  episodes: EpisodeData[]
+  crossReferences: {
+    id: string
+    referenceText: string
+    referenceType: string | null
+    sourceDocument: DocumentData
+    targetDocument: DocumentData
+  }[]
+}
+
+export interface DashboardStats {
+  totalDocuments: number
+  processedDocuments: number
+  totalPersons: number
+  totalEpisodes: number
+  totalArticles: number
+  pendingInQueue: number
+  guiltDistribution: { level: string; count: number }[]
+  documentTypeDistribution: { type: string; count: number }[]
+  recentDocuments: DocumentData[]
+  processingQueue: ProcessingQueueData[]
+}
+
+interface CaseStoreState {
+  // Navigation
+  activeSection: SectionId
+  
+  // Data
+  documents: DocumentData[]
+  persons: PersonData[]
+  episodes: EpisodeData[]
+  searchResults: SearchResultData | null
+  chatMessages: ChatMessageData[]
+  defenseLines: DefenseLineData[]
+  complianceResults: LegalComplianceData[]
+  dashboardStats: DashboardStats | null
+  processingQueue: ProcessingQueueData[]
+  
+  // Loading states
+  isLoadingDocuments: boolean
+  isLoadingPersons: boolean
+  isLoadingEpisodes: boolean
+  isLoadingSearch: boolean
+  isLoadingChat: boolean
+  isLoadingDefense: boolean
+  isLoadingCompliance: boolean
+  isLoadingDashboard: boolean
+  isUploadingDocuments: boolean
+  
+  // Search filters
+  searchQuery: string
+  searchFilterType: 'all' | 'documents' | 'persons' | 'episodes' | 'articles' | 'cross-references'
+  searchDateFrom: string | null
+  searchDateTo: string | null
+  
+  // Chat
+  currentQuestion: string
+  
+  // Sidebar
+  sidebarCollapsed: boolean
+}
+
+interface CaseStoreActions {
+  setActiveSection: (section: SectionId) => void
+  setDocuments: (documents: DocumentData[]) => void
+  setPersons: (persons: PersonData[]) => void
+  setEpisodes: (episodes: EpisodeData[]) => void
+  setSearchResults: (results: SearchResultData | null) => void
+  addChatMessage: (message: ChatMessageData) => void
+  setChatMessages: (messages: ChatMessageData[]) => void
+  setDefenseLines: (lines: DefenseLineData[]) => void
+  setComplianceResults: (results: LegalComplianceData[]) => void
+  setDashboardStats: (stats: DashboardStats) => void
+  setProcessingQueue: (queue: ProcessingQueueData[]) => void
+  
+  setLoadingDocuments: (loading: boolean) => void
+  setLoadingPersons: (loading: boolean) => void
+  setLoadingEpisodes: (loading: boolean) => void
+  setLoadingSearch: (loading: boolean) => void
+  setLoadingChat: (loading: boolean) => void
+  setLoadingDefense: (loading: boolean) => void
+  setLoadingCompliance: (loading: boolean) => void
+  setLoadingDashboard: (loading: boolean) => void
+  setUploadingDocuments: (uploading: boolean) => void
+  
+  setSearchQuery: (query: string) => void
+  setSearchFilterType: (type: CaseStoreState['searchFilterType']) => void
+  setSearchDateFrom: (date: string | null) => void
+  setSearchDateTo: (date: string | null) => void
+  
+  setCurrentQuestion: (question: string) => void
+  setSidebarCollapsed: (collapsed: boolean) => void
+  toggleSidebar: () => void
+}
+
+export const useCaseStore = create<CaseStoreState & CaseStoreActions>((set) => ({
+  // Navigation
+  activeSection: 'dashboard',
+  
+  // Data
+  documents: [],
+  persons: [],
+  episodes: [],
+  searchResults: null,
+  chatMessages: [],
+  defenseLines: [],
+  complianceResults: [],
+  dashboardStats: null,
+  processingQueue: [],
+  
+  // Loading states
+  isLoadingDocuments: false,
+  isLoadingPersons: false,
+  isLoadingEpisodes: false,
+  isLoadingSearch: false,
+  isLoadingChat: false,
+  isLoadingDefense: false,
+  isLoadingCompliance: false,
+  isLoadingDashboard: false,
+  isUploadingDocuments: false,
+  
+  // Search filters
+  searchQuery: '',
+  searchFilterType: 'all',
+  searchDateFrom: null,
+  searchDateTo: null,
+  
+  // Chat
+  currentQuestion: '',
+  
+  // Sidebar
+  sidebarCollapsed: false,
+  
+  // Actions
+  setActiveSection: (section) => set({ activeSection: section }),
+  setDocuments: (documents) => set({ documents }),
+  setPersons: (persons) => set({ persons }),
+  setEpisodes: (episodes) => set({ episodes }),
+  setSearchResults: (results) => set({ searchResults: results }),
+  addChatMessage: (message) => set((state) => ({ chatMessages: [...state.chatMessages, message] })),
+  setChatMessages: (messages) => set({ chatMessages: messages }),
+  setDefenseLines: (lines) => set({ defenseLines: lines }),
+  setComplianceResults: (results) => set({ complianceResults: results }),
+  setDashboardStats: (stats) => set({ dashboardStats: stats }),
+  setProcessingQueue: (queue) => set({ processingQueue: queue }),
+  
+  setLoadingDocuments: (loading) => set({ isLoadingDocuments: loading }),
+  setLoadingPersons: (loading) => set({ isLoadingPersons: loading }),
+  setLoadingEpisodes: (loading) => set({ isLoadingEpisodes: loading }),
+  setLoadingSearch: (loading) => set({ isLoadingSearch: loading }),
+  setLoadingChat: (loading) => set({ isLoadingChat: loading }),
+  setLoadingDefense: (loading) => set({ isLoadingDefense: loading }),
+  setLoadingCompliance: (loading) => set({ isLoadingCompliance: loading }),
+  setLoadingDashboard: (loading) => set({ isLoadingDashboard: loading }),
+  setUploadingDocuments: (uploading) => set({ isUploadingDocuments: uploading }),
+  
+  setSearchQuery: (query) => set({ searchQuery: query }),
+  setSearchFilterType: (type) => set({ searchFilterType: type }),
+  setSearchDateFrom: (date) => set({ searchDateFrom: date }),
+  setSearchDateTo: (date) => set({ searchDateTo: date }),
+  
+  setCurrentQuestion: (question) => set({ currentQuestion: question }),
+  setSidebarCollapsed: (collapsed) => set({ sidebarCollapsed: collapsed }),
+  toggleSidebar: () => set((state) => ({ sidebarCollapsed: !state.sidebarCollapsed })),
+}))

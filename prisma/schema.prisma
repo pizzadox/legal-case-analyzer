@@ -1,0 +1,306 @@
+// Criminal Case Management System - Database Schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// Core document model - stores uploaded PDF documents
+model Document {
+  id                String   @id @default(cuid())
+  fileName          String
+  originalName      String
+  filePath          String
+  fileSize          Int
+  mimeType          String
+  extractedText     String?  // Full extracted text from PDF
+  summary           String?  // AI-generated summary
+  documentDate      String?  // Date mentioned in document
+  documentType      String?  // Type: обвинение, доказательство, показание, протокол, etc.
+  sourceReference   String?  // Reference number in case materials (e.g. "том 1, л.д. 15")
+  processingStatus  String   @default("pending") // pending, processing, completed, failed
+  processingError   String?
+  uploadedAt        DateTime @default(now())
+  processedAt       DateTime?
+  
+  // Relations
+  persons           PersonDocument[]
+  episodes          EpisodeDocument[]
+  locations         DocumentLocation[]
+  articles          DocumentArticle[]
+  crossReferences   CrossReference[]  @relation("SourceDoc")
+  referencedBy      CrossReference[]  @relation("TargetDoc")
+  complianceChecks  LegalCompliance[]
+  chatReferences    ChatMessageDocument[]
+  processingQueue   ProcessingQueue[]
+}
+
+// Person/participant in the case
+model Person {
+  id                String   @id @default(cuid())
+  fullName          String
+  shortName         String?  // Abbreviated name
+  role              String?  // Role: подозреваемый, обвиняемый, свидетель, потерпевший, эксперт, адвокат, следователь, судья
+  status            String?  // Status: активный, задержанный, освобожденный, осужденный
+  description       String?  // Brief description/characteristics
+  birthDate         String?
+  occupation        String?
+  alias             String?  // Nickname/alias
+  
+  // Kolesnichenko-specific fields
+  isKolesnichenko   Boolean  @default(false)
+  defenseStrategy   String?  // Defense strategy description
+  
+  // Relations
+  documents         PersonDocument[]
+  episodes          PersonEpisode[]
+  articles          PersonArticle[]
+  defenseLines      DefenseLine[]
+  guiltAssessments  GuiltAssessment[]
+  chatReferences    ChatMessagePerson[]
+}
+
+// Location/place mentioned in case
+model Location {
+  id                String   @id @default(cuid())
+  name              String   // Name of location
+  address           String?  // Full address if available
+  type              String?  // Type: место преступления, место жительства, место работы, etc.
+  description       String?  // Description/context
+  coordinates       String?  // GPS coordinates if available
+  
+  // Relations
+  documents         DocumentLocation[]
+  episodes          EpisodeLocation[]
+}
+
+// Article of law referenced in case
+model Article {
+  id                String   @id @default(cuid())
+  code              String   // Article code (e.g. "159 УК РФ", "105 УК РФ")
+  number            String   // Just the number (e.g. "159", "105")
+  codeType          String   @default("УК РФ") // Type of code
+  description       String   // Full description of the article
+  category          String?  // Category: тяжкое, особо тяжкое, средней тяжести, небольшое
+  punishmentMin     String?  // Minimum punishment description
+  punishmentMax     String?  // Maximum punishment description
+  isCurrent         Boolean  @default(true) // Whether this article is current law
+  
+  // Relations
+  documents         DocumentArticle[]
+  persons           PersonArticle[]
+  episodes          EpisodeArticle[]
+  complianceChecks  LegalCompliance[]
+}
+
+// Episode/incident in the case
+model Episode {
+  id                String   @id @default(cuid())
+  title             String   // Episode title/description
+  description       String   // Full description
+  date              String?  // Date of episode
+  episodeNumber     String?  // Episode number in case structure
+  severity          String?  // Severity classification
+  status            String?  // Status: расследуется, доказано, не доказано, сомнительно
+  
+  // Relations
+  documents         EpisodeDocument[]
+  persons           PersonEpisode[]
+  locations         EpisodeLocation[]
+  articles          EpisodeArticle[]
+  guiltAssessments  GuiltAssessment[]
+}
+
+// Cross-reference between documents
+model CrossReference {
+  id                String   @id @default(cuid())
+  sourceDocumentId  String
+  targetDocumentId  String
+  referenceText     String   // The text that creates the link
+  referenceType     String?  // Type: цитата, упоминание, доказательство, противоречие
+  context           String?  // Context of the reference
+  note              String?  // Additional note
+  
+  sourceDocument    Document @relation("SourceDoc", fields: [sourceDocumentId], references: [id])
+  targetDocument    Document @relation("TargetDoc", fields: [targetDocumentId], references: [id])
+}
+
+// Processing queue for batch file uploads
+model ProcessingQueue {
+  id                String   @id @default(cuid())
+  documentId        String
+  queuePosition     Int
+  status            String   @default("queued") // queued, processing, completed, failed
+  startedAt         DateTime?
+  completedAt       DateTime?
+  error             String?
+  priority          Int      @default(5) // 1-10 priority level
+  
+  document          Document @relation(fields: [documentId], references: [id])
+}
+
+// Legal compliance check results
+model LegalCompliance {
+  id                String   @id @default(cuid())
+  documentId        String
+  articleId         String?
+  checkType         String   // Type: article_applicability, procedure_compliance, evidence_admissibility, statute_limitations
+  status            String   // compliant, violation, warning, needs_review
+  description       String   // Description of the check result
+  recommendation    String?  // Recommended action
+  legalBasis        String?  // Legal basis for the check
+  checkedAt         DateTime @default(now())
+  
+  document          Document @relation(fields: [documentId], references: [id])
+  article           Article? @relation(fields: [articleId], references: [id])
+}
+
+// Defense line for Kolesnichenko
+model DefenseLine {
+  id                String   @id @default(cuid())
+  personId          String
+  strategyType      String   // Type: innocence, mitigating, procedural_violation, alibi, reclassification, lack_of_evidence, statute_limitations
+  title             String
+  description       String
+  evidence          String?  // Supporting evidence text
+  strength          String?  // Assessment: strong, moderate, weak
+  probability       String?  // Success probability estimate
+  articleReferences String?  // Related articles
+  
+  person            Person   @relation(fields: [personId], references: [id])
+}
+
+// Guilt assessment with forecasts
+model GuiltAssessment {
+  id                String   @id @default(cuid())
+  personId          String
+  episodeId         String?
+  guiltLevel        String   // Level: high, moderate, low, none, unproven
+  evidenceStrength  String   // Strength of evidence: strong, moderate, weak, insufficient
+  forecast          String?  // Predicted outcome
+  confidence        String?  // Confidence level: high, moderate, low
+  mitigating        String?  // Mitigating circumstances
+  aggravating       String?  // Aggravating circumstances
+  analysisDate      DateTime @default(now())
+  notes             String?
+  
+  person            Person   @relation(fields: [personId], references: [id])
+  episode           Episode? @relation(fields: [episodeId], references: [id])
+}
+
+// Chat messages for AI Q&A
+model ChatMessage {
+  id                String   @id @default(cuid())
+  question          String
+  answer            String
+  contextType       String?  // Type: general, article_specific, person_specific, episode_specific
+  contextId         String?  // ID of related context entity
+  createdAt         DateTime @default(now())
+  
+  // Relations
+  documents         ChatMessageDocument[]
+  persons           ChatMessagePerson[]
+}
+
+// Junction tables
+model PersonDocument {
+  id                String   @id @default(cuid())
+  personId          String
+  documentId        String
+  role              String?  // How this person appears in this document
+  context           String?  // Context of mention
+  
+  person            Person   @relation(fields: [personId], references: [id])
+  document          Document @relation(fields: [documentId], references: [id])
+}
+
+model EpisodeDocument {
+  id                String   @id @default(cuid())
+  episodeId         String
+  documentId        String
+  relevance         String?  // How this document relates to the episode
+  
+  episode           Episode  @relation(fields: [episodeId], references: [id])
+  document          Document @relation(fields: [documentId], references: [id])
+}
+
+model DocumentLocation {
+  id                String   @id @default(cuid())
+  documentId        String
+  locationId        String
+  context           String?  // How this location appears in this document
+  
+  document          Document @relation(fields: [documentId], references: [id])
+  location          Location @relation(fields: [locationId], references: [id])
+}
+
+model DocumentArticle {
+  id                String   @id @default(cuid())
+  documentId        String
+  articleId         String
+  context           String?  // How this article appears in this document
+  
+  document          Document @relation(fields: [documentId], references: [id])
+  article           Article  @relation(fields: [articleId], references: [id])
+}
+
+model PersonEpisode {
+  id                String   @id @default(cuid())
+  personId          String
+  episodeId         String
+  involvement       String?  // Type of involvement: подозреваемый, потерпевший, свидетель, организатор, соучастник
+  
+  person            Person   @relation(fields: [personId], references: [id])
+  episode           Episode  @relation(fields: [episodeId], references: [id])
+}
+
+model PersonArticle {
+  id                String   @id @default(cuid())
+  personId          String
+  articleId         String
+  chargeStatus      String?  // Status: обвиняется, снято, переквалифицировано
+  
+  person            Person   @relation(fields: [personId], references: [id])
+  article           Article  @relation(fields: [articleId], references: [id])
+}
+
+model EpisodeLocation {
+  id                String   @id @default(cuid())
+  episodeId         String
+  locationId        String
+  context           String?
+  
+  episode           Episode  @relation(fields: [episodeId], references: [id])
+  location          Location @relation(fields: [locationId], references: [id])
+}
+
+model EpisodeArticle {
+  id                String   @id @default(cuid())
+  episodeId         String
+  articleId         String
+  
+  episode           Episode  @relation(fields: [episodeId], references: [id])
+  article           Article  @relation(fields: [articleId], references: [id])
+}
+
+model ChatMessageDocument {
+  id                String   @id @default(cuid())
+  chatMessageId     String
+  documentId        String
+  
+  chatMessage       ChatMessage @relation(fields: [chatMessageId], references: [id])
+  document          Document    @relation(fields: [documentId], references: [id])
+}
+
+model ChatMessagePerson {
+  id                String   @id @default(cuid())
+  chatMessageId     String
+  personId          String
+  
+  chatMessage       ChatMessage @relation(fields: [chatMessageId], references: [id])
+  person            Person      @relation(fields: [personId], references: [id])
+}
