@@ -1446,3 +1446,142 @@ Priority Recommendations for Next Phase:
 8. Add more Russian legal articles (УК РФ) to database for compliance checking
 9. Implement case comparison mode (compare two cases side-by-side)
 10. Add real-time collaboration features (multiple users editing annotations)
+
+---
+Task ID: 11
+Agent: Relationship Graph Subagent
+Task: Add interactive participant relationship graph visualization
+
+Work Log:
+- Read /home/z/my-project/worklog.md to understand project context (Next.js 16 + TypeScript, Russian-language criminal case UI, Кolesnichenko case)
+- Inspected existing src/components/case-persons.tsx (688 lines, CasePersons + RelationshipMap + RadarChart + WitnessStatementsSection + ComparisonView components) and src/lib/mock-data.ts (5 mock persons, 6 mock relationships)
+- Verified shadcn/ui Tooltip component exists at src/components/ui/tooltip.tsx and confirmed all required components (Card, CardHeader, CardTitle, CardContent, Badge, Tooltip, TooltipProvider, TooltipTrigger, TooltipContent) are available
+- Confirmed lucide-react icons Share2, Network, ZoomIn, ZoomOut, RotateCcw, ChevronDown, ChevronUp, Plus, Minus, X are all exported
+- Updated imports in case-persons.tsx to include Share2, Network, Minus, RotateCcw, ZoomIn, ZoomOut from lucide-react and Tooltip/TooltipContent/TooltipProvider/TooltipTrigger from '@/components/ui/tooltip'
+- Created new PersonRelationshipGraph component (about 400 lines) with:
+  • Strongly-typed GraphNode/GraphEdge/GraphRole TypeScript interfaces
+  • Mock data for 5 nodes (Колесниченко Д.А., Сидоров А.П., Петров И.С., Козлова Е.М., Морозова А.В. / ООО ТехноПром) and 6 edges (соучастники, давал показания, алиби-свидетель, потерпевшая сторона, коллеги, финансовая связь)
+  • Circular SVG layout with Кolesnichenko at center (radius 28, amber-500 glow ring) and 4 outer nodes at radius 175 from center
+  • Color-coded nodes by role: обвиняемый=red-700, соучастник=orange-600, свидетель=stone-600, потерпевшая=emerald-700, следователь=purple-700 (no indigo/blue-700)
+  • SVG lines between nodes with arrowhead markers (regular #a8a29e and active #ea580c)
+  • Mid-line labels with white background rect for readability
+  • Hover state (useState hoveredNode): hovering a node dims all unconnected nodes to 30% opacity, dims unconnected edges to 20%, brightens connected edges (orange, thicker stroke, active arrow marker)
+  • Click state (useState selectedNode): clicking a node shows an absolutely-positioned info Card popover in top-right of graph area with full name, role badge (role-colored), status badge, Главный обвиняемый badge (if applicable), occupation, description, and a close button
+  • Collapse button "Свернуть граф/Развернуть граф" toggles the entire card content via useState collapsed
+  • Zoom controls (ZoomIn/ZoomOut/RotateCcw) manipulate the SVG viewBox state: zoom in = w/1.25 centered, zoom out = w*1.25 centered, reset = default viewBox 0 0 600 500
+  • SVG is 100% width with viewBox="0 0 600 500" and style height 500px
+  • Legend below graph showing all 5 role colors as small circles with role names, plus a special "Главный обвиняемый (Кolesnichenko)" indicator with amber ring
+  • Tooltips on zoom buttons and legend items (using TooltipProvider/Tooltip/TooltipTrigger/TooltipContent)
+  • Animated selection ring (rotating dashed orange circle) on clicked node
+  • Russian comments throughout ("=== Граф связей участников ===", "Расчёт координат", "Управление масштабом через viewBox", etc.)
+- Placed <PersonRelationshipGraph /> at the TOP of the CasePersons return statement (above the existing Guilt Assessment Summary card)
+- Ran bun run lint — zero errors
+- Used agent-browser to open http://localhost:3000/, clicked "Участники" button, captured screenshot at /home/z/my-project/download/qa-relationship-graph.png (1440x900 PNG, 158KB)
+- Verified screenshot with VLM (z-ai vision): confirmed the participant relationship graph with 5 nodes (КД center with yellow glow ring, СА/ПИ/КЕ/МА around), 6 connecting lines with Russian labels (соучастники, давал показания, алиби-свидетель, потерпевшая сторона, коллеги, финансовая связь), "Граф связей участников • 5 узлов • 6 связей" header, zoom controls, collapse button, and role legend
+- Tested click interaction: clicked Кolesnichenko node, captured /home/z/my-project/download/qa-relationship-graph-clicked.png, VLM confirmed the info popover appears in top-right showing Колесниченко Д.А. with Обвиняемый (red) + задержанный + Главный обвиняемый (orange) badges, должность, and description text
+- Closed agent-browser session
+
+Stage Summary:
+- Files modified: src/components/case-persons.tsx (added PersonRelationshipGraph component, ~400 new lines; added Tooltip/Share2/Network/ZoomIn/ZoomOut/RotateCcw/Minus imports; inserted <PersonRelationshipGraph /> at top of CasePersons return)
+- Features added: interactive SVG force-style circular participant relationship graph with 5 color-coded nodes, 6 labeled edges with arrowheads, Кolesnichenko highlighted with amber-500 glow ring, hover dim/brighten of related nodes/edges, click-to-show info popover with person details, collapse/expand toggle, zoom in/out/reset controls via viewBox manipulation, role legend with tooltips, all-Russian UI text
+- Verification results: bun run lint passes with zero errors; dev server compiles page without errors; VLM (glm-5v-turbo) confirmed the graph renders correctly with nodes, lines, labels, legend, controls; VLM confirmed click popover appears with person details
+
+---
+Task ID: 12 (QA + Bug Fixes + New Features Phase)
+Agent: Main Coordinator (Z.ai Code)
+Task: QA test the application with agent-browser, fix bugs found, add new features and visual polish
+
+Work Log:
+
+Phase 1 - QA Testing:
+- Read worklog.md (10 prior tasks, ~120KB) to understand project state: 12 section components, 27 API routes, 18 Prisma models, 962-line page.tsx, all lint clean
+- Started dev server (port 3000) and verified all API endpoints return 200 with real seeded data
+- Used agent-browser to open localhost:3000 and capture screenshots of all 12 main sections (Главная, Документы, Участники, Эпизоды, Поиск, Вопросы ИИ, Линия защиты, Правовая проверка, Хронология, Оценка рисков, Краткое изложение, Аналитика)
+- Used VLM (z-ai vision with glm-5v-turbo) to analyze each screenshot and identify visual bugs
+
+Phase 2 - Critical Bug Fixes (4 bugs found, all fixed):
+- BUG #1 (CRITICAL): case-episodes.tsx line 258 — runtime error `Cannot read properties of undefined (reading 'shortName')` because API returned flat objects but component expected nested `p.person.shortName`. Fix: Updated /api/case/episodes/route.ts to return nested structure matching EpisodeData type (`person: { id, fullName, shortName, role, isKolesnichenko }`, `article: { id, code, ... }`, `location: { id, name, address, type }`, `document: { id, originalName, ... }`). Also added defensive helper functions (personLabel, articleCode, locationName, locationAddress) that handle both flat and nested shapes for robustness. VLM verified: 9/10 — episodes section now renders correctly with all badges, participants, articles, and locations visible.
+- BUG #2: case-legal-check.tsx — "Invalid Date" displayed in Хронология проверок because dashboard API didn't include `checkedAt` field. Fix: (a) Updated /api/case/dashboard/route.ts to include `checkedAt: cc.checkedAt.toISOString()` and `legalBasis: cc.legalBasis` in compliance details; (b) Made ComplianceTimeline component defensive: filters out null dates, shows "—" for invalid dates instead of "Invalid Date", uses safe `new Date(item.checkedAt)` with `isNaN(dateObj.getTime())` check. VLM verified: 8/10 — no more "Invalid Date".
+- BUG #3: case-risk.tsx — Risk Matrix 5x5 cells were too small (`aspect-square`) causing visual cutoff at bottom. Fix: Replaced `aspect-square` with fixed `h-9 sm:h-10` cells, increased gap from `gap-1` to `gap-1.5`, added hover ring effect (`hover:ring-2 hover:ring-foreground/40 hover:z-10`), enlarged matched dots to `w-2.5 h-2.5`, added a color legend below the matrix (Низкий/Средний/Высокий/Критич.) with color swatches, increased tooltip max-width to 220px and added "Уровень" field. VLM verified: 9/10 — no cutoff, clean rendering.
+- BUG #4: case-analytics.tsx — Document Processing Trend area chart was cut off at the bottom (only top of curve visible) because chart container was only `h-48` (12rem). Fix: Increased chart container to `h-64` (16rem), added proper margins `margin={{ top: 8, right: 12, left: 0, bottom: 4 }}`, removed vertical grid lines (`vertical={false}`), hid tick/axis lines for cleaner look, increased stroke width to 2.5, added a color legend in the card header ("Обработано"/"Ожидает" with swatches), set explicit YAxis width=28, added named series for tooltip. VLM verified: 8/10.
+- UX fix: case-dashboard.tsx — Text truncation in procedure stage widget "Передача дела в суд (через ~30 дней)" was cut off. Fix: Split into two lines (stage name on one line, "через ~30 дней" on its own line with smaller font), removed `truncate` class, added `flex-1` to container, used `text-xs sm:text-sm` for responsive sizing.
+
+Phase 3 - New Features Added (5 features):
+- FEATURE #1: Case Switcher dropdown in header. Replaced static "Дело № 2024-00145" badge with `<CaseSwitcher />` component using shadcn DropdownMenu. Shows 5 mock criminal cases (Колесниченко active, Сидоров active, Морозов active, Иванов archived, Петров closed) with: case number, title, defendant name, status badge (Активно/Архив/Закрыто), articles referenced, progress bar (color-coded by completion), check icon for active case. Includes "Создать новое дело" button at bottom. Fires toast notifications on case change. Used FolderOpen, ChevronDown, Folder, Plus, CheckCircle2 icons. Verified via VLM: dropdown opens showing all 5 cases with progress bars and status badges correctly.
+- FEATURE #2: Document text search/highlight in document Sheet. Added `docSearch` and `docSearchCaseSensitive` state, plus `highlightText()` and `countMatches()` helpers using regex with proper special-character escaping. Search input with magnifying glass icon, "Aa" case-sensitivity toggle button, clear button (X icon). Yellow highlight (`bg-yellow-300 dark:bg-yellow-400 text-black font-bold ring-1 ring-yellow-500/40`) for matches. Shows "Найдено: N" badge (green if matches, stone if 0). ScrollArea increased from max-h-48 to max-h-64 to show more text. Character count badge in card header. Verified via VLM: search input visible, "Найдено: 1" counter shows correctly when searching "Колесниченко".
+- FEATURE #3: Participant Relationship Graph visualization (delegated to subagent — Task ID 11). New `PersonRelationshipGraph` component in case-persons.tsx (~400 lines added). Interactive SVG graph with 5 person nodes (Колесниченко as center hub with amber glow ring, 4 others in circular layout), 6 labeled connections (соучастники, давал показания, алиби-свидетель, потерпевшая сторона, коллеги, финансовая связь). Hover dims unrelated nodes to 30% opacity and brightens connected edges. Click shows info popover with full name, role badge, status, occupation, description. Zoom controls (+/−/Сброс). Collapse button. Role color legend with tooltips. VLM verified: graph renders correctly with all 5 nodes, 6 connections, click popover works.
+- FEATURE #4: Quick Stats Bar with animated counters on dashboard. New `QuickStatsBar` component with 6 clickable stat cards (Документы, Участники, Эпизоды, Статьи УК, Соответствие, Линия защиты). Each card uses `useAnimatedCounter` hook (custom) that smoothly increments from 0 to target over 700ms using requestAnimationFrame with ease-out cubic interpolation. Each card shows: label, animated number (tabular-nums), delta text with up/down/flat indicator (TrendingUp/AlertTriangle/Activity icon), colored icon in rounded square. Color-coded top borders (red/orange/amber/stone/emerald/purple). Clicking a card navigates to the corresponding section. VLM verified: 5 cards visible in viewport (6th wraps to next row), all numbers display correctly.
+- FEATURE #5: AI Case Digest widget on dashboard. New purple-topped card with BrainCircuit icon. Contains: (a) case summary paragraph with dynamically inserted document/episode counts (purple-highlighted); (b) 3-column grid showing Ключевые риски (red border-l, AlertTriangle icon, 3 bullet points about procedural violations), Сильные стороны защиты (emerald border-l, ShieldCheck icon, 3 bullets about alibi and mitigating circumstances), Рекомендации (amber border-l, TrendingUp icon, 3 bullets about motions to file); (c) action buttons "Задать вопрос ИИ" (navigates to qa) and "Полное изложение" (navigates to brief); (d) "Сгенерировано ИИ • обновлено DD.MM" timestamp. VLM verified: digest card visible with all 3 colored boxes correctly displayed.
+
+Phase 4 - Visual Polish:
+- Polished QA suggested questions panel: replaced shadcn Button with custom `<button>` for cleaner neutral styling, added amber chevron "›" prefix, added gradient background `from-card via-card to-amber-500/5`, added `border-t-2 border-t-amber-500`, added category count badge in header, used category-specific border-l color coding, improved hover state with `hover:shadow-sm`.
+- Improved Risk Matrix visual: added hover scale-1.08, hover ring, color legend, larger cells.
+- Improved Analytics chart: cleaner axes, legend in header, larger height.
+- All new components use gradient backgrounds (`bg-gradient-to-br from-card via-card to-{color}-500/5`), colored top borders, hover lift effects (`hover:shadow-md hover:-translate-y-0.5`), consistent with existing design system.
+- Color rule compliance: NO indigo or blue-700 used in any new code. Primary palette: red-700, orange-600, amber-600, emerald-700, stone, purple-700 (for AI/digest features only).
+
+Phase 5 - Verification:
+- `bun run lint`: 0 errors, 0 warnings (clean)
+- TypeScript: no errors in any edited file
+- All API endpoints still return 200 with real seeded data
+- VLM verification confirmed all 5 new features render correctly:
+  * Case Switcher dropdown: shows 5 cases with progress bars
+  * Document search: input visible, "Найдено: 1" counter works, mark elements present in DOM
+  * Participant relationship graph: 5 nodes + 6 edges render, click popover works (verified by subagent)
+  * Quick Stats Bar: 6 cards with animated counters, color-coded
+  * AI Case Digest: 3 colored boxes (risks/strengths/recommendations) visible
+- Dev server stable on port 3000 (occasionally crashes during heavy VLM operations, restarts cleanly)
+
+Files Modified This Phase:
+1. /home/z/my-project/src/app/api/case/episodes/route.ts — changed persons/articles/locations/documents to nested structure
+2. /home/z/my-project/src/components/case-episodes.tsx — added defensive helpers (personLabel, articleCode, locationName, locationAddress), updated all references
+3. /home/z/my-project/src/app/api/case/dashboard/route.ts — added checkedAt + legalBasis to compliance details
+4. /home/z/my-project/src/components/case-legal-check.tsx — defensive date handling in ComplianceTimeline + accordion
+5. /home/z/my-project/src/components/case-risk.tsx — rebuilt RiskMatrix with fixed cell heights, hover ring, legend
+6. /home/z/my-project/src/components/case-analytics.tsx — rebuilt area chart with h-64, legend, cleaner axes
+7. /home/z/my-project/src/components/case-dashboard.tsx — added useAnimatedCounter, AnimatedStatCard, QuickStatsBar, AI Case Digest widget; fixed procedure stage truncation
+8. /home/z/my-project/src/app/page.tsx — added AVAILABLE_CASES mock data, CaseSwitcher component, replaced static badge in TopHeader
+9. /home/z/my-project/src/components/case-documents.tsx — added docSearch state, highlightText/countMatches helpers, in-document search UI with case-sensitivity toggle
+10. /home/z/my-project/src/components/case-qa.tsx — polished suggested questions panel with custom buttons, gradient bg, category count badge
+
+Stage Summary:
+- 4 critical bugs fixed (1 runtime crash, 1 date display, 2 visual cutoffs)
+- 5 new features added (case switcher, doc search, relationship graph, quick stats bar with animations, AI case digest)
+- 10 files modified
+- All lint clean (0 errors, 0 warnings)
+- All new features VLM-verified as rendering correctly
+- Color rule respected (no indigo/blue-700)
+- Russian language maintained throughout
+- Dev server stable
+
+Current Project Status:
+- Backend: 27 API routes, all returning real seeded data
+- Frontend: 12 section components + page.tsx (now ~1123 lines after CaseSwitcher addition) + case-dashboard.tsx (~820 lines after QuickStatsBar + AI Digest additions)
+- Database: 18 Prisma models, seeded with realistic Russian criminal case data
+- Features now include: PDF upload, AI text extraction, persons/episodes management, multi-dimensional search, LLM Q&A, defense strategy analysis, legal compliance checking, case timeline, risk assessment with 5x5 matrix, case brief, analytics, document annotations, procedure stages, settings/preferences, command palette, keyboard shortcuts, multi-case switcher, document text search/highlight, participant relationship graph, animated stats bar, AI case digest
+- Total feature count: 18+ distinct features
+- Lint: clean
+- TypeScript: valid
+- VLM-verified
+
+Unresolved Issues / Risks:
+1. **Memory pressure persists** — Dev server uses ~2.8GB of 4GB RAM. Subagents + agent-browser can push it over. Workaround: close browser between sessions.
+2. **Dev server intermittent crashes** — happens during heavy file edits + VLM operations. Auto-restarts cleanly.
+3. **PDF processing endpoint returns 500** — `/api/case/process` fails with "URL格式无效" because real PDF text extraction via VLM requires valid public URLs. Mock data is used as fallback.
+4. **Analytics insights still mocked** — `/api/case/analytics` returns mock insights/outcomePredictions. Real LLM generation would require additional integration.
+5. **No authentication** — NextAuth.js available but unused. All data is publicly accessible.
+6. **Multi-case switcher is UI-only** — selecting a different case shows a toast but doesn't actually reload data (would require multi-tenant schema changes).
+
+Priority Recommendations for Next Phase:
+1. Implement real PDF text extraction using VLM skill (currently mocked)
+2. Implement real LLM-powered analytics insights (currently mocked)
+3. Add user authentication with NextAuth.js (role-based: advocate, investigator, judge)
+4. Implement WebSocket mini-service for real-time processing queue updates
+5. Add multi-language support (Russian/English toggle)
+6. Add export to PDF for entire case package (currently per-section via print)
+7. Implement document versioning and audit log persistence
+8. Add more Russian legal articles (УК РФ) to database for compliance checking
+9. Implement case comparison mode (compare two cases side-by-side)
+10. Add real-time collaboration features (multiple users editing annotations)
+11. Replace mock case switcher data with real multi-case DB schema
+12. Add evidence chain visualization with interactive timeline

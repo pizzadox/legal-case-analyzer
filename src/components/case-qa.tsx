@@ -220,21 +220,32 @@ export function CaseQa() {
         </Card>
 
         {/* Suggested Questions Panel - category grouped */}
-        <Card className="rounded-xl shadow-sm">
+        <Card className="rounded-xl shadow-sm bg-gradient-to-br from-card via-card to-amber-500/5 border-t-2 border-t-amber-500">
           <CardHeader className="pb-2 px-4 pt-4">
-            <CardTitle className="text-sm font-semibold flex items-center gap-2"><Sparkles className="w-4 h-4 text-amber-600" />Подсказки вопросов</CardTitle>
+            <CardTitle className="text-sm font-semibold flex items-center gap-2">
+              <Sparkles className="w-4 h-4 text-amber-600" />Подсказки вопросов
+              <Badge variant="outline" className="text-xs ml-auto">{SUGGESTED_GROUPS.length} категорий</Badge>
+            </CardTitle>
           </CardHeader>
           <CardContent className="p-4 space-y-3 max-h-[500px] overflow-y-auto scrollbar-thin">
             {SUGGESTED_GROUPS.map(group => {
               const Icon = group.icon
+              const colorClass = group.color.split(' ')[0]
+              const borderClass = group.color.split(' ').find(c => c.startsWith('border')) ?? 'border-stone-300'
               return (
-                <div key={group.category} className={`border-l-2 pl-2 ${group.color.split(' ').find(c => c.startsWith('border'))?.replace('border-', 'border-l-')}`}>
-                  <p className={`text-xs font-semibold flex items-center gap-1 ${group.color.split(' ')[0]}`}><Icon className="w-3 h-3" />{group.category}</p>
-                  <div className="space-y-1 mt-1">
+                <div key={group.category} className={`rounded-lg border-l-2 ${borderClass} pl-2 py-1`}>
+                  <p className={`text-xs font-semibold flex items-center gap-1 ${colorClass}`}>
+                    <Icon className="w-3 h-3" />{group.category}
+                  </p>
+                  <div className="space-y-1 mt-1.5">
                     {group.questions.map(q => (
-                      <Button key={q} size="sm" variant="outline" className="w-full justify-start text-xs h-auto py-1.5 rounded-lg transition-all duration-200 hover:bg-amber-50 hover:border-amber-300 font-normal whitespace-normal text-left" onClick={() => setQuestion(q)}>
-                        {q}
-                      </Button>
+                      <button
+                        key={q}
+                        onClick={() => setQuestion(q)}
+                        className="w-full text-left text-xs px-2 py-1.5 rounded-md border border-stone-200/50 dark:border-stone-700/50 bg-background/40 hover:bg-amber-50 dark:hover:bg-amber-950/20 hover:border-amber-300 dark:hover:border-amber-700/50 hover:shadow-sm transition-all duration-150 font-normal text-foreground/85"
+                      >
+                        <span className="text-amber-600 mr-1">›</span>{q}
+                      </button>
                     ))}
                   </div>
                 </div>

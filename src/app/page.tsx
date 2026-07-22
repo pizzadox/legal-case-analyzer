@@ -78,6 +78,11 @@ import {
   RotateCcw,
   Save,
   RefreshCw,
+  FolderOpen,
+  ChevronDown,
+  Folder,
+  Plus,
+  CheckCircle2,
 } from 'lucide-react'
 import { useTheme } from 'next-themes'
 import { toast } from 'sonner'
@@ -444,6 +449,161 @@ function AppSidebar({ activeSection, setActiveSection, preferences }: {
   )
 }
 
+// Mock list of available criminal cases for the switcher
+const AVAILABLE_CASES: Array<{
+  id: string
+  number: string
+  title: string
+  defendant: string
+  status: 'active' | 'archived' | 'closed'
+  articles: string
+  progress: number
+  updatedAt: string
+}> = [
+  {
+    id: 'case-00145',
+    number: '2024-00145',
+    title: 'Мошенничество в крупном размере',
+    defendant: 'Колесниченко Д.А.',
+    status: 'active',
+    articles: 'ст. 159 ч.3, 160 ч.2 УК РФ',
+    progress: 65,
+    updatedAt: '2024-05-22',
+  },
+  {
+    id: 'case-00138',
+    number: '2024-00138',
+    title: 'Присвоение и растрата',
+    defendant: 'Сидоров А.П.',
+    status: 'active',
+    articles: 'ст. 160 ч.3 УК РФ',
+    progress: 42,
+    updatedAt: '2024-05-18',
+  },
+  {
+    id: 'case-00122',
+    number: '2024-00122',
+    title: 'Незаконное предпринимательство',
+    defendant: 'Морозов В.И.',
+    status: 'active',
+    articles: 'ст. 171 УК РФ',
+    progress: 78,
+    updatedAt: '2024-05-10',
+  },
+  {
+    id: 'case-00098',
+    number: '2023-00098',
+    title: 'Кража с незаконным проникновением',
+    defendant: 'Иванов П.С.',
+    status: 'archived',
+    articles: 'ст. 158 ч.2 УК РФ',
+    progress: 100,
+    updatedAt: '2024-03-15',
+  },
+  {
+    id: 'case-00076',
+    number: '2023-00076',
+    title: 'Умышленное уничтожение имущества',
+    defendant: 'Петров К.Л.',
+    status: 'closed',
+    articles: 'ст. 167 ч.2 УК РФ',
+    progress: 100,
+    updatedAt: '2023-12-20',
+  },
+]
+
+const CASE_STATUS_LABEL: Record<string, { label: string; color: string }> = {
+  active: { label: 'Активно', color: 'bg-emerald-700 text-white' },
+  archived: { label: 'Архив', color: 'bg-stone-500 text-white' },
+  closed: { label: 'Закрыто', color: 'bg-red-700 text-white' },
+}
+
+function CaseSwitcher() {
+  const [activeCaseId, setActiveCaseId] = useState('case-00145')
+  const activeCase = AVAILABLE_CASES.find(c => c.id === activeCaseId) ?? AVAILABLE_CASES[0]
+  const activeStatus = CASE_STATUS_LABEL[activeCase.status]
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-8 gap-2 px-2.5 text-xs font-medium rounded-lg border-border/60 hover:bg-muted/40 transition-colors"
+          title="Переключить дело"
+        >
+          <FolderOpen className="w-3.5 h-3.5 text-red-700" />
+          <span className="hidden md:inline">Дело № {activeCase.number}</span>
+          <span className="md:hidden">№{activeCase.number}</span>
+          <Badge className={`${activeStatus.color} text-[10px] px-1 py-0 h-4 rounded`}>{activeStatus.label}</Badge>
+          <ChevronDown className="w-3 h-3 text-muted-foreground" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-80 p-0 rounded-xl overflow-hidden">
+        <div className="p-3 border-b bg-gradient-to-r from-red-900/10 to-transparent">
+          <p className="text-xs font-semibold flex items-center gap-1.5">
+            <Folder className="w-3.5 h-3.5 text-red-700" />
+            Переключение дела
+          </p>
+          <p className="text-xs text-muted-foreground mt-0.5">Выберите уголовное дело для работы</p>
+        </div>
+        <ScrollArea className="max-h-72">
+          {AVAILABLE_CASES.map(c => {
+            const status = CASE_STATUS_LABEL[c.status]
+            const isActive = c.id === activeCaseId
+            return (
+              <DropdownMenuItem
+                key={c.id}
+                onClick={() => {
+                  setActiveCaseId(c.id)
+                  if (c.id !== 'case-00145') {
+                    toast.info(`Дело № ${c.number} загружается...`, {
+                      description: 'Демонстрационная версия. Активное дело: Колесниченко Д.А.',
+                    })
+                  } else {
+                    toast.success(`Активное дело: № ${c.number}`)
+                  }
+                }}
+                className={`p-3 cursor-pointer flex flex-col items-start gap-1 border-b last:border-b-0 transition-colors ${
+                  isActive ? 'bg-red-50 dark:bg-red-950/20' : 'hover:bg-muted/50'
+                }`}
+              >
+                <div className="flex items-center gap-2 w-full">
+                  <Folder className={`w-3.5 h-3.5 ${isActive ? 'text-red-700' : 'text-muted-foreground'}`} />
+                  <span className="text-xs font-mono text-muted-foreground">№ {c.number}</span>
+                  <Badge className={`${status.color} text-[10px] px-1 py-0 h-4 rounded ml-auto`}>{status.label}</Badge>
+                  {isActive && <CheckCircle2 className="w-3.5 h-3.5 text-red-700" />}
+                </div>
+                <p className="text-sm font-medium leading-tight">{c.title}</p>
+                <p className="text-xs text-muted-foreground">Обвиняемый: {c.defendant}</p>
+                <p className="text-[10px] text-muted-foreground/80">{c.articles}</p>
+                <div className="flex items-center gap-2 w-full mt-1">
+                  <div className="flex-1 h-1 rounded-full bg-muted overflow-hidden">
+                    <div
+                      className={`h-full rounded-full ${c.progress === 100 ? 'bg-emerald-600' : c.progress >= 60 ? 'bg-amber-600' : 'bg-red-700'}`}
+                      style={{ width: `${c.progress}%` }}
+                    />
+                  </div>
+                  <span className="text-[10px] text-muted-foreground">{c.progress}%</span>
+                </div>
+              </DropdownMenuItem>
+            )
+          })}
+        </ScrollArea>
+        <div className="p-2 border-t bg-muted/30">
+          <DropdownMenuItem
+            onClick={() => toast.info('Создание нового дела', { description: 'Функция будет доступна в полной версии' })}
+            className="p-2 cursor-pointer rounded-lg gap-2 text-xs text-red-700 hover:bg-red-50 dark:hover:bg-red-950/20"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            Создать новое дело
+          </DropdownMenuItem>
+        </div>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
+}
+
 function TopHeader({ activeSection, notifications, setActiveSection, onHelpClick, onCommandClick, onSettingsClick, preferences }: {
   activeSection: SectionId
   notifications: NotificationData[]
@@ -490,9 +650,7 @@ function TopHeader({ activeSection, notifications, setActiveSection, onHelpClick
           <HelpCircle className="h-4 w-4" />
         </Button>
         <Separator orientation="vertical" className="h-4" />
-        <Badge variant="outline" className="text-xs">
-          Дело № 2024-00145
-        </Badge>
+        <CaseSwitcher />
         {unreadCount > 0 && (
           <Badge className="bg-red-700 text-white text-xs">{unreadCount}</Badge>
         )}

@@ -16,7 +16,7 @@ import { Separator } from '@/components/ui/separator'
 import { toast } from 'sonner'
 import { toast as shadcnToast } from '@/hooks/use-toast'
 import {
-  FileText, Upload, RefreshCw, Eye, CheckCircle, Clock, AlertTriangle, Loader2, Zap, XCircle, Trash2, Scale, BookOpen, Gavel, GitCompare, Download, Link2, ShieldCheck, ShieldAlert, ShieldX, BrainCircuit, Globe, TrendingDown, FileSearch, MessageSquare, Plus, Calendar, User
+  FileText, Upload, RefreshCw, Eye, CheckCircle, Clock, AlertTriangle, Loader2, Zap, XCircle, Trash2, Scale, BookOpen, Gavel, GitCompare, Download, Link2, ShieldCheck, ShieldAlert, ShieldX, BrainCircuit, Globe, TrendingDown, FileSearch, MessageSquare, Plus, Calendar, User, Search, X
 } from 'lucide-react'
 import { mockDocuments, mockEvidenceChain } from '@/lib/mock-data'
 import * as caseApi from '@/lib/case-api'
@@ -257,6 +257,8 @@ export function CaseDocuments() {
   // first document once documents have loaded; persisted to localStorage per doc.
   const [annotations, setAnnotations] = useState<Record<string, Annotation[]>>({})
   const [newAnnotation, setNewAnnotation] = useState('')
+  const [docSearch, setDocSearch] = useState('')
+  const [docSearchCaseSensitive, setDocSearchCaseSensitive] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
 
   const { data, isLoading, refetch } = useQuery({
@@ -378,6 +380,34 @@ export function CaseDocuments() {
   const handleOpenDoc = (doc: DocumentData) => {
     setSelectedDoc(doc)
     setNewAnnotation('')
+    setDocSearch('')
+  }
+
+  // Build highlighted extracted text with search matches
+  const highlightText = (text: string, query: string, caseSensitive: boolean) => {
+    if (!query.trim()) return text
+    const flags = caseSensitive ? 'g' : 'gi'
+    const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    const regex = new RegExp(`(${escaped})`, flags)
+    const parts = text.split(regex)
+    return parts.map((part, i) => {
+      if (i % 2 === 1) {
+        return (
+          <mark key={i} className="bg-yellow-300 dark:bg-yellow-400 text-black dark:text-black rounded px-0.5 font-bold shadow-sm ring-1 ring-yellow-500/40">
+            {part}
+          </mark>
+        )
+      }
+      return part
+    })
+  }
+
+  const countMatches = (text: string, query: string, caseSensitive: boolean) => {
+    if (!query.trim()) return 0
+    const flags = caseSensitive ? 'g' : 'gi'
+    const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    const regex = new RegExp(escaped, flags)
+    return (text.match(regex) ?? []).length
   }
 
   if (isLoading) return <div className="grid grid-cols-2 gap-4">{[1, 2, 3, 4].map(i => <Skeleton key={i} className="h-32" />)}</div>
@@ -649,17 +679,65 @@ export function CaseDocuments() {
               </CardContent>
             </Card>
 
-            {/* Extracted text */}
+            {/* Extracted text with search/highlight */}
             {selectedDoc?.extractedText && (
               <Card className="rounded-xl shadow-sm">
                 <CardHeader className="pb-2">
                   <CardTitle className="text-sm flex items-center gap-2">
                     <FileText className="w-4 h-4 text-amber-600" /> Извлечённый текст
+                    <Badge variant="outline" className="text-xs ml-auto">
+                      {selectedDoc.extractedText.length.toLocaleString('ru-RU')} симв.
+                    </Badge>
                   </CardTitle>
                 </CardHeader>
-                <CardContent>
-                  <ScrollArea className="max-h-48 w-full rounded-lg border bg-muted/30 p-3">
-                    <p className="text-xs whitespace-pre-wrap leading-relaxed">{selectedDoc.extractedText}</p>
+                <CardContent className="space-y-2">
+                  {/* In-document search bar */}
+                  <div className="flex items-center gap-1.5">
+                    <div className="relative flex-1">
+                      <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
+                      <input
+                        type="text"
+                        value={docSearch}
+                        onChange={(e) => setDocSearch(e.target.value)}
+                        placeholder="Поиск в тексте документа..."
+                        className="w-full h-8 pl-7 pr-7 text-xs rounded-lg border bg-background/60 focus:outline-none focus:ring-2 focus:ring-amber-500/40 focus:border-amber-500/50 transition-all"
+                      />
+                      {docSearch && (
+                        <button
+                          onClick={() => setDocSearch('')}
+                          className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                          aria-label="Очистить поиск"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
+                    <Button
+                      size="sm"
+                      variant={docSearchCaseSensitive ? 'default' : 'outline'}
+                      className="h-8 px-2 text-xs font-mono"
+                      onClick={() => setDocSearchCaseSensitive(!docSearchCaseSensitive)}
+                      title="Учитывать регистр"
+                    >
+                      Aa
+                    </Button>
+                  </div>
+                  {docSearch.trim() && (
+                    <div className="flex items-center gap-2 text-xs">
+                      <Badge className={countMatches(selectedDoc.extractedText, docSearch, docSearchCaseSensitive) > 0 ? 'bg-emerald-700 text-white' : 'bg-stone-500 text-white'}>
+                        Найдено: {countMatches(selectedDoc.extractedText, docSearch, docSearchCaseSensitive)}
+                      </Badge>
+                      {countMatches(selectedDoc.extractedText, docSearch, docSearchCaseSensitive) === 0 && (
+                        <span className="text-muted-foreground italic">Совпадений не найдено</span>
+                      )}
+                    </div>
+                  )}
+                  <ScrollArea className="max-h-64 w-full rounded-lg border bg-muted/30 p-3">
+                    <p className="text-xs whitespace-pre-wrap leading-relaxed">
+                      {docSearch.trim()
+                        ? highlightText(selectedDoc.extractedText, docSearch, docSearchCaseSensitive)
+                        : selectedDoc.extractedText}
+                    </p>
                   </ScrollArea>
                 </CardContent>
               </Card>

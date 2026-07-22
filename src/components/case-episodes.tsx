@@ -17,11 +17,26 @@ import type { EpisodeData } from '@/lib/case-store'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 
+// Helpers that gracefully handle either nested or flat person/article/location shapes
+function personLabel(p: { shortName?: string | null; fullName?: string | null; person?: { shortName?: string | null; fullName?: string | null } }): string {
+  if (p.person) return p.person.shortName ?? p.person.fullName ?? '—'
+  return (p.shortName ?? p.fullName ?? '—') as string
+}
+function articleCode(a: { code?: string; article?: { code?: string } }): string {
+  return (a.article?.code ?? a.code ?? '—') as string
+}
+function locationName(l: { name?: string | null; location?: { name?: string | null } }): string {
+  return (l.location?.name ?? l.name ?? '—') as string
+}
+function locationAddress(l: { address?: string | null; location?: { address?: string | null } }): string {
+  return (l.location?.address ?? l.address ?? '—') as string
+}
+
 function exportEpisodesCSV(episodes: EpisodeData[]) {
   const rows = ['Title,Severity,Status,Date,Persons,Articles']
   episodes.forEach(e => {
-    const persons = e.persons.map(p => `${p.person.shortName ?? p.person.fullName} (${p.involvement ?? ''})`).join('; ')
-    const articles = e.articles.map(a => a.article.code).join('; ')
+    const persons = e.persons.map(p => `${personLabel(p)} (${p.involvement ?? ''})`).join('; ')
+    const articles = e.articles.map(a => articleCode(a)).join('; ')
     rows.push(`"${e.title}",${e.severity ?? ''},${e.status ?? ''},${e.date ?? ''},"${persons}","${articles}"`)
   })
   const blob = new Blob([rows.join('\n')], { type: 'text/csv;charset=utf-8' })
@@ -255,7 +270,7 @@ export function CaseEpisodes() {
                   <div className="flex flex-wrap gap-1">
                     {episode.persons.map(p => (
                       <Badge key={p.personId} className={`${INVOLVEMENT[p.involvement ?? ''] ?? 'bg-stone-500 text-white'} text-xs font-semibold`}>
-                        {p.person.shortName ?? p.person.fullName} ({p.involvement ?? '—'})
+                        {personLabel(p)} ({p.involvement ?? '—'})
                       </Badge>
                     ))}
                   </div>
@@ -266,7 +281,7 @@ export function CaseEpisodes() {
                   <p className="font-medium flex items-center gap-1 mb-1 text-xs"><Scale className="w-3 h-3 text-stone-600" />Статьи:</p>
                   <div className="flex flex-wrap gap-1">
                     {episode.articles.map(a => (
-                      <Badge key={a.articleId} variant="outline" className="text-xs border-stone-300/50 font-medium">{a.article.code}</Badge>
+                      <Badge key={a.articleId} variant="outline" className="text-xs border-stone-300/50 font-medium">{articleCode(a)}</Badge>
                     ))}
                   </div>
                   {/* Punishment preview per article */}
@@ -284,7 +299,7 @@ export function CaseEpisodes() {
                 <div>
                   <p className="font-medium flex items-center gap-1 mb-1 text-xs"><MapPin className="w-3 h-3 text-red-700" />Места:</p>
                   {episode.locations.map(l => (
-                    <p key={l.locationId} className="text-xs text-muted-foreground flex items-center gap-1"><MapPin className="w-2 h-2 text-red-700" />{l.location.name} — {l.location.address ?? '—'}</p>
+                    <p key={l.locationId} className="text-xs text-muted-foreground flex items-center gap-1"><MapPin className="w-2 h-2 text-red-700" />{locationName(l)} — {locationAddress(l)}</p>
                   ))}
                 </div>
               )}

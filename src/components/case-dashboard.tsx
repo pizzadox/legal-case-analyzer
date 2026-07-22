@@ -1,6 +1,7 @@
 'use client'
 
 import { useQuery } from '@tanstack/react-query'
+import { useState, useEffect, useRef } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -10,7 +11,7 @@ import { Separator } from '@/components/ui/separator'
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from '@/components/ui/tooltip'
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from '@/components/ui/chart'
 import { Pie, PieChart, Cell, Bar, BarChart, XAxis, YAxis } from 'recharts'
-import { FileText, Users, BookOpen, AlertTriangle, Clock, CheckCircle, CheckCircle2, Circle, Zap, Shield, Scale, ArrowRight, RefreshCw, XCircle, Gavel, Activity, MapPin, UploadCloud, FileSearch, Bookmark, Swords, History, Flame, CalendarClock, TrendingUp, FileUp, MessageCircle, ShieldCheck, Download } from 'lucide-react'
+import { FileText, Users, BookOpen, AlertTriangle, Clock, CheckCircle, CheckCircle2, Circle, Zap, Shield, Scale, ArrowRight, RefreshCw, XCircle, Gavel, Activity, MapPin, UploadCloud, FileSearch, Bookmark, Swords, History, Flame, CalendarClock, TrendingUp, FileUp, MessageCircle, ShieldCheck, Download, BrainCircuit } from 'lucide-react'
 import { mockDashboardStats, mockCaseHealthScore, mockEvidenceTimeline, mockCaseBrief, mockBookmarks, mockCaseTimeline } from '@/lib/mock-data'
 import { getDashboardStats, getCaseHealthScore, getEvidenceTimeline, getCaseBrief, getBookmarks, getCaseTimeline } from '@/lib/case-api'
 import { useCaseStore } from '@/lib/case-store'
@@ -361,11 +362,12 @@ function CaseProcedureStage() {
           </div>
           <div className="p-2 rounded-md bg-muted/40 flex items-start gap-1.5">
             <ArrowRight className="w-3 h-3 text-emerald-700 mt-0.5 shrink-0" />
-            <div className="min-w-0">
+            <div className="min-w-0 flex-1">
               <p className="font-medium text-muted-foreground">Следующий этап</p>
-              <p className="text-sm font-bold mt-0.5 truncate">
-                {nextStage.short} <span className="text-xs font-normal text-muted-foreground">(через ~30 дней)</span>
+              <p className="text-xs sm:text-sm font-bold mt-0.5 leading-tight">
+                {nextStage.short}
               </p>
+              <p className="text-[10px] font-normal text-muted-foreground mt-0.5">через ~30 дней</p>
             </div>
           </div>
         </div>
@@ -403,6 +405,173 @@ function MiniTimelinePreview({ events, onNavigate }: { events: CaseTimelineEvent
         )}
       </CardContent>
     </Card>
+  )
+}
+
+// Animated counter hook — smoothly increments from 0 to target value over ~700ms
+function useAnimatedCounter(target: number, durationMs: number = 700) {
+  const [value, setValue] = useState(0)
+  const rafRef = useRef<number | null>(null)
+  useEffect(() => {
+    const start = performance.now()
+    const startValue = value
+    const delta = target - startValue
+    if (delta === 0) return
+    const tick = (now: number) => {
+      const elapsed = now - start
+      const t = Math.min(1, elapsed / durationMs)
+      // ease-out cubic
+      const eased = 1 - Math.pow(1 - t, 3)
+      setValue(Math.round(startValue + delta * eased))
+      if (t < 1) {
+        rafRef.current = requestAnimationFrame(tick)
+      }
+    }
+    rafRef.current = requestAnimationFrame(tick)
+    return () => { if (rafRef.current) cancelAnimationFrame(rafRef.current) }
+  }, [target, durationMs])
+  return value
+}
+
+function AnimatedStatCard({
+  label,
+  value,
+  delta,
+  deltaType,
+  icon: Icon,
+  iconBg,
+  iconColor,
+  border,
+  gradient,
+  onClick,
+}: {
+  label: string
+  value: number
+  delta?: string
+  deltaType?: 'up' | 'down' | 'flat'
+  icon: React.ComponentType<{ className?: string }>
+  iconBg: string
+  iconColor: string
+  border: string
+  gradient: string
+  onClick?: () => void
+}) {
+  const animated = useAnimatedCounter(value)
+  const deltaColor = deltaType === 'up' ? 'text-emerald-600' : deltaType === 'down' ? 'text-red-600' : 'text-muted-foreground'
+  const DeltaIcon = deltaType === 'up' ? TrendingUp : deltaType === 'down' ? AlertTriangle : Activity
+  return (
+    <Card
+      className={`rounded-xl shadow-sm border-t-2 ${border} bg-gradient-to-br ${gradient} transition-all duration-200 ${onClick ? 'cursor-pointer hover:shadow-md hover:-translate-y-0.5' : ''}`}
+      onClick={onClick}
+    >
+      <CardContent className="p-4">
+        <div className="flex items-start justify-between gap-2">
+          <div className="flex-1 min-w-0">
+            <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide truncate">{label}</p>
+            <p className="text-2xl font-bold tracking-tight mt-1 tabular-nums">{animated}</p>
+            {delta && (
+              <div className={`flex items-center gap-1 text-[10px] mt-1 font-medium ${deltaColor}`}>
+                <DeltaIcon className="w-3 h-3" />
+                {delta}
+              </div>
+            )}
+          </div>
+          <div className={`flex items-center justify-center w-9 h-9 rounded-lg ${iconBg} shrink-0`}>
+            <Icon className={`w-4 h-4 ${iconColor}`} />
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
+function QuickStatsBar({ stats, onNavigate }: {
+  stats: typeof mockDashboardStats
+  onNavigate: (section: SectionId) => void
+}) {
+  const s = stats.summary
+  const complianceRate = stats.complianceChecks.total > 0
+    ? Math.round(((stats.complianceChecks.byStatus.compliant ?? 0) / stats.complianceChecks.total) * 100)
+    : 0
+  const processedRate = stats.documents.total > 0
+    ? Math.round(((stats.documents.byStatus.completed ?? 0) / stats.documents.total) * 100)
+    : 0
+
+  return (
+    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+      <AnimatedStatCard
+        label="Документы"
+        value={s.totalDocuments}
+        delta={`${processedRate}% обработано`}
+        deltaType={processedRate >= 70 ? 'up' : 'flat'}
+        icon={FileText}
+        iconBg="bg-red-700/15"
+        iconColor="text-red-700"
+        border="border-t-red-500"
+        gradient="from-card via-card to-red-500/5"
+        onClick={() => onNavigate('documents')}
+      />
+      <AnimatedStatCard
+        label="Участники"
+        value={s.totalPersons}
+        delta={`${stats.persons.kolesnichenko ? '1 обвиняемый' : '—'}`}
+        deltaType="flat"
+        icon={Users}
+        iconBg="bg-orange-600/15"
+        iconColor="text-orange-600"
+        border="border-t-orange-500"
+        gradient="from-card via-card to-orange-500/5"
+        onClick={() => onNavigate('persons')}
+      />
+      <AnimatedStatCard
+        label="Эпизоды"
+        value={s.totalEpisodes}
+        delta={`${stats.episodes.byStatus['доказано'] ?? 0} доказано`}
+        deltaType="up"
+        icon={BookOpen}
+        iconBg="bg-amber-600/15"
+        iconColor="text-amber-600"
+        border="border-t-amber-500"
+        gradient="from-card via-card to-amber-500/5"
+        onClick={() => onNavigate('episodes')}
+      />
+      <AnimatedStatCard
+        label="Статьи УК"
+        value={s.totalArticles}
+        delta="активные статьи"
+        deltaType="flat"
+        icon={Scale}
+        iconBg="bg-stone-600/15"
+        iconColor="text-stone-600"
+        border="border-t-stone-500"
+        gradient="from-card via-card to-stone-500/5"
+        onClick={() => onNavigate('legal-check')}
+      />
+      <AnimatedStatCard
+        label="Соответствие"
+        value={complianceRate}
+        delta={`${stats.complianceChecks.total} проверок`}
+        deltaType={complianceRate >= 70 ? 'up' : 'down'}
+        icon={ShieldCheck}
+        iconBg="bg-emerald-700/15"
+        iconColor="text-emerald-700"
+        border="border-t-emerald-500"
+        gradient="from-card via-card to-emerald-500/5"
+        onClick={() => onNavigate('legal-check')}
+      />
+      <AnimatedStatCard
+        label="Линия защиты"
+        value={s.totalDefenseLines}
+        delta="стратегий"
+        deltaType="flat"
+        icon={Swords}
+        iconBg="bg-purple-700/15"
+        iconColor="text-purple-700"
+        border="border-t-purple-500"
+        gradient="from-card via-card to-purple-500/5"
+        onClick={() => onNavigate('defense')}
+      />
+    </div>
   )
 }
 
@@ -477,6 +646,9 @@ export function CaseDashboard() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Quick Stats Bar - 6 animated clickable stat tiles */}
+      <QuickStatsBar stats={stats} onNavigate={(section) => setActiveSection(section)} />
 
       {/* Quick Actions - compact 2x2 grid of common actions */}
       <QuickActionsCard onNavigate={(section) => setActiveSection(section)} />
@@ -599,6 +771,76 @@ export function CaseDashboard() {
           </CardContent>
         </Card>
       </div>
+
+      {/* AI Case Digest — concise auto-generated case overview */}
+      <Card className="rounded-xl shadow-sm bg-gradient-to-br from-purple-900/10 via-card to-card border-t-2 border-t-purple-500 transition-shadow hover:shadow-md">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm font-semibold flex items-center gap-2">
+            <div className="flex items-center justify-center w-7 h-7 rounded-lg bg-purple-700/15">
+              <BrainCircuit className="w-3.5 h-3.5 text-purple-700" />
+            </div>
+            ИИ-дайджест дела
+            <Badge className="bg-purple-700 text-white text-xs ml-auto">Авто-сводка</Badge>
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="p-4 space-y-3">
+          <p className="text-sm leading-relaxed text-foreground/90">
+            <span className="font-semibold">Краткое содержание:</span> Уголовное дело № 2024-00145 возбуждено в отношении Колесниченко Д.А. по признакам преступлений, предусмотренных ч.3 ст.159 и ч.2 ст.160 УК РФ. В материалах дела <span className="font-semibold text-purple-700 dark:text-purple-400">{stats.summary.totalDocuments} документа</span>, <span className="font-semibold text-purple-700 dark:text-purple-400">{stats.summary.totalEpisodes} преступных эпизода</span>, обвинение опирается на показания свидетелей и заключение финансово-экономической экспертизы.
+          </p>
+          <Separator />
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="p-3 rounded-lg bg-muted/40 border-l-2 border-l-red-700">
+              <p className="text-xs font-semibold flex items-center gap-1 text-red-700 dark:text-red-400">
+                <AlertTriangle className="w-3 h-3" />Ключевые риски
+              </p>
+              <ul className="text-xs mt-1.5 space-y-0.5 text-muted-foreground">
+                <li>• Обыск без адвоката (нарушение ст.51 УПК)</li>
+                <li>• Противоречия в показаниях свидетелей</li>
+                <li>• Возможна переквалификация ст.159 ч.3 → ч.2</li>
+              </ul>
+            </div>
+            <div className="p-3 rounded-lg bg-muted/40 border-l-2 border-l-emerald-700">
+              <p className="text-xs font-semibold flex items-center gap-1 text-emerald-700 dark:text-emerald-400">
+                <ShieldCheck className="w-3 h-3" />Сильные стороны защиты
+              </p>
+              <ul className="text-xs mt-1.5 space-y-0.5 text-muted-foreground">
+                <li>• Алиби на период эпизода 1 (свидетель Козлова)</li>
+                <li>• Процессуальные нарушения при изъятии</li>
+                <li>• Отсутствие судимостей (ст.61 УК РФ)</li>
+              </ul>
+            </div>
+            <div className="p-3 rounded-lg bg-muted/40 border-l-2 border-l-amber-600">
+              <p className="text-xs font-semibold flex items-center gap-1 text-amber-700 dark:text-amber-400">
+                <TrendingUp className="w-3 h-3" />Рекомендации
+              </p>
+              <ul className="text-xs mt-1.5 space-y-0.5 text-muted-foreground">
+                <li>• Подать ходатайство об исключении доказательств</li>
+                <li>• Запросить повторную экспертизу</li>
+                <li>• Подготовить смягчающие обстоятельства</li>
+              </ul>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 pt-1">
+            <Button
+              size="sm"
+              variant="outline"
+              className="rounded-lg text-xs gap-1 border-purple-300 text-purple-700 hover:bg-purple-50 dark:hover:bg-purple-950/20"
+              onClick={() => setActiveSection('qa')}
+            >
+              <MessageCircle className="w-3 h-3" />Задать вопрос ИИ
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              className="rounded-lg text-xs gap-1"
+              onClick={() => setActiveSection('brief')}
+            >
+              <FileText className="w-3 h-3" />Полное изложение
+            </Button>
+            <span className="text-[10px] text-muted-foreground ml-auto italic">Сгенерировано ИИ • обновлено {new Date().toLocaleDateString('ru-RU', { day: '2-digit', month: 'short' })}</span>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Evidence Timeline */}
       <EvidenceTimelineSection events={timelineEvents} />

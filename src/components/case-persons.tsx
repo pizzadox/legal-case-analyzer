@@ -11,7 +11,8 @@ import { Separator } from '@/components/ui/separator'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from '@/components/ui/chart'
 import { Bar, BarChart, XAxis, YAxis, Cell } from 'recharts'
-import { Users, Shield, Star, ChevronDown, ChevronUp, AlertTriangle, Gavel, Download, FileText, Link2, MessageSquare, Target, ArrowRight, MapPin, Cake, CheckCircle, XCircle, GitCompare, Plus, X, RefreshCw } from 'lucide-react'
+import { Users, Shield, Star, ChevronDown, ChevronUp, AlertTriangle, Gavel, Download, FileText, Link2, MessageSquare, Target, ArrowRight, MapPin, Cake, CheckCircle, XCircle, GitCompare, Plus, X, RefreshCw, Share2, Network, Minus, RotateCcw, ZoomIn, ZoomOut } from 'lucide-react'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { mockPersons, mockPersonRelationships, mockWitnessStatements } from '@/lib/mock-data'
 import { getPersons, getPersonRelationships, getWitnessStatements } from '@/lib/case-api'
 import type { PersonData, PersonRelationship, WitnessStatementData } from '@/lib/case-store'
@@ -248,6 +249,461 @@ function RelationshipMap({ relationships, persons }: { relationships: PersonRela
   )
 }
 
+// === Граф связей участников ===
+// Интерактивная визуализация связей между участниками уголовного дела
+// с круговой раскладкой узлов, подсветкой при наведении и попапом при клике.
+
+// Типы для графа связей
+type GraphRole = 'обвиняемый' | 'соучастник' | 'свидетель' | 'потерпевшая' | 'следователь'
+
+interface GraphNode {
+  id: string
+  name: string
+  role: GraphRole
+  status: string
+  occupation: string
+  description: string
+  isKolesnichenko?: boolean
+}
+
+interface GraphEdge {
+  source: string
+  target: string
+  label: string
+}
+
+// Моковые данные графа на основе участников дела Кolesnichenko
+const GRAPH_NODES: GraphNode[] = [
+  { id: 'kolesnichenko', name: 'Колесниченко Д.А.', role: 'обвиняемый', status: 'задержанный', occupation: 'Бывший директор ООО "ТехноПром"', description: 'Главный обвиняемый — организатор хищения средств инвесторов', isKolesnichenko: true },
+  { id: 'sidorov', name: 'Сидоров А.П.', role: 'соучастник', status: 'под подпиской', occupation: 'Бухгалтер ООО "ТехноПром"', description: 'Соучастник, отвечал за финансовое оформление операций' },
+  { id: 'petrov', name: 'Петров И.С.', role: 'свидетель', status: 'допрошен', occupation: 'Бывший менеджер ООО', description: 'Свидетель обвинения, давал показания против Кolesnichenko' },
+  { id: 'kozlova', name: 'Козлова Е.М.', role: 'свидетель', status: 'допрошена', occupation: 'Коллега по работе', description: 'Свидетель защиты, подтверждает алиби на период эпизода 1' },
+  { id: 'morozova', name: 'Морозова А.В. (ООО "ТехноПром")', role: 'потерпевшая', status: 'признана потерпевшей', occupation: 'Представитель ООО "ТехноПром"', description: 'Юридический представитель потерпевшей организации' },
+]
+
+const GRAPH_EDGES: GraphEdge[] = [
+  { source: 'kolesnichenko', target: 'sidorov', label: 'соучастники' },
+  { source: 'kolesnichenko', target: 'petrov', label: 'давал показания' },
+  { source: 'kolesnichenko', target: 'kozlova', label: 'алиби-свидетель' },
+  { source: 'kolesnichenko', target: 'morozova', label: 'потерпевшая сторона' },
+  { source: 'kozlova', target: 'petrov', label: 'коллеги' },
+  { source: 'morozova', target: 'sidorov', label: 'финансовая связь' },
+]
+
+// Цветовая палитра ролей (без indigo и blue-700)
+const ROLE_COLOR: Record<GraphRole, string> = {
+  обвиняемый: '#b91c1c', // red-700
+  соучастник: '#ea580c', // orange-600
+  свидетель: '#57534e', // stone-600
+  потерпевшая: '#047857', // emerald-700
+  следователь: '#7e22ce', // purple-700
+}
+
+const ROLE_LABEL_RU: Record<GraphRole, string> = {
+  обвиняемый: 'Обвиняемый',
+  соучастник: 'Соучастник',
+  свидетель: 'Свидетель',
+  потерпевшая: 'Потерпевшая',
+  следователь: 'Следователь',
+}
+
+// Параметры круговой раскладки
+const GRAPH_W = 600
+const GRAPH_H = 500
+const CENTER_X = GRAPH_W / 2
+const CENTER_Y = GRAPH_H / 2
+const OUTER_RADIUS = 175
+
+function PersonRelationshipGraph() {
+  const [hoveredNode, setHoveredNode] = useState<string | null>(null)
+  const [selectedNode, setSelectedNode] = useState<string | null>(null)
+  const [collapsed, setCollapsed] = useState(false)
+  const [viewBox, setViewBox] = useState({ x: 0, y: 0, w: GRAPH_W, h: GRAPH_H })
+
+  const DEFAULT_VB = { x: 0, y: 0, w: GRAPH_W, h: GRAPH_H }
+  const MIN_W = 200
+  const MAX_W = 1500
+
+  // Расчёт координат: Кolesnichenko в центре, остальные — по кругу
+  const positions = useMemo(() => {
+    const pos: Record<string, { x: number; y: number }> = {}
+    const outerNodes = GRAPH_NODES.filter(n => !n.isKolesnichenko)
+    GRAPH_NODES.forEach(n => {
+      if (n.isKolesnichenko) {
+        pos[n.id] = { x: CENTER_X, y: CENTER_Y }
+      } else {
+        const idx = outerNodes.findIndex(o => o.id === n.id)
+        // Начинаем сверху (-90°), равномерно по кругу
+        const angle = (-90 + idx * (360 / outerNodes.length)) * Math.PI / 180
+        pos[n.id] = {
+          x: CENTER_X + OUTER_RADIUS * Math.cos(angle),
+          y: CENTER_Y + OUTER_RADIUS * Math.sin(angle),
+        }
+      }
+    })
+    return pos
+  }, [])
+
+  // Множество узлов, связанных с наведённым
+  const hoveredConnections = useMemo(() => {
+    if (!hoveredNode) return null
+    const ids = new Set<string>()
+    GRAPH_EDGES.forEach(e => {
+      if (e.source === hoveredNode) ids.add(e.target)
+      if (e.target === hoveredNode) ids.add(e.source)
+    })
+    return ids
+  }, [hoveredNode])
+
+  const isNodeDimmed = (id: string) => {
+    if (!hoveredNode) return false
+    return id !== hoveredNode && !hoveredConnections?.has(id)
+  }
+
+  const isEdgeHighlighted = (e: GraphEdge) => {
+    if (!hoveredNode) return false
+    return e.source === hoveredNode || e.target === hoveredNode
+  }
+
+  const isEdgeDimmed = (e: GraphEdge) => {
+    if (!hoveredNode) return false
+    return !isEdgeHighlighted(e)
+  }
+
+  // Управление масштабом через viewBox
+  const zoomIn = () => {
+    setViewBox(vb => {
+      const newW = Math.max(MIN_W, vb.w / 1.25)
+      const newH = Math.max(MIN_W * (GRAPH_H / GRAPH_W), vb.h / 1.25)
+      const newX = vb.x + (vb.w - newW) / 2
+      const newY = vb.y + (vb.h - newH) / 2
+      return { x: newX, y: newY, w: newW, h: newH }
+    })
+  }
+  const zoomOut = () => {
+    setViewBox(vb => {
+      const newW = Math.min(MAX_W, vb.w * 1.25)
+      const newH = Math.min(MAX_W * (GRAPH_H / GRAPH_W), vb.h * 1.25)
+      const newX = vb.x - (newW - vb.w) / 2
+      const newY = vb.y - (newH - vb.h) / 2
+      return { x: newX, y: newY, w: newW, h: newH }
+    })
+  }
+  const resetZoom = () => setViewBox(DEFAULT_VB)
+
+  const selected = selectedNode ? GRAPH_NODES.find(n => n.id === selectedNode) ?? null : null
+
+  return (
+    <Card className="rounded-xl shadow-sm border-l-4 border-amber-600">
+      <CardHeader className="pb-2">
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <CardTitle className="text-sm flex items-center gap-2">
+            <Share2 className="w-4 h-4 text-amber-600" /> Граф связей участников
+            <Badge variant="outline" className="text-xs">{GRAPH_NODES.length} узлов · {GRAPH_EDGES.length} связей</Badge>
+          </CardTitle>
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-7 rounded-lg gap-1"
+            onClick={() => setCollapsed(c => !c)}
+            aria-label={collapsed ? 'Развернуть граф' : 'Свернуть граф'}
+          >
+            {collapsed ? <ChevronDown className="w-4 h-4" /> : <ChevronUp className="w-4 h-4" />}
+            {collapsed ? 'Развернуть граф' : 'Свернуть граф'}
+          </Button>
+        </div>
+      </CardHeader>
+
+      {!collapsed && (
+        <CardContent className="p-4 space-y-3">
+          {/* Панель управления масштабом и подсказка */}
+          <div className="flex items-center gap-1 flex-wrap">
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button size="sm" variant="outline" className="h-7 w-7 p-0 rounded-lg" onClick={zoomIn} aria-label="Увеличить">
+                    <ZoomIn className="w-3.5 h-3.5" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Увеличить масштаб графа</TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button size="sm" variant="outline" className="h-7 w-7 p-0 rounded-lg" onClick={zoomOut} aria-label="Уменьшить">
+                    <ZoomOut className="w-3.5 h-3.5" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Уменьшить масштаб графа</TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button size="sm" variant="outline" className="h-7 px-2 rounded-lg gap-1" onClick={resetZoom} aria-label="Сбросить масштаб">
+                    <RotateCcw className="w-3.5 h-3.5" /> Сброс
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Вернуть исходный масштаб</TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+            <Separator orientation="vertical" className="h-5 mx-2" />
+            <span className="text-xs text-muted-foreground">
+              Наведите курсор для подсветки связей · нажмите на узел для подробной информации
+            </span>
+          </div>
+
+          {/* SVG-граф */}
+          <div className="relative w-full rounded-xl bg-gradient-to-br from-muted/30 to-muted/10 border border-stone-200/60 dark:border-stone-800/60 overflow-hidden">
+            <svg
+              viewBox={`${viewBox.x} ${viewBox.y} ${viewBox.w} ${viewBox.h}`}
+              className="w-full block"
+              style={{ height: '500px' }}
+              role="img"
+              aria-label="Граф связей участников уголовного дела"
+            >
+              <defs>
+                {/* Маркер стрелки (обычная) */}
+                <marker id="rel-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                  <path d="M 0 0 L 10 5 L 0 10 z" fill="#a8a29e" />
+                </marker>
+                {/* Маркер стрелки (активная — при наведении) */}
+                <marker id="rel-arrow-active" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                  <path d="M 0 0 L 10 5 L 0 10 z" fill="#ea580c" />
+                </marker>
+              </defs>
+
+              {/* Рёбра (линии связей) */}
+              {GRAPH_EDGES.map((e, i) => {
+                const src = positions[e.source]
+                const tgt = positions[e.target]
+                if (!src || !tgt) return null
+                const highlighted = isEdgeHighlighted(e)
+                const dimmed = isEdgeDimmed(e)
+                const dx = tgt.x - src.x
+                const dy = tgt.y - src.y
+                const dist = Math.max(1, Math.sqrt(dx * dx + dy * dy))
+                const srcNode = GRAPH_NODES.find(n => n.id === e.source)
+                const tgtNode = GRAPH_NODES.find(n => n.id === e.target)
+                const srcR = srcNode?.isKolesnichenko ? 30 : 24
+                const tgtR = tgtNode?.isKolesnichenko ? 30 : 24
+                // Укорачиваем линию с обеих сторон, чтобы не пересекала узлы и стрелку
+                const x1 = src.x + (dx / dist) * srcR
+                const y1 = src.y + (dy / dist) * srcR
+                const x2 = tgt.x - (dx / dist) * (tgtR + 6)
+                const y2 = tgt.y - (dy / dist) * (tgtR + 6)
+                // Середина ребра — для подписи
+                const midX = (x1 + x2) / 2
+                const midY = (y1 + y2) / 2
+                const labelW = Math.max(60, e.label.length * 6 + 12)
+                return (
+                  <g
+                    key={`edge-${i}`}
+                    style={{ opacity: dimmed ? 0.2 : 1, transition: 'opacity 200ms ease' }}
+                  >
+                    <line
+                      x1={x1} y1={y1} x2={x2} y2={y2}
+                      stroke={highlighted ? '#ea580c' : '#a8a29e'}
+                      strokeWidth={highlighted ? 2.5 : 1.5}
+                      markerEnd={`url(#${highlighted ? 'rel-arrow-active' : 'rel-arrow'})`}
+                    />
+                    {/* Подложка для подписи ребра */}
+                    <rect
+                      x={midX - labelW / 2}
+                      y={midY - 8}
+                      width={labelW}
+                      height={16}
+                      rx={4}
+                      fill="white"
+                      stroke={highlighted ? '#ea580c' : '#e7e5e4'}
+                      strokeWidth={0.5}
+                      opacity={0.95}
+                    />
+                    <text
+                      x={midX}
+                      y={midY}
+                      fontSize={9}
+                      textAnchor="middle"
+                      dominantBaseline="middle"
+                      fill={highlighted ? '#ea580c' : '#57534e'}
+                      className="font-medium"
+                      style={{ pointerEvents: 'none' }}
+                    >
+                      {e.label}
+                    </text>
+                  </g>
+                )
+              })}
+
+              {/* Узлы (круги) */}
+              {GRAPH_NODES.map(node => {
+                const pos = positions[node.id]
+                if (!pos) return null
+                const r = node.isKolesnichenko ? 28 : 22
+                const color = ROLE_COLOR[node.role]
+                const dimmed = isNodeDimmed(node.id)
+                const isSelected = selectedNode === node.id
+                const initials = node.name
+                  .replace(/\(.*?\)/g, '')
+                  .split(/\s+/)
+                  .filter(Boolean)
+                  .slice(0, 2)
+                  .map(p => p[0])
+                  .join('')
+                // Сокращённое имя для подписи под узлом
+                const shortLabel = node.name.length > 24 ? node.name.slice(0, 22) + '…' : node.name
+                return (
+                  <g
+                    key={node.id}
+                    style={{
+                      opacity: dimmed ? 0.3 : 1,
+                      transition: 'opacity 200ms ease',
+                      cursor: 'pointer',
+                    }}
+                    onMouseEnter={() => setHoveredNode(node.id)}
+                    onMouseLeave={() => setHoveredNode(null)}
+                    onClick={() => setSelectedNode(isSelected ? null : node.id)}
+                  >
+                    {/* Свечение для Кolesnichenko (amber-500) */}
+                    {node.isKolesnichenko && (
+                      <>
+                        <circle cx={pos.x} cy={pos.y} r={r + 10} fill="none" stroke="#f59e0b" strokeWidth={2} opacity={0.35} />
+                        <circle cx={pos.x} cy={pos.y} r={r + 5} fill="none" stroke="#f59e0b" strokeWidth={1.5} opacity={0.65} />
+                      </>
+                    )}
+                    {/* Кольцо выделения при клике */}
+                    {isSelected && (
+                      <circle
+                        cx={pos.x}
+                        cy={pos.y}
+                        r={r + 7}
+                        fill="none"
+                        stroke="#ea580c"
+                        strokeWidth={2}
+                        strokeDasharray="4 2"
+                      >
+                        <animateTransform
+                          attributeName="transform"
+                          attributeType="XML"
+                          type="rotate"
+                          from={`0 ${pos.x} ${pos.y}`}
+                          to={`360 ${pos.x} ${pos.y}`}
+                          dur="8s"
+                          repeatCount="indefinite"
+                        />
+                      </circle>
+                    )}
+                    {/* Тень-подложка для узла */}
+                    <circle cx={pos.x + 1} cy={pos.y + 2} r={r} fill="black" opacity={0.15} />
+                    {/* Основной круг узла */}
+                    <circle
+                      cx={pos.x}
+                      cy={pos.y}
+                      r={r}
+                      fill={color}
+                      stroke={node.isKolesnichenko ? '#f59e0b' : '#ffffff'}
+                      strokeWidth={node.isKolesnichenko ? 3 : 2}
+                    />
+                    {/* Инициалы внутри круга */}
+                    <text
+                      x={pos.x}
+                      y={pos.y}
+                      fontSize={node.isKolesnichenko ? 13 : 11}
+                      fontWeight={700}
+                      textAnchor="middle"
+                      dominantBaseline="middle"
+                      fill="white"
+                      style={{ pointerEvents: 'none', userSelect: 'none' } as React.CSSProperties}
+                    >
+                      {initials}
+                    </text>
+                    {/* Подпись под узлом */}
+                    <text
+                      x={pos.x}
+                      y={pos.y + r + 14}
+                      fontSize={11}
+                      textAnchor="middle"
+                      fill="#292524"
+                      className="font-medium"
+                      style={{ pointerEvents: 'none', userSelect: 'none' } as React.CSSProperties}
+                    >
+                      {shortLabel}
+                    </text>
+                  </g>
+                )
+              })}
+            </svg>
+
+            {/* Попап с деталями при клике на узел */}
+            {selected && (
+              <div className="absolute top-3 right-3 w-[230px] z-10 animate-in fade-in-0 zoom-in-95 duration-200">
+                <Card className="rounded-lg shadow-md border border-amber-300/60 dark:border-amber-700/60">
+                  <CardContent className="p-3 space-y-2">
+                    <div className="flex items-start justify-between gap-2">
+                      <p className="text-xs font-semibold leading-tight">{selected.name}</p>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="h-5 w-5 shrink-0"
+                        onClick={() => setSelectedNode(null)}
+                        aria-label="Закрыть"
+                      >
+                        <X className="w-3 h-3" />
+                      </Button>
+                    </div>
+                    <div className="flex items-center gap-1 flex-wrap">
+                      <Badge
+                        className="text-[10px] text-white"
+                        style={{ backgroundColor: ROLE_COLOR[selected.role] }}
+                      >
+                        {ROLE_LABEL_RU[selected.role]}
+                      </Badge>
+                      <Badge variant="outline" className="text-[10px]">{selected.status}</Badge>
+                      {selected.isKolesnichenko && (
+                        <Badge className="bg-amber-600 text-white text-[10px]">Главный обвиняемый</Badge>
+                      )}
+                    </div>
+                    {selected.occupation && (
+                      <p className="text-[10px] text-muted-foreground">
+                        <span className="font-medium">Должность:</span> {selected.occupation}
+                      </p>
+                    )}
+                    <p className="text-[10px] leading-relaxed">{selected.description}</p>
+                  </CardContent>
+                </Card>
+              </div>
+            )}
+          </div>
+
+          {/* Легенда ролей */}
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-2 p-3 rounded-lg bg-muted/30 border border-stone-200/50 dark:border-stone-800/50">
+            <span className="text-xs font-semibold text-muted-foreground flex items-center gap-1">
+              <Network className="w-3 h-3" /> Легенда:
+            </span>
+            {(Object.keys(ROLE_COLOR) as GraphRole[]).map(role => (
+              <TooltipProvider key={role}>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <div className="flex items-center gap-1.5 cursor-help">
+                      <span
+                        className="inline-block w-3 h-3 rounded-full ring-2 ring-white/70 dark:ring-stone-900/70"
+                        style={{ backgroundColor: ROLE_COLOR[role] }}
+                      />
+                      <span className="text-xs">{ROLE_LABEL_RU[role]}</span>
+                    </div>
+                  </TooltipTrigger>
+                  <TooltipContent>Роль участника: {ROLE_LABEL_RU[role]}</TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            ))}
+            <div className="flex items-center gap-1.5 ml-2 pl-2 border-l border-stone-300/60 dark:border-stone-700/60">
+              <span className="inline-block w-3 h-3 rounded-full ring-2 ring-amber-500" style={{ backgroundColor: ROLE_COLOR['обвиняемый'] }} />
+              <span className="text-xs">Главный обвиняемый (Кolesnichenko)</span>
+            </div>
+          </div>
+        </CardContent>
+      )}
+    </Card>
+  )
+}
+
 export function CasePersons() {
   const [roleFilter, setRoleFilter] = useState('all')
   const [expandedId, setExpandedId] = useState<string | null>(null)
@@ -287,6 +743,9 @@ export function CasePersons() {
 
   return (
     <div className="space-y-6">
+      {/* Граф связей участников — интерактивная визуализация сверху */}
+      <PersonRelationshipGraph />
+
       {/* Guilt Assessment Summary - Enhanced with progress bars + breakdown */}
       <Card className="bg-gradient-to-r from-red-900/20 to-stone-900/10 rounded-xl shadow-sm border-l-4 border-red-700">
         <CardContent className="p-4">

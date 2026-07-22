@@ -138,14 +138,23 @@ function exportComplianceCSV(items: LegalComplianceData[]) {
 
 // Compliance Timeline component
 function ComplianceTimeline({ items }: { items: LegalComplianceData[] }) {
-  const sorted = [...items].sort((a, b) => new Date(b.checkedAt).getTime() - new Date(a.checkedAt).getTime())
+  const sorted = [...items]
+    .filter(i => i && i.checkedAt)
+    .sort((a, b) => new Date(b.checkedAt).getTime() - new Date(a.checkedAt).getTime())
   return (
     <Card className="rounded-xl shadow-sm">
       <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2"><Clock className="w-4 h-4 text-amber-600" /> Хронология проверок</CardTitle></CardHeader>
       <CardContent className="p-4">
         <div className="relative pl-6 space-y-3 max-h-80 overflow-y-auto">
+          {sorted.length === 0 && (
+            <p className="text-xs text-muted-foreground italic">Нет данных о проверках</p>
+          )}
           {sorted.map((item, i) => {
             const statusConfig = STATUS[item.status] ?? STATUS.needs_review
+            const dateObj = new Date(item.checkedAt)
+            const dateStr = isNaN(dateObj.getTime())
+              ? '—'
+              : dateObj.toLocaleString('ru-RU', { day: '2-digit', month: 'short', year: 'numeric' })
             return (
               <div key={item.id} className="relative group">
                 <div className={`absolute -left-6 w-3 h-3 rounded-full ${statusConfig.dotColor} ring-2 ring-background transition-transform group-hover:scale-125`} />
@@ -157,7 +166,7 @@ function ComplianceTimeline({ items }: { items: LegalComplianceData[] }) {
                       <span className="text-xs font-medium">{TYPE_LABEL[item.checkType] ?? item.checkType}</span>
                     </div>
                     <p className="text-xs text-muted-foreground mt-1">{item.description}</p>
-                    <p className="text-xs text-muted-foreground">{new Date(item.checkedAt).toLocaleString('ru-RU', { day: '2-digit', month: 'short', year: 'numeric' })}</p>
+                    <p className="text-xs text-muted-foreground">{dateStr}</p>
                   </div>
                 </div>
               </div>
@@ -319,7 +328,12 @@ export function CaseLegalCheck() {
                 </div>
               )}
               <Separator />
-              <p className="text-xs text-muted-foreground flex items-center gap-1">{new Date(item.checkedAt).toLocaleString('ru')}</p>
+              <p className="text-xs text-muted-foreground flex items-center gap-1">
+                {(() => {
+                  const d = new Date(item.checkedAt)
+                  return isNaN(d.getTime()) ? '—' : d.toLocaleString('ru-RU', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+                })()}
+              </p>
             </AccordionContent>
           </AccordionItem>
         ))}

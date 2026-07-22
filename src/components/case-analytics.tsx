@@ -210,11 +210,15 @@ export function CaseAnalytics() {
           <CardTitle className="text-sm flex items-center gap-2">
             <Activity className="w-4 h-4 text-emerald-600" /> Тренд обработки документов
             <Badge variant="outline" className="text-xs">{analytics.processingTrend.length} месяцев</Badge>
+            <div className="ml-auto flex items-center gap-3 text-xs text-muted-foreground">
+              <div className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-emerald-600" /> Обработано</div>
+              <div className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-amber-600" /> Ожидает</div>
+            </div>
           </CardTitle>
         </CardHeader>
         <CardContent className="p-4">
-          <ChartContainer config={trendChartConfig} className="h-48 w-full">
-            <AreaChart data={analytics.processingTrend}>
+          <ChartContainer config={trendChartConfig} className="h-64 w-full">
+            <AreaChart data={analytics.processingTrend} margin={{ top: 8, right: 12, left: 0, bottom: 4 }}>
               <defs>
                 <linearGradient id="colorProcessed" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="5%" stopColor="#059669" stopOpacity={0.6}/>
@@ -225,12 +229,12 @@ export function CaseAnalytics() {
                   <stop offset="95%" stopColor="#d97706" stopOpacity={0}/>
                 </linearGradient>
               </defs>
-              <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-              <XAxis dataKey="date" tick={{ fontSize: 12 }} />
-              <YAxis tick={{ fontSize: 12 }} />
+              <CartesianGrid strokeDasharray="3 3" className="stroke-muted" vertical={false} />
+              <XAxis dataKey="date" tick={{ fontSize: 11 }} tickLine={false} axisLine={false} dy={8} />
+              <YAxis tick={{ fontSize: 11 }} tickLine={false} axisLine={false} width={28} />
               <ChartTooltip content={<ChartTooltipContent />} />
-              <Area type="monotone" dataKey="processed" stroke="#059669" fill="url(#colorProcessed)" strokeWidth={2} />
-              <Area type="monotone" dataKey="pending" stroke="#d97706" fill="url(#colorPending)" strokeWidth={2} />
+              <Area type="monotone" dataKey="processed" stroke="#059669" fill="url(#colorProcessed)" strokeWidth={2.5} name="Обработано" />
+              <Area type="monotone" dataKey="pending" stroke="#d97706" fill="url(#colorPending)" strokeWidth={2.5} name="Ожидает" />
             </AreaChart>
           </ChartContainer>
         </CardContent>

@@ -77,20 +77,20 @@ function RiskMatrix({ items }: { items: RiskAssessmentData['matrix'] }) {
   return (
     <div className="space-y-2">
       <div className="flex justify-between text-xs text-muted-foreground"><span>↑ Влияние</span><span>Вероятность →</span></div>
-      <div className="grid grid-cols-6 gap-1">
+      <div className="grid grid-cols-6 gap-1.5">
         <div />
-        {[1, 2, 3, 4, 5].map(n => <div key={n} className="text-xs text-center text-muted-foreground">{n}</div>)}
+        {[1, 2, 3, 4, 5].map(n => <div key={n} className="text-xs text-center text-muted-foreground font-medium pt-1">{n}</div>)}
         {[5, 4, 3, 2, 1].map(imRow => (
           <Fragment key={`row-${imRow}`}>
-            <div className="text-xs text-muted-foreground flex items-center">{imRow}</div>
+            <div className="text-xs text-muted-foreground flex items-center justify-center font-medium">{imRow}</div>
             {[1, 2, 3, 4, 5].map(lCol => {
               const lik = lCol * 20 - 10, imp = imRow * 20 - 10
               const matched = items.find(it => Math.ceil(it.likelihood / 20) === lCol && Math.ceil(it.impact / 20) === imRow)
               return (
-                <div key={`${imRow}-${lCol}`} className={`relative aspect-square rounded ${matrixColor(lik, imp)} flex items-center justify-center transition-all duration-200 hover:scale-[1.05]`}>
+                <div key={`${imRow}-${lCol}`} className={`relative h-9 sm:h-10 rounded-md ${matrixColor(lik, imp)} flex items-center justify-center transition-all duration-200 hover:scale-[1.08] hover:z-10 hover:ring-2 hover:ring-foreground/40`}>
                   {matched && (
-                    <TooltipProvider delayDuration={200}><Tooltip><TooltipTrigger asChild><div className="w-2 h-2 rounded-full bg-white ring-2 ring-black" /></TooltipTrigger>
-                      <TooltipContent side="top" className="text-xs max-w-[200px]"><p className="font-semibold">{matched.category}</p><p>Вероятность: {matched.likelihood}%</p><p>Влияние: {matched.impact}%</p></TooltipContent>
+                    <TooltipProvider delayDuration={200}><Tooltip><TooltipTrigger asChild><div className="w-2.5 h-2.5 rounded-full bg-white ring-2 ring-black/70 shadow-sm" /></TooltipTrigger>
+                      <TooltipContent side="top" className="text-xs max-w-[220px]"><p className="font-semibold">{matched.category}</p><p>Вероятность: {matched.likelihood}%</p><p>Влияние: {matched.impact}%</p><p className="mt-1 italic text-muted-foreground">Уровень: {matched.riskLevel}</p></TooltipContent>
                     </Tooltip></TooltipProvider>
                   )}
                 </div>
@@ -98,6 +98,12 @@ function RiskMatrix({ items }: { items: RiskAssessmentData['matrix'] }) {
             })}
           </Fragment>
         ))}
+      </div>
+      <div className="flex items-center gap-3 text-[10px] text-muted-foreground pt-1">
+        <div className="flex items-center gap-1"><span className="w-3 h-3 rounded-sm bg-emerald-500/40" /> Низкий</div>
+        <div className="flex items-center gap-1"><span className="w-3 h-3 rounded-sm bg-amber-500/60" /> Средний</div>
+        <div className="flex items-center gap-1"><span className="w-3 h-3 rounded-sm bg-orange-500/70" /> Высокий</div>
+        <div className="flex items-center gap-1"><span className="w-3 h-3 rounded-sm bg-red-700/80" /> Критич.</div>
       </div>
     </div>
   )

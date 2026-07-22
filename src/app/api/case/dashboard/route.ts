@@ -259,6 +259,8 @@ export async function GET() {
           description: cc.description,
           recommendation: cc.recommendation,
           articleCode: cc.article?.code,
+          legalBasis: cc.legalBasis,
+          checkedAt: cc.checkedAt ? cc.checkedAt.toISOString() : null,
         })),
       },
     });
