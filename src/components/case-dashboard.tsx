@@ -10,7 +10,7 @@ import { Separator } from '@/components/ui/separator'
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from '@/components/ui/tooltip'
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from '@/components/ui/chart'
 import { Pie, PieChart, Cell, Bar, BarChart, XAxis, YAxis } from 'recharts'
-import { FileText, Users, BookOpen, AlertTriangle, Clock, CheckCircle, Upload, Zap, Shield, Scale, RefreshCw, XCircle, Gavel, Activity, MapPin, UploadCloud, BrainCircuit, ScaleIcon, FileSearch, Bookmark, Swords, History, Flame } from 'lucide-react'
+import { FileText, Users, BookOpen, AlertTriangle, Clock, CheckCircle, Upload, Zap, Shield, Scale, RefreshCw, XCircle, Gavel, Activity, MapPin, UploadCloud, BrainCircuit, ScaleIcon, FileSearch, Bookmark, Swords, History, Flame, CalendarClock, TrendingUp } from 'lucide-react'
 import { mockDashboardStats, mockCaseHealthScore, mockEvidenceTimeline, mockCaseBrief, mockBookmarks, mockCaseTimeline } from '@/lib/mock-data'
 import { getDashboardStats, getCaseHealthScore, getEvidenceTimeline, getCaseBrief, getBookmarks, getCaseTimeline } from '@/lib/case-api'
 import { useCaseStore } from '@/lib/case-store'
@@ -130,9 +130,13 @@ function CaseStrengthMeter({ brief }: { brief: typeof mockCaseBrief }) {
           <div className="h-4 rounded-full bg-stone-200 dark:bg-stone-700 overflow-hidden"><div className="h-full bg-gradient-to-r from-emerald-800 to-emerald-600 transition-all duration-700" style={{ width: `${defensePct}%` }} /></div>
         </div>
         <Separator />
-        <div className="grid grid-cols-2 gap-2 text-xs">
+        {/* Scenario rows - one per line to avoid truncation */}
+        <div className="space-y-1.5">
           {brief.predictedOutcome.map(o => (
-            <div key={o.scenario} className="flex items-center justify-between gap-1"><span className="truncate text-muted-foreground">{o.scenario}</span><Badge variant="outline" className="text-xs shrink-0">{o.probability}%</Badge></div>
+            <div key={o.scenario} className="flex items-center justify-between gap-2 text-xs p-1.5 rounded-md bg-muted/40">
+              <span className="flex-1 min-w-0 leading-tight">{o.scenario}</span>
+              <Badge variant="outline" className="text-xs shrink-0 font-semibold">{o.probability}%</Badge>
+            </div>
           ))}
         </div>
         <p className="text-xs text-muted-foreground">ИИ-прогноз исхода • Уверенность {brief.aiConfidence}%</p>
@@ -264,6 +268,44 @@ export function CaseDashboard() {
         <CaseStrengthMeter brief={brief} />
         <MiniTimelinePreview events={caseTimeline} onNavigate={() => setActiveSection('timeline')} />
       </div>
+
+      {/* Case velocity / Next hearing card - new feature */}
+      <Card className="rounded-xl shadow-sm border-l-4 border-emerald-700 bg-gradient-to-r from-emerald-900/10 to-transparent">
+        <CardContent className="p-4">
+          <div className="flex items-center gap-3">
+            <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-emerald-700/15">
+              <CalendarClock className="w-5 h-5 text-emerald-700" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">Следующее заседание</p>
+              <p className="text-sm font-bold mt-0.5">15 августа 2024, 10:00 — Предварительное слушание</p>
+              <p className="text-xs text-muted-foreground mt-0.5">Председатель: судья Петров А.В. • Зал №305</p>
+            </div>
+            <div className="text-right shrink-0">
+              <p className="text-3xl font-bold text-emerald-700">23</p>
+              <p className="text-xs text-muted-foreground">дня до заседания</p>
+            </div>
+          </div>
+          <Separator className="my-3" />
+          <div className="grid grid-cols-3 gap-2 text-xs">
+            <div className="p-2 rounded-md bg-muted/40">
+              <p className="font-medium text-muted-foreground">Прошло с возбуждения</p>
+              <p className="text-sm font-bold mt-0.5">156 дней</p>
+            </div>
+            <div className="p-2 rounded-md bg-muted/40">
+              <p className="font-medium text-muted-foreground">Осталось по сроку (ст.162)</p>
+              <p className="text-sm font-bold mt-0.5">~29 дней</p>
+            </div>
+            <div className="p-2 rounded-md bg-muted/40">
+              <p className="font-medium text-muted-foreground">Темп дела</p>
+              <p className="text-sm font-bold mt-0.5 flex items-center gap-1">
+                <TrendingUp className="w-3 h-3 text-amber-600" />
+                Средний
+              </p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* "Дело в цифрах" summary row */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">

@@ -9,7 +9,7 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/
 import { Skeleton } from '@/components/ui/skeleton'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import {
-  BookOpen, MapPin, Users, Scale, Clock, CheckCircle, AlertTriangle, XCircle, Calendar, FileText, Link2, Download
+  BookOpen, MapPin, Users, Scale, Clock, CheckCircle, AlertTriangle, XCircle, Calendar, FileText, Link2, Download, Gavel
 } from 'lucide-react'
 import { mockEpisodes } from '@/lib/mock-data'
 import { getEpisodes } from '@/lib/case-api'
@@ -83,8 +83,11 @@ export function CaseEpisodes() {
   const summary = useMemo(() => ({
     total: episodes.length,
     severe: episodes.filter(e => e.severity === 'особо тяжкое' || e.severity === 'тяжкое').length,
+    moderate: episodes.filter(e => e.severity === 'средней тяжести').length,
+    minor: episodes.filter(e => e.severity === 'небольшое').length,
     proven: episodes.filter(e => e.status === 'доказано').length,
     investigating: episodes.filter(e => e.status === 'расследуется').length,
+    doubtful: episodes.filter(e => e.status === 'сомнительно').length,
   }), [episodes])
 
   if (isLoading) return <div className="space-y-4">{[1, 2, 3].map(i => <Skeleton key={i} className="h-24 rounded-xl" />)}</div>
@@ -107,26 +110,66 @@ export function CaseEpisodes() {
         </CardContent>
       </Card>
 
-      {/* Summary */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        {[
-          { label: 'Всего', value: summary.total, icon: BookOpen, gradient: 'from-stone-800/30 via-stone-800/10 to-transparent', border: 'border-stone-600', iconBg: 'bg-stone-600/15', iconColor: 'text-stone-600' },
-          { label: 'Тяжкие', value: summary.severe, icon: AlertTriangle, gradient: 'from-red-900/30 via-red-900/10 to-transparent', border: 'border-red-700', iconBg: 'bg-red-700/15', iconColor: 'text-red-700' },
-          { label: 'Доказано', value: summary.proven, icon: CheckCircle, gradient: 'from-emerald-900/30 via-emerald-900/10 to-transparent', border: 'border-emerald-700', iconBg: 'bg-emerald-700/15', iconColor: 'text-emerald-700' },
-          { label: 'Расследуется', value: summary.investigating, icon: Clock, gradient: 'from-amber-900/30 via-amber-900/10 to-transparent', border: 'border-amber-600', iconBg: 'bg-amber-600/15', iconColor: 'text-amber-600' },
-        ].map(({ label, value, icon: Icon, gradient, border, iconBg, iconColor }) => (
-          <Card key={label} className={`border-l-4 ${border} bg-gradient-to-r ${gradient} rounded-xl shadow-sm transition-all duration-200 hover:shadow-md hover:scale-[1.02]`}>
-            <CardContent className="p-3">
-              <div className="flex items-center gap-2">
-                <div className={`flex items-center justify-center w-8 h-8 rounded-lg ${iconBg}`}>
-                  <Icon className={`w-4 h-4 ${iconColor}`} />
-                </div>
-                <span className="text-xl font-bold tracking-tight">{value}</span>
-              </div>
-              <p className="text-xs text-muted-foreground font-medium mt-1">{label}</p>
-            </CardContent>
-          </Card>
-        ))}
+      {/* Summary - Grouped by dimension with explicit labels */}
+      <div className="space-y-3">
+        {/* По тяжести dimension */}
+        <div>
+          <div className="flex items-center gap-2 mb-2 px-1">
+            <AlertTriangle className="w-3 h-3 text-red-700" />
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">По тяжести</p>
+            <Badge variant="outline" className="text-xs">{summary.total} всего</Badge>
+            <span className="text-xs text-muted-foreground ml-auto">сумма = {summary.severe + summary.moderate + summary.minor}</span>
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            {[
+              { label: 'Особо тяжкие', value: episodes.filter(e => e.severity === 'особо тяжкое').length, icon: AlertTriangle, gradient: 'from-red-900/40 via-red-900/15 to-transparent', border: 'border-red-800', iconBg: 'bg-red-800/15', iconColor: 'text-red-800' },
+              { label: 'Тяжкие', value: episodes.filter(e => e.severity === 'тяжкое').length, icon: AlertTriangle, gradient: 'from-red-900/30 via-red-900/10 to-transparent', border: 'border-red-700', iconBg: 'bg-red-700/15', iconColor: 'text-red-700' },
+              { label: 'Средней тяжести', value: summary.moderate, icon: BookOpen, gradient: 'from-orange-900/30 via-orange-900/10 to-transparent', border: 'border-orange-600', iconBg: 'bg-orange-600/15', iconColor: 'text-orange-600' },
+              { label: 'Небольшой', value: summary.minor, icon: BookOpen, gradient: 'from-amber-900/30 via-amber-900/10 to-transparent', border: 'border-amber-600', iconBg: 'bg-amber-600/15', iconColor: 'text-amber-600' },
+            ].map(({ label, value, icon: Icon, gradient, border, iconBg, iconColor }) => (
+              <Card key={label} className={`border-l-4 ${border} bg-gradient-to-r ${gradient} rounded-xl shadow-sm transition-all duration-200 hover:shadow-md hover:scale-[1.02]`}>
+                <CardContent className="p-3">
+                  <div className="flex items-center gap-2">
+                    <div className={`flex items-center justify-center w-7 h-7 rounded-lg ${iconBg}`}>
+                      <Icon className={`w-3.5 h-3.5 ${iconColor}`} />
+                    </div>
+                    <span className="text-xl font-bold tracking-tight">{value}</span>
+                  </div>
+                  <p className="text-xs text-muted-foreground font-medium mt-1">{label}</p>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </div>
+
+        {/* По статусу dimension */}
+        <div>
+          <div className="flex items-center gap-2 mb-2 px-1">
+            <CheckCircle className="w-3 h-3 text-emerald-700" />
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">По статусу доказывания</p>
+            <Badge variant="outline" className="text-xs">{summary.total} всего</Badge>
+            <span className="text-xs text-muted-foreground ml-auto">сумма = {summary.proven + summary.investigating + summary.doubtful}</span>
+          </div>
+          <div className="grid grid-cols-3 gap-3">
+            {[
+              { label: 'Доказано', value: summary.proven, icon: CheckCircle, gradient: 'from-emerald-900/30 via-emerald-900/10 to-transparent', border: 'border-emerald-700', iconBg: 'bg-emerald-700/15', iconColor: 'text-emerald-700' },
+              { label: 'Расследуется', value: summary.investigating, icon: Clock, gradient: 'from-amber-900/30 via-amber-900/10 to-transparent', border: 'border-amber-600', iconBg: 'bg-amber-600/15', iconColor: 'text-amber-600' },
+              { label: 'Сомнительно', value: summary.doubtful, icon: XCircle, gradient: 'from-red-900/30 via-red-900/10 to-transparent', border: 'border-red-700', iconBg: 'bg-red-700/15', iconColor: 'text-red-700' },
+            ].map(({ label, value, icon: Icon, gradient, border, iconBg, iconColor }) => (
+              <Card key={label} className={`border-l-4 ${border} bg-gradient-to-r ${gradient} rounded-xl shadow-sm transition-all duration-200 hover:shadow-md hover:scale-[1.02]`}>
+                <CardContent className="p-3">
+                  <div className="flex items-center gap-2">
+                    <div className={`flex items-center justify-center w-7 h-7 rounded-lg ${iconBg}`}>
+                      <Icon className={`w-3.5 h-3.5 ${iconColor}`} />
+                    </div>
+                    <span className="text-xl font-bold tracking-tight">{value}</span>
+                  </div>
+                  <p className="text-xs text-muted-foreground font-medium mt-1">{label}</p>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </div>
       </div>
 
       {/* Filter */}
@@ -210,6 +253,15 @@ export function CaseEpisodes() {
                       <Badge key={a.articleId} variant="outline" className="text-xs border-stone-300/50 font-medium">{a.article.code}</Badge>
                     ))}
                   </div>
+                  {/* Punishment preview per article */}
+                  <div className="mt-2 p-2 rounded-lg bg-red-50/50 dark:bg-red-950/20 border border-red-200/50 dark:border-red-900/30">
+                    <p className="text-xs font-semibold flex items-center gap-1 text-red-700 dark:text-red-400 mb-1"><Gavel className="w-3 h-3" />Возможное наказание:</p>
+                    <ul className="text-xs space-y-0.5 ml-1">
+                      <li>• Лишение свободы: 3–6 лет (тяжкое)</li>
+                      <li>• Штраф: до 500 000 руб.</li>
+                      <li>• Давность: 10 лет (ч.1 ст.78 УК РФ)</li>
+                    </ul>
+                  </div>
                 </div>
               )}
               {episode.locations.length > 0 && (
@@ -220,6 +272,13 @@ export function CaseEpisodes() {
                   ))}
                 </div>
               )}
+              {/* Statute of limitations indicator */}
+              <div className="flex items-center gap-2 p-2 rounded-lg bg-amber-50/40 dark:bg-amber-950/20 border border-amber-200/40 dark:border-amber-900/30">
+                <Clock className="w-3 h-3 text-amber-600 shrink-0" />
+                <p className="text-xs text-amber-800 dark:text-amber-400">
+                  <span className="font-medium">Срок давности:</span> истекает через ~7 лет (для тяжких — 10 лет по ст.78 УК РФ)
+                </p>
+              </div>
               {/* Linked Documents section */}
               <Separator />
               <p className="text-xs text-muted-foreground flex items-center gap-1"><FileText className="w-3 h-3" />Связанные документы: Эпизод № {episode.episodeNumber ?? '—'}</p>

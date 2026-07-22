@@ -11,7 +11,7 @@ import { Separator } from '@/components/ui/separator'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from '@/components/ui/chart'
 import { Bar, BarChart, XAxis, YAxis, Cell } from 'recharts'
-import { Users, Shield, Star, ChevronDown, ChevronUp, AlertTriangle, Gavel, Download, FileText, Link2, MessageSquare, Target } from 'lucide-react'
+import { Users, Shield, Star, ChevronDown, ChevronUp, AlertTriangle, Gavel, Download, FileText, Link2, MessageSquare, Target, ArrowRight, MapPin, Cake, CheckCircle, XCircle } from 'lucide-react'
 import { mockPersons, mockPersonRelationships, mockWitnessStatements } from '@/lib/mock-data'
 import { getPersons, getPersonRelationships, getWitnessStatements } from '@/lib/case-api'
 import type { PersonData, PersonRelationship, WitnessStatementData } from '@/lib/case-store'
@@ -187,38 +187,56 @@ function RelationshipMap({ relationships, persons }: { relationships: PersonRela
     return map
   }, [relationships])
 
+  // Compute relationship count for each person for visual emphasis
+  const relCount = useMemo(() => {
+    const counts: Record<string, number> = {}
+    relationships.forEach(r => {
+      counts[r.sourcePersonId] = (counts[r.sourcePersonId] ?? 0) + 1
+      counts[r.targetPersonId] = (counts[r.targetPersonId] ?? 0) + 1
+    })
+    return counts
+  }, [relationships])
+
   return (
     <Card className="rounded-xl shadow-sm">
       <CardHeader className="pb-2">
         <CardTitle className="text-sm flex items-center gap-2">
           <Link2 className="w-4 h-4 text-amber-600" /> Связи между участниками
+          <Badge variant="outline" className="text-xs">{relationships.length} связей</Badge>
         </CardTitle>
       </CardHeader>
       <CardContent className="p-4">
-        <div className="grid sm:grid-cols-2 gap-4 max-h-96 overflow-y-auto">
+        <div className="grid sm:grid-cols-2 gap-3 max-h-96 overflow-y-auto scrollbar-thin pr-1">
           {persons.map(person => {
             const rels = personRelMap[person.id] ?? []
+            const count = relCount[person.id] ?? 0
+            // Heat color: more relationships → more red
+            const heatClass = count >= 3 ? 'border-l-red-700 bg-red-50/40 dark:bg-red-950/20'
+              : count === 2 ? 'border-l-amber-600 bg-amber-50/40 dark:bg-amber-950/20'
+              : count === 1 ? 'border-l-stone-400 bg-stone-50/40 dark:bg-stone-900/20'
+              : 'border-l-transparent'
             return (
-              <Card key={person.id} className="rounded-xl border shadow-sm transition-shadow hover:shadow-md">
+              <Card key={person.id} className={`rounded-xl border border-l-4 ${heatClass} shadow-sm transition-all duration-200 hover:shadow-md hover:translate-x-0.5`}>
                 <CardContent className="p-3">
-                  <div className="flex items-center gap-2 mb-2">
-                    <Users className="w-4 h-4 text-muted-foreground" />
-                    <p className="font-medium text-sm truncate">{person.shortName ?? person.fullName}</p>
-                    <Badge className={ROLE_BADGE[person.role ?? ''] ?? 'bg-stone-500 text-white'}>{ROLE_LABEL[person.role ?? ''] ?? person.role}</Badge>
+                  <div className="flex items-center justify-between gap-2 mb-2">
+                    <div className="flex items-center gap-2 min-w-0 flex-1">
+                      <Users className="w-4 h-4 text-muted-foreground shrink-0" />
+                      <p className="font-medium text-sm truncate">{person.shortName ?? person.fullName}</p>
+                    </div>
+                    <Badge className={`${ROLE_BADGE[person.role ?? ''] ?? 'bg-stone-500 text-white'} text-xs shrink-0`}>{ROLE_LABEL[person.role ?? ''] ?? person.role}</Badge>
                   </div>
                   {rels.length > 0 ? (
                     <div className="space-y-1.5">
                       {rels.map(rel => (
-                        <div key={rel.id} className="flex items-center gap-1.5 text-xs">
-                          <span className="text-muted-foreground truncate">{person.shortName ?? person.fullName}</span>
-                          <span className="text-muted-foreground">→</span>
-                          <span className="font-medium truncate">{rel.targetPersonName}</span>
-                          <Badge className={`${REL_TYPE_BADGE[rel.relationshipType] ?? 'bg-stone-500 text-white'} text-xs shrink-0`}>{rel.relationshipType}</Badge>
+                        <div key={rel.id} className="flex items-center gap-1.5 text-xs bg-muted/40 rounded-md px-2 py-1.5">
+                          <ArrowRight className="w-3 h-3 text-amber-600 shrink-0" />
+                          <span className="font-medium truncate flex-1 min-w-0">{rel.targetPersonName}</span>
+                          <Badge className={`${REL_TYPE_BADGE[rel.relationshipType] ?? 'bg-stone-500 text-white'} text-[10px] shrink-0 leading-tight`}>{rel.relationshipType}</Badge>
                         </div>
                       ))}
                     </div>
                   ) : (
-                    <p className="text-xs text-muted-foreground">Нет связей</p>
+                    <p className="text-xs text-muted-foreground italic">Нет исходящих связей</p>
                   )}
                 </CardContent>
               </Card>
@@ -268,22 +286,34 @@ export function CasePersons() {
 
   return (
     <div className="space-y-6">
-      {/* Guilt Assessment Summary */}
-      <Card className="bg-gradient-to-r from-red-900/20 to-stone-900/10 rounded-xl shadow-sm">
+      {/* Guilt Assessment Summary - Enhanced with progress bars + breakdown */}
+      <Card className="bg-gradient-to-r from-red-900/20 to-stone-900/10 rounded-xl shadow-sm border-l-4 border-red-700">
         <CardContent className="p-4">
           <div className="flex items-center gap-3 mb-3">
             <div className="flex items-center justify-center w-9 h-9 rounded-xl bg-red-700/20">
               <AlertTriangle className="w-5 h-5 text-red-600" />
             </div>
-            <p className="font-semibold text-sm">Оценка виновности участников</p>
+            <div className="flex-1 min-w-0">
+              <p className="font-semibold text-sm">Оценка виновности участников</p>
+              <p className="text-xs text-muted-foreground">Распределение по уровню виновности ({persons.length} участников)</p>
+            </div>
+            <Badge className="bg-red-700 text-white text-xs">{guiltSummary.high + guiltSummary.moderate} обвиняемых</Badge>
           </div>
-          <div className="flex flex-wrap gap-3">
-            {Object.entries(guiltSummary).map(([level, count]) => (
-              <div key={level} className="flex items-center gap-2">
-                <Badge className={GUILT[level]?.badge ?? 'bg-stone-500 text-white'}>{GUILT[level]?.label ?? level}</Badge>
-                <span className="text-sm font-bold">{count}</span>
-              </div>
-            ))}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+            {Object.entries(guiltSummary).map(([level, count]) => {
+              const pct = persons.length > 0 ? Math.round((count / persons.length) * 100) : 0
+              const cfg = GUILT[level] ?? GUILT.none
+              return (
+                <div key={level} className="p-2 rounded-lg bg-background/60 border border-stone-200/40">
+                  <div className="flex items-center justify-between mb-1">
+                    <Badge className={`${cfg.badge} text-xs`}>{cfg.label}</Badge>
+                    <span className="text-sm font-bold">{count}</span>
+                  </div>
+                  <Progress value={pct} className="h-1.5" />
+                  <p className="text-xs text-muted-foreground mt-0.5">{pct}% от всех</p>
+                </div>
+              )
+            })}
           </div>
         </CardContent>
       </Card>
@@ -415,6 +445,60 @@ export function CasePersons() {
 
       {/* Witness Statements */}
       <WitnessStatementsSection statements={statements} />
+
+      {/* Alibi Verification Card - new feature for the main defendant */}
+      {kolesnichenko && (
+        <Card className="rounded-xl shadow-sm border-l-4 border-amber-600">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm flex items-center gap-2">
+              <Shield className="w-4 h-4 text-amber-600" /> Проверка алиби
+              <Badge variant="outline" className="text-xs">Колесниченко Д.А.</Badge>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-4 space-y-3">
+            {/* Alibi timeline visualization */}
+            <div className="grid sm:grid-cols-2 gap-3">
+              <div className="p-3 rounded-lg bg-emerald-50/50 dark:bg-emerald-950/20 border border-emerald-200/50 dark:border-emerald-900/30">
+                <p className="text-xs font-semibold text-emerald-700 dark:text-emerald-400 mb-1">Заявленное алиби</p>
+                <p className="text-xs text-muted-foreground">Находился в командировке в г. Санкт-Петербург</p>
+                <p className="text-xs text-muted-foreground mt-1">Период: 10.03.2024 — 14.03.2024</p>
+                <div className="mt-2 flex items-center gap-2">
+                  <Badge className="bg-emerald-700 text-white text-xs">Подтверждено документами</Badge>
+                </div>
+              </div>
+              <div className="p-3 rounded-lg bg-red-50/50 dark:bg-red-950/20 border border-red-200/50 dark:border-red-900/30">
+                <p className="text-xs font-semibold text-red-700 dark:text-red-400 mb-1">Опровержение</p>
+                <p className="text-xs text-muted-foreground">Свидетель Сидорова видела обвиняемого 12.03.2024 в Москве</p>
+                <p className="text-xs text-muted-foreground mt-1">Билет на поезд найден, но не использован</p>
+                <div className="mt-2 flex items-center gap-2">
+                  <Badge className="bg-red-700 text-white text-xs">Противоречие</Badge>
+                </div>
+              </div>
+            </div>
+            <Separator />
+            {/* Verification status */}
+            <div>
+              <p className="text-xs font-semibold mb-2">Статус проверки по источникам:</p>
+              <div className="space-y-1.5">
+                {[
+                  { src: 'Билеты на поезд', status: 'verified', note: 'Куплены, но не использованы' },
+                  { src: 'Свидетель Сидорова А.М.', status: 'contradicts', note: 'Видела в Москве 12.03' },
+                  { src: 'Отель "Невский"', status: 'unverified', note: 'Бронь была, но заселение не подтверждено' },
+                  { src: 'GPS-трекинг телефона', status: 'verified', note: 'Находился в СПб 10-11.03' },
+                ].map((v, i) => (
+                  <div key={i} className="flex items-center gap-2 text-xs p-1.5 rounded-md bg-muted/30">
+                    {v.status === 'verified' && <CheckCircle className="w-3 h-3 text-emerald-600 shrink-0" />}
+                    {v.status === 'contradicts' && <XCircle className="w-3 h-3 text-red-600 shrink-0" />}
+                    {v.status === 'unverified' && <AlertTriangle className="w-3 h-3 text-amber-600 shrink-0" />}
+                    <span className="font-medium flex-1 min-w-0 truncate">{v.src}</span>
+                    <span className="text-muted-foreground text-xs truncate">{v.note}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <Separator />
       <p className="text-xs text-muted-foreground">Показано {filtered.length} из {persons.length} участников дела</p>

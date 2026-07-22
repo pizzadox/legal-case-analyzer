@@ -11,7 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Separator } from '@/components/ui/separator'
 import { toast } from 'sonner'
 import {
-  FileText, Upload, RefreshCw, Eye, CheckCircle, Clock, AlertTriangle, Loader2, Zap, XCircle, Trash2, Scale, BookOpen, Gavel, GitCompare, Download, Link2, ShieldCheck, ShieldAlert, ShieldX
+  FileText, Upload, RefreshCw, Eye, CheckCircle, Clock, AlertTriangle, Loader2, Zap, XCircle, Trash2, Scale, BookOpen, Gavel, GitCompare, Download, Link2, ShieldCheck, ShieldAlert, ShieldX, BrainCircuit, Globe, TrendingDown
 } from 'lucide-react'
 import { mockDocuments, mockEvidenceChain } from '@/lib/mock-data'
 import * as caseApi from '@/lib/case-api'
@@ -357,6 +357,58 @@ export function CaseDocuments() {
 
       {/* Evidence Chain Section */}
       {evidenceChain.length > 0 && <EvidenceChainSection items={evidenceChain} />}
+
+      {/* AI Document Insights - new feature: smart metadata summary */}
+      <Card className="rounded-xl shadow-sm border-l-4 border-purple-700/50 bg-gradient-to-r from-purple-900/10 to-transparent">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm flex items-center gap-2">
+            <BrainCircuit className="w-4 h-4 text-purple-700" /> ИИ-инсайты по документам
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="p-4 space-y-3">
+          <div className="grid sm:grid-cols-3 gap-3">
+            {/* Languages detected */}
+            <div className="p-2 rounded-lg bg-muted/40">
+              <p className="text-xs font-semibold mb-1.5 flex items-center gap-1"><Globe className="w-3 h-3 text-amber-600" />Языки</p>
+              <div className="flex flex-wrap gap-1">
+                <Badge className="bg-emerald-700 text-white text-xs">Русский — 8</Badge>
+                <Badge variant="outline" className="text-xs">Английский — 1</Badge>
+              </div>
+            </div>
+            {/* Average processing time */}
+            <div className="p-2 rounded-lg bg-muted/40">
+              <p className="text-xs font-semibold mb-1.5 flex items-center gap-1"><Zap className="w-3 h-3 text-amber-600" />Среднее время</p>
+              <p className="text-lg font-bold">2.4 <span className="text-xs text-muted-foreground font-normal">сек/док</span></p>
+              <p className="text-xs text-emerald-700 flex items-center gap-1"><TrendingDown className="w-2 h-2" />-15% к прошлой неделе</p>
+            </div>
+            {/* Total pages processed */}
+            <div className="p-2 rounded-lg bg-muted/40">
+              <p className="text-xs font-semibold mb-1.5 flex items-center gap-1"><FileText className="w-3 h-3 text-amber-600" />Страниц обработано</p>
+              <p className="text-lg font-bold">{documents.reduce((s, d) => s + Math.ceil(d.fileSize / 50000), 0)} <span className="text-xs text-muted-foreground font-normal">стр.</span></p>
+              <p className="text-xs text-muted-foreground">в {documents.length} документах</p>
+            </div>
+          </div>
+          <Separator />
+          {/* Top entities extracted */}
+          <div>
+            <p className="text-xs font-semibold mb-1.5 flex items-center gap-1"><BrainCircuit className="w-3 h-3 text-purple-700" />Топ извлечённых сущностей</p>
+            <div className="flex flex-wrap gap-1.5">
+              {[
+                { ent: 'Колесниченко Д.А.', type: 'человек', color: 'bg-red-100 text-red-800 border-red-200' },
+                { ent: 'ООО "ФинансГрупп"', type: 'организация', color: 'bg-amber-100 text-amber-800 border-amber-200' },
+                { ent: 'ст. 159 ч.3 УК РФ', type: 'статья', color: 'bg-stone-100 text-stone-800 border-stone-300' },
+                { ent: 'г. Москва', type: 'место', color: 'bg-emerald-100 text-emerald-800 border-emerald-200' },
+                { ent: '15.03.2024', type: 'дата', color: 'bg-purple-100 text-purple-800 border-purple-200' },
+                { ent: 'бухгалтер', type: 'должность', color: 'bg-orange-100 text-orange-800 border-orange-200' },
+              ].map((e, i) => (
+                <Badge key={i} variant="outline" className={`text-xs border ${e.color} font-medium`}>
+                  {e.ent} <span className="opacity-60 ml-1">({e.type})</span>
+                </Badge>
+              ))}
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
       <Separator />
       <p className="text-xs text-muted-foreground">Показано {filteredDocs.length} из {documents.length} документов из базы данных</p>
