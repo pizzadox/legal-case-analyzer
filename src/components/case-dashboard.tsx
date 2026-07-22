@@ -83,7 +83,7 @@ const EVENT_TYPE_CONFIG: Record<string, { icon: React.ReactNode; dotColor: strin
   document_upload: { icon: <UploadCloud className="w-3 h-3 text-amber-600" />, dotColor: 'bg-amber-500' },
   analysis_complete: { icon: <CheckCircle className="w-3 h-3 text-emerald-600" />, dotColor: 'bg-emerald-500' },
   compliance_check: { icon: <Scale className="w-3 h-3 text-orange-600" />, dotColor: 'bg-orange-500' },
-  defense_update: { icon: <Shield className="w-3 h-3 text-blue-500" />, dotColor: 'bg-blue-500' },
+  defense_update: { icon: <Shield className="w-3 h-3 text-stone-500" />, dotColor: 'bg-stone-500' },
   episode_found: { icon: <BookOpen className="w-3 h-3 text-red-600" />, dotColor: 'bg-red-500' },
 }
 
@@ -575,6 +575,184 @@ function QuickStatsBar({ stats, onNavigate }: {
   )
 }
 
+// === Procedural Deadlines Tracker ===
+// Tracks key procedural deadlines under Russian CPC (УПК РФ) —-article 162 (investigation term),
+// article 109 (detention term), article 234 (preliminary hearing), article 321 (appeal term).
+const PROCEDURAL_DEADLINES = [
+  {
+    id: 'd1',
+    title: 'Ознакомление обвиняемого с материалами дела',
+    article: 'ст. 217 УПК РФ',
+    deadline: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000).toISOString(),
+    importance: 'high' as const,
+    status: 'upcoming' as const,
+    description: 'Колесниченко должен быть ознакомлен со всеми материалами дела до направления в суд',
+  },
+  {
+    id: 'd2',
+    title: 'Предварительное слушание',
+    article: 'ст. 234 УПК РФ',
+    deadline: new Date(Date.now() + 23 * 24 * 60 * 60 * 1000).toISOString(),
+    importance: 'critical' as const,
+    status: 'upcoming' as const,
+    description: 'Решение вопросов о допустимости доказательств, возврате дела прокурору',
+  },
+  {
+    id: 'd3',
+    title: 'Срок следствия по тяжкому преступлению',
+    article: 'ст. 162 ч.1 УПК РФ',
+    deadline: new Date(Date.now() + 29 * 24 * 60 * 60 * 1000).toISOString(),
+    importance: 'critical' as const,
+    status: 'warning' as const,
+    description: 'Предельный срок следствия — 12 месяцев с возможностью продления руководителем СК',
+  },
+  {
+    id: 'd4',
+    title: 'Подача ходатайства об исключении доказательств',
+    article: 'ст. 235 УПК РФ',
+    deadline: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString(),
+    importance: 'high' as const,
+    status: 'urgent' as const,
+    description: 'Ходатайство о признании недопустимым доказательства — протокол обыска без адвоката',
+  },
+  {
+    id: 'd5',
+    title: 'Срок содержания под стражей',
+    article: 'ст. 109 УПК РФ',
+    deadline: new Date(Date.now() + 47 * 24 * 60 * 60 * 1000).toISOString(),
+    importance: 'critical' as const,
+    status: 'upcoming' as const,
+    description: 'Максимальный срок содержания под стражей по тяжким преступлениям — 18 месяцев',
+  },
+  {
+    id: 'd6',
+    title: 'Срок обжалования действий следователя',
+    article: 'ст. 124 УПК РФ',
+    deadline: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
+    importance: 'medium' as const,
+    status: 'overdue' as const,
+    description: 'Жалоба в прокуратуру на действия/бездействие следователя — 3 суток',
+  },
+] as const
+
+const DEADLINE_IMPORTANCE: Record<string, { color: string; badge: string; label: string }> = {
+  critical: { color: 'border-l-red-700 bg-red-700/5', badge: 'bg-red-700 text-white', label: 'Критический' },
+  high: { color: 'border-l-orange-600 bg-orange-600/5', badge: 'bg-orange-600 text-white', label: 'Высокий' },
+  medium: { color: 'border-l-amber-600 bg-amber-600/5', badge: 'bg-amber-600 text-white', label: 'Средний' },
+  low: { color: 'border-l-stone-500 bg-stone-500/5', badge: 'bg-stone-500 text-white', label: 'Низкий' },
+}
+
+const DEADLINE_STATUS: Record<string, { badge: string; label: string; icon: 'clock' | 'urgent' | 'overdue' | 'warning' }> = {
+  upcoming: { badge: 'bg-stone-600 text-white', label: 'Запланировано', icon: 'clock' },
+  urgent: { badge: 'bg-amber-600 text-white', label: 'Срочно', icon: 'urgent' },
+  warning: { badge: 'bg-orange-600 text-white', label: 'Предупреждение', icon: 'warning' },
+  overdue: { badge: 'bg-red-800 text-white', label: 'Просрочено', icon: 'overdue' },
+}
+
+function ProceduralDeadlinesTracker() {
+  const now = new Date()
+  const sorted = [...PROCEDURAL_DEADLINES].sort((a, b) => new Date(a.deadline).getTime() - new Date(b.deadline).getTime())
+  const upcoming = sorted.filter(d => new Date(d.deadline).getTime() > now.getTime())
+  const overdue = sorted.filter(d => new Date(d.deadline).getTime() <= now.getTime())
+  const nextDeadline = upcoming[0]
+  const daysToNext = nextDeadline
+    ? Math.ceil((new Date(nextDeadline.deadline).getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
+    : 0
+
+  const fmtDate = (iso: string) => new Date(iso).toLocaleDateString('ru-RU', { day: '2-digit', month: 'long', year: 'numeric' })
+  const daysTo = (iso: string) => {
+    const diff = Math.ceil((new Date(iso).getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
+    if (diff < 0) return `просрочено на ${Math.abs(diff)} дн.`
+    if (diff === 0) return 'сегодня'
+    if (diff === 1) return 'завтра'
+    return `через ${diff} дн.`
+  }
+
+  return (
+    <Card className="rounded-xl shadow-sm bg-gradient-to-br from-card via-card to-red-500/5 border-t-2 border-t-red-500 transition-shadow hover:shadow-md">
+      <CardHeader className="pb-2">
+        <CardTitle className="text-sm flex items-center gap-2">
+          <div className="flex items-center justify-center w-7 h-7 rounded-lg bg-red-700/15">
+            <CalendarClock className="w-3.5 h-3.5 text-red-700" />
+          </div>
+          Процессуальные сроки
+          <Badge variant="outline" className="text-xs ml-1">{sorted.length} событий</Badge>
+          {overdue.length > 0 && (
+            <Badge className="bg-red-800 text-white text-xs ml-auto gap-1">
+              <AlertTriangle className="w-3 h-3" />{overdue.length} просрочено
+            </Badge>
+          )}
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="p-4 space-y-3">
+        {/* Next deadline highlight */}
+        {nextDeadline && (
+          <div className={`p-3 rounded-xl border-l-4 ${DEADLINE_IMPORTANCE[nextDeadline.importance].color} flex items-center gap-3 transition-transform hover:scale-[1.01]`}>
+            <div className="flex flex-col items-center justify-center w-14 h-14 rounded-xl bg-background/70 shrink-0">
+              <span className={`text-2xl font-black leading-none ${daysToNext <= 3 ? 'text-red-700' : daysToNext <= 14 ? 'text-orange-600' : 'text-stone-700 dark:text-stone-200'}`}>
+                {daysToNext === 0 ? '!' : daysToNext}
+              </span>
+              <span className="text-[10px] text-muted-foreground mt-0.5">дн.</span>
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <p className="text-sm font-semibold leading-tight">{nextDeadline.title}</p>
+                <Badge className={`text-[10px] ${DEADLINE_IMPORTANCE[nextDeadline.importance].badge}`}>{DEADLINE_IMPORTANCE[nextDeadline.importance].label}</Badge>
+              </div>
+              <p className="text-xs text-muted-foreground mt-1">{nextDeadline.article} • {fmtDate(nextDeadline.deadline)} • {daysTo(nextDeadline.deadline)}</p>
+              <p className="text-xs mt-1 text-foreground/80 line-clamp-2">{nextDeadline.description}</p>
+            </div>
+          </div>
+        )}
+
+        {/* Compact deadline list */}
+        <div className="grid sm:grid-cols-2 gap-2">
+          {sorted.slice(0, 6).map(d => {
+            const days = Math.ceil((new Date(d.deadline).getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
+            const isOverdue = days < 0
+            const isUrgent = days >= 0 && days <= 3
+            return (
+              <TooltipProvider key={d.id} delayDuration={150}>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <div className={`p-2.5 rounded-lg border-l-4 ${DEADLINE_IMPORTANCE[d.importance].color} cursor-help transition-all hover:shadow-sm hover:-translate-y-0.5`}>
+                      <div className="flex items-center justify-between gap-2 mb-1">
+                        <Badge className={`text-[9px] px-1.5 py-0 ${DEADLINE_STATUS[d.status].badge}`}>{DEADLINE_STATUS[d.status].label}</Badge>
+                        <span className={`text-[11px] font-bold tabular-nums ${isOverdue ? 'text-red-700' : isUrgent ? 'text-orange-600' : 'text-muted-foreground'}`}>
+                          {daysTo(d.deadline)}
+                        </span>
+                      </div>
+                      <p className="text-xs font-medium leading-tight line-clamp-2">{d.title}</p>
+                      <p className="text-[10px] text-muted-foreground mt-1">{d.article}</p>
+                    </div>
+                  </TooltipTrigger>
+                  <TooltipContent side="top" className="text-xs max-w-[260px]">
+                    <p className="font-semibold">{d.title}</p>
+                    <p className="text-muted-foreground mt-0.5">{d.article}</p>
+                    <p className="mt-1">{fmtDate(d.deadline)}</p>
+                    <Separator className="my-1" />
+                    <p className="italic">{d.description}</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            )
+          })}
+        </div>
+
+        <Separator />
+        <div className="flex items-center justify-between text-xs text-muted-foreground">
+          <span className="flex items-center gap-1"><History className="w-3 h-3" /> Обновлено {now.toLocaleDateString('ru-RU', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}</span>
+          <span className="flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-full bg-red-700" /> критич.
+            <span className="w-2 h-2 rounded-full bg-orange-600 ml-1" /> высок.
+            <span className="w-2 h-2 rounded-full bg-amber-600 ml-1" /> сред.
+          </span>
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
 export function CaseDashboard() {
   const { setActiveSection } = useCaseStore()
   const { data, isLoading } = useQuery({
@@ -656,6 +834,9 @@ export function CaseDashboard() {
       {/* Case Procedure Stages - horizontal stepper with progress donut */}
       <CaseProcedureStage />
 
+      {/* Procedural Deadlines Tracker — upcoming deadlines with countdown */}
+      <ProceduralDeadlinesTracker />
+
       {/* Case Strength Meter + Mini Timeline Preview */}
       <div className="grid lg:grid-cols-2 gap-4">
         <CaseStrengthMeter brief={brief} />
@@ -703,7 +884,7 @@ export function CaseDashboard() {
       {/* "Дело в цифрах" summary row */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {STAT_ITEMS.map(({ key, label, icon: Icon, gradient, border }) => {
-          const topBorder = key === 'totalDocuments' ? 'border-t-2 border-t-blue-500' : key === 'totalPersons' ? 'border-t-2 border-t-emerald-500' : key === 'totalEpisodes' ? 'border-t-2 border-t-amber-500' : 'border-t-2 border-t-stone-400'
+          const topBorder = key === 'totalDocuments' ? 'border-t-2 border-t-stone-500' : key === 'totalPersons' ? 'border-t-2 border-t-emerald-500' : key === 'totalEpisodes' ? 'border-t-2 border-t-amber-500' : 'border-t-2 border-t-stone-400'
           return (
           <Card key={key} className={`border-l-4 ${border} ${topBorder} bg-gradient-to-br ${gradient} rounded-xl shadow-sm transition-all duration-200 hover:shadow-md hover:-translate-y-0.5`}>
             <CardContent className="p-4">
@@ -755,7 +936,7 @@ export function CaseDashboard() {
             </ChartContainer>
           </CardContent>
         </Card>
-        <Card className="rounded-xl shadow-sm bg-gradient-to-br from-card via-card to-muted/20 border-t-2 border-t-blue-500 transition-shadow hover:shadow-md">
+        <Card className="rounded-xl shadow-sm bg-gradient-to-br from-card via-card to-muted/20 border-t-2 border-t-stone-500 transition-shadow hover:shadow-md">
           <CardHeader className="pb-2"><CardTitle className="text-sm">Типы документов</CardTitle></CardHeader>
           <CardContent className="p-2">
             <ChartContainer config={docTypeChartConfig} className="h-52 w-full">
@@ -862,7 +1043,7 @@ export function CaseDashboard() {
       )}
 
       {/* Recent Documents */}
-      <Card className="rounded-xl shadow-sm bg-gradient-to-br from-card via-card to-muted/20 border-t-2 border-t-blue-500 transition-shadow hover:shadow-md">
+      <Card className="rounded-xl shadow-sm bg-gradient-to-br from-card via-card to-muted/20 border-t-2 border-t-stone-500 transition-shadow hover:shadow-md">
         <CardHeader className="pb-2">
           <CardTitle className="text-sm flex items-center gap-2">
             <FileText className="w-4 h-4" />Последние документы

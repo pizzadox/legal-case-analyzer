@@ -201,7 +201,10 @@ export function CaseQa() {
                             </div>
                           ) : null}
                           <AiConfidence confidence={confidence} />
-                          <p className="text-xs text-muted-foreground mt-1.5 flex items-center gap-1"><Clock className="w-2 h-2" />{new Date(msg.createdAt).toLocaleString('ru')}</p>
+                          <p className="text-[11px] mt-1.5 flex items-center gap-1 text-stone-500 dark:text-stone-400 font-medium tabular-nums">
+                            <Clock className="w-3 h-3 text-amber-600" />
+                            {new Date(msg.createdAt).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                          </p>
                         </div>
                       </div>
                     )}

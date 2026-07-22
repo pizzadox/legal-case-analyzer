@@ -39,7 +39,7 @@ const NODE_TYPE_BADGE: Record<string, string> = {
 
 const LINK_TYPE_COLOR: Record<string, string> = {
   доказательство: 'border-emerald-600 text-emerald-700',
-  подтверждение: 'border-blue-600 text-blue-700',
+  подтверждение: 'border-amber-600 text-amber-700',
   цитата: 'border-amber-600 text-amber-700',
   упоминание: 'border-stone-500 text-stone-600',
 }
@@ -410,9 +410,9 @@ export function CaseSearch() {
 
         <TabsContent value="documents" className="space-y-2">
           {results.documents.length === 0 ? (
-            <Card className="rounded-xl shadow-sm border-t-2 border-t-blue-500 bg-gradient-to-br from-card via-card to-blue-500/5">
+            <Card className="rounded-xl shadow-sm border-t-2 border-t-stone-500 bg-gradient-to-br from-card via-card to-stone-500/5">
               <CardContent className="p-6 text-center">
-                <FileText className="w-12 h-12 mx-auto text-blue-500/60" />
+                <FileText className="w-12 h-12 mx-auto text-stone-500/60" />
                 <p className="mt-2 text-sm font-semibold">Документы не найдены</p>
                 <p className="text-xs text-muted-foreground mt-1">Попробуйте изменить запрос или сбросить фильтр</p>
               </CardContent>

@@ -547,8 +547,12 @@ function PersonRelationshipGraph() {
                   .slice(0, 2)
                   .map(p => p[0])
                   .join('')
-                // Сокращённое имя для подписи под узлом
-                const shortLabel = node.name.length > 24 ? node.name.slice(0, 22) + '…' : node.name
+                // Разбиваем на две строки: Фамилия + И.О.
+                const nameParts = node.name.replace(/\(.*?\)/g, '').trim().split(/\s+/)
+                const surname = nameParts[0] ?? ''
+                const initialsRest = nameParts.slice(1).map(p => p[0] ? `${p[0]}.` : '').join(' ')
+                const line1 = surname
+                const line2 = initialsRest || ''
                 return (
                   <g
                     key={node.id}
@@ -614,18 +618,50 @@ function PersonRelationshipGraph() {
                     >
                       {initials}
                     </text>
-                    {/* Подпись под узлом */}
-                    <text
-                      x={pos.x}
-                      y={pos.y + r + 14}
-                      fontSize={11}
-                      textAnchor="middle"
-                      fill="#292524"
-                      className="font-medium"
-                      style={{ pointerEvents: 'none', userSelect: 'none' } as React.CSSProperties}
-                    >
-                      {shortLabel}
-                    </text>
+                    {/* Подпись под узлом — фамилия (жирно) и И.О. (бледнее) на фоне-подушке */}
+                    {(() => {
+                      const labelW = Math.max(70, Math.max(line1.length, line2.length) * 6.5 + 12)
+                      const labelH = line2 ? 30 : 16
+                      return (
+                        <>
+                          <rect
+                            x={pos.x - labelW / 2}
+                            y={pos.y + r + 6}
+                            width={labelW}
+                            height={labelH}
+                            rx={5}
+                            fill="white"
+                            stroke="#e7e5e4"
+                            strokeWidth={0.6}
+                            opacity={0.92}
+                            className="dark:fill-stone-900 dark:stroke-stone-700"
+                          />
+                          <text
+                            x={pos.x}
+                            y={pos.y + r + 17}
+                            fontSize={11}
+                            fontWeight={700}
+                            textAnchor="middle"
+                            className="fill-stone-800 dark:fill-stone-100"
+                            style={{ pointerEvents: 'none', userSelect: 'none' } as React.CSSProperties}
+                          >
+                            {line1}
+                          </text>
+                          {line2 && (
+                            <text
+                              x={pos.x}
+                              y={pos.y + r + 30}
+                              fontSize={9.5}
+                              textAnchor="middle"
+                              className="fill-stone-500 dark:fill-stone-400"
+                              style={{ pointerEvents: 'none', userSelect: 'none' } as React.CSSProperties}
+                            >
+                              {line2}
+                            </text>
+                          )}
+                        </>
+                      )
+                    })()}
                   </g>
                 )
               })}

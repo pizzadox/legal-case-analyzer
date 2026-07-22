@@ -11,7 +11,9 @@ export type SectionId =
   | 'defense'
   | 'legal-check'
   | 'timeline'
+  | 'evidence-chain'
   | 'risk'
+  | 'witness-matrix'
   | 'brief'
   | 'analytics'
 

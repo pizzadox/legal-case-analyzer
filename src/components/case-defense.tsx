@@ -92,15 +92,20 @@ export function CaseDefense() {
 
   // Calculate defense strength score and ranking
   const rankedLines = useMemo(() => {
-    const scored = defenseLines.map(dl => ({
-      ...dl,
-      score: STRENGTH[dl.strength ?? 'weak'].pct + (dl.probability === 'high' ? 80 : dl.probability === 'moderate' ? 50 : 20),
-    }))
+    // Normalised score in 0..100: 60% strength + 40% probability bonus (capped)
+    const probPct = (p?: string | null) => p === 'high' ? 80 : p === 'moderate' ? 50 : 20
+    const scored = defenseLines.map(dl => {
+      const raw = STRENGTH[dl.strength ?? 'weak'].pct * 0.6 + probPct(dl.probability) * 0.4
+      return { ...dl, score: Math.min(100, Math.round(raw)) }
+    })
     return scored.sort((a, b) => b.score - a.score)
   }, [defenseLines])
 
   const recommended = rankedLines[0]
-  const overallStrength = rankedLines.length > 0 ? Math.round(rankedLines.reduce((sum, dl) => sum + dl.score, 0) / rankedLines.length) : 0
+  // Weighted overall strength (capped to 100%): average of strategy scores adjusted by count
+  const overallStrength = rankedLines.length > 0
+    ? Math.min(100, Math.round(rankedLines.reduce((sum, dl) => sum + dl.score, 0) / rankedLines.length))
+    : 0
 
   // Risk-adjusted priority: strength_value × riskReduction / 100
   const riskAdjusted = useMemo(() => {

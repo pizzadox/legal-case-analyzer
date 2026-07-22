@@ -270,7 +270,7 @@ export function CaseAnalytics() {
         </Card>
 
         {/* Article Charges Donut */}
-        <Card className="rounded-xl shadow-sm bg-gradient-to-br from-card via-card to-muted/20 border-t-2 border-t-blue-500 transition-all duration-200 hover:shadow-md hover:-translate-y-0.5">
+        <Card className="rounded-xl shadow-sm bg-gradient-to-br from-card via-card to-muted/20 border-t-2 border-t-stone-500 transition-all duration-200 hover:shadow-md hover:-translate-y-0.5">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm flex items-center gap-2">
               <Award className="w-4 h-4 text-red-700" /> Распределение обвинений

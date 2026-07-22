@@ -83,6 +83,7 @@ import {
   Folder,
   Plus,
   CheckCircle2,
+  Link2,
 } from 'lucide-react'
 import { useTheme } from 'next-themes'
 import { toast } from 'sonner'
@@ -101,7 +102,9 @@ import { CaseQa } from '@/components/case-qa'
 import { CaseDefense } from '@/components/case-defense'
 import { CaseLegalCheck } from '@/components/case-legal-check'
 import { CaseTimeline } from '@/components/case-timeline'
+import { CaseEvidenceChain } from '@/components/case-evidence-chain'
 import { CaseRisk } from '@/components/case-risk'
+import { CaseWitnessMatrix } from '@/components/case-witness-matrix'
 import { CaseBrief } from '@/components/case-brief'
 import { CaseAnalytics } from '@/components/case-analytics'
 
@@ -121,7 +124,9 @@ const NAV_ITEMS: {
   { id: 'defense', label: 'Линия защиты', icon: <Shield className="h-4 w-4" />, description: 'Стратегии защиты', shortcut: '7' },
   { id: 'legal-check', label: 'Правовая проверка', icon: <Scale className="h-4 w-4" />, description: 'Проверка по нормам РФ', shortcut: '8' },
   { id: 'timeline', label: 'Хронология', icon: <CalendarClock className="h-4 w-4" />, description: 'Полная хронология дела', shortcut: '9' },
+  { id: 'evidence-chain', label: 'Цепочка доказательств', icon: <Link2 className="h-4 w-4" />, description: 'Связи доказательств обвинения и защиты', shortcut: 'E' },
   { id: 'risk', label: 'Оценка рисков', icon: <TrendingUp className="h-4 w-4" />, description: 'Матрица рисков и наказания', shortcut: '0' },
+  { id: 'witness-matrix', label: 'Матрица показаний', icon: <MessageSquare className="h-4 w-4" />, description: 'Согласованность показаний свидетелей', shortcut: 'M' },
   { id: 'brief', label: 'Краткое изложение', icon: <FileBarChart className="h-4 w-4" />, description: 'Итоговое резюме дела', shortcut: 'B' },
   { id: 'analytics', label: 'Аналитика', icon: <BarChart3 className="h-4 w-4" />, description: 'Глубокий анализ и прогнозы', shortcut: 'A' },
 ]
@@ -287,6 +292,7 @@ function CommandPalette({
     { id: 'qa-ask', label: 'Задать вопрос ИИ', icon: <MessageSquare className="h-4 w-4" />, section: 'qa' as SectionId, hint: 'AI-аналитик' },
     { id: 'check-compliance', label: 'Проверить соответствие', icon: <Scale className="h-4 w-4" />, section: 'legal-check' as SectionId, hint: 'Правовая проверка' },
     { id: 'view-risk', label: 'Посмотреть риски', icon: <TrendingUp className="h-4 w-4" />, section: 'risk' as SectionId, hint: 'Матрица рисков' },
+    { id: 'view-witness-matrix', label: 'Матрица показаний', icon: <MessageSquare className="h-4 w-4" />, section: 'witness-matrix' as SectionId, hint: 'Согласованность показаний свидетелей' },
     { id: 'view-timeline', label: 'Открыть хронологию', icon: <CalendarClock className="h-4 w-4" />, section: 'timeline' as SectionId, hint: 'Все события дела' },
   ]
 
@@ -671,7 +677,9 @@ function MainContent({ activeSection }: { activeSection: SectionId }) {
       case 'defense': return CaseDefense
       case 'legal-check': return CaseLegalCheck
       case 'timeline': return CaseTimeline
+      case 'evidence-chain': return CaseEvidenceChain
       case 'risk': return CaseRisk
+      case 'witness-matrix': return CaseWitnessMatrix
       case 'brief': return CaseBrief
       case 'analytics': return CaseAnalytics
       default: return CaseDashboard
@@ -1061,6 +1069,16 @@ export default function Home() {
       if (e.key === 'a' || e.key === 'A' || e.key === 'ф' || e.key === 'Ф') {
         e.preventDefault()
         setActiveSection('analytics')
+      }
+      // Ctrl+E for evidence chain
+      if (e.key === 'e' || e.key === 'E' || e.key === 'у' || e.key === 'У') {
+        e.preventDefault()
+        setActiveSection('evidence-chain')
+      }
+      // Ctrl+M for witness matrix
+      if (e.key === 'm' || e.key === 'M' || e.key === 'ь' || e.key === 'Ь') {
+        e.preventDefault()
+        setActiveSection('witness-matrix')
       }
     }
     // ? for help

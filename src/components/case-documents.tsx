@@ -170,7 +170,7 @@ function EvidenceChainSection({ items }: { items: EvidenceChainData[] }) {
               <div className="mt-2 relative pl-4 space-y-1.5">
                 {ev.chainSteps.map((step, i) => (
                   <div key={step.id} className="relative">
-                    <div className={`absolute -left-4 top-1 w-2 h-2 rounded-full ${step.status === 'intact' ? 'bg-emerald-500' : step.status === 'transferred' ? 'bg-amber-500' : step.status === 'analyzed' ? 'bg-blue-500' : 'bg-red-500'}`} />
+                    <div className={`absolute -left-4 top-1 w-2 h-2 rounded-full ${step.status === 'intact' ? 'bg-emerald-500' : step.status === 'transferred' ? 'bg-amber-500' : step.status === 'analyzed' ? 'bg-stone-500' : 'bg-red-500'}`} />
                     {i < ev.chainSteps.length - 1 && <div className="absolute -left-[13px] top-2 w-0.5 h-3 bg-stone-300 dark:bg-stone-600" />}
                     <p className="text-xs"><span className="font-medium">{step.action}</span> — {step.actor} <span className="text-muted-foreground">({new Date(step.timestamp).toLocaleDateString('ru-RU', { day: '2-digit', month: 'short' })})</span></p>
                   </div>
@@ -542,10 +542,10 @@ export function CaseDocuments() {
       </div>
 
       {documents.length === 0 && (
-        <Card className="rounded-xl shadow-sm border-t-2 border-t-blue-500 bg-gradient-to-br from-card via-card to-blue-500/5">
+        <Card className="rounded-xl shadow-sm border-t-2 border-t-stone-500 bg-gradient-to-br from-card via-card to-stone-500/5">
           <CardContent className="p-8 text-center">
-            <div className="flex items-center justify-center w-20 h-20 rounded-full bg-blue-500/10 mx-auto mb-4 ring-4 ring-blue-500/5">
-              <FileText className="w-10 h-10 text-blue-500" />
+            <div className="flex items-center justify-center w-20 h-20 rounded-full bg-stone-500/10 mx-auto mb-4 ring-4 ring-stone-500/5">
+              <FileText className="w-10 h-10 text-stone-500" />
             </div>
             <p className="mt-2 text-base font-semibold">Пока нет документов</p>
             <p className="text-sm text-muted-foreground mt-1 max-w-md mx-auto">Загрузите PDF-файлы уголовного дела — обвинительное заключение, протоколы, показания — для запуска AI-анализа и проверки.</p>
