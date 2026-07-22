@@ -1,0 +1,926 @@
+     1→'use client'
+     2→
+     3→import { useState, useCallback, useEffect } from 'react'
+     4→import { useQuery, useMutation } from '@tanstack/react-query'
+     5→import { motion, AnimatePresence } from 'framer-motion'
+     6→import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+     7→import { Badge } from '@/components/ui/badge'
+     8→import { Button } from '@/components/ui/button'
+     9→import { Input } from '@/components/ui/input'
+    10→import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+    11→import { Separator } from '@/components/ui/separator'
+    12→import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+    13→import { ScrollArea } from '@/components/ui/scroll-area'
+    14→import { Skeleton } from '@/components/ui/skeleton'
+    15→import { Switch } from '@/components/ui/switch'
+    16→import { Label } from '@/components/ui/label'
+    17→import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
+    18→import { toast } from 'sonner'
+    19→import {
+    20→  Search, FileText, Users, BookOpen, Link2, Calendar, Loader2,
+    21→  Filter, ChevronDown, ChevronUp, X, History, Network, Sparkles,
+    22→  MapPin, Scale, Zap, Crosshair, TrendingUp, Star, ArrowRight
+    23→} from 'lucide-react'
+    24→import { mockSearchResults, mockDocuments, mockPersons, mockEpisodes } from '@/lib/mock-data'
+    25→import * as caseApi from '@/lib/case-api'
+    26→import type { SearchResultData, DocumentData, PersonData, EpisodeData } from '@/lib/case-store'
+    27→
+    28→// Highlight search terms in text
+    29→function highlightText(text: string, query: string): React.ReactNode {
+    30→  if (!query.trim()) return text
+    31→  const regex = new RegExp(`(${query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi')
+    32→  const parts = text.split(regex)
+    33→  return parts.map((part, i) =>
+    34→    regex.test(part) ? (
+    35→      <mark key={i} className="bg-orange-500/30 text-orange-200 rounded px-0.5">{part}</mark>
+    36→    ) : part
+    37→  )
+    38→}
+    39→
+    40→interface SearchHistoryItem {
+    41→  query: string
+    42→  timestamp: string
+    43→  resultCount: number
+    44→}
+    45→
+    46→const CATEGORY_TABS = [
+    47→  { key: 'documents', icon: FileText, label: 'Документы' },
+    48→  { key: 'persons', icon: Users, label: 'Участники' },
+    49→  { key: 'episodes', icon: BookOpen, label: 'Эпизоды' },
+    50→  { key: 'articles', icon: Scale, label: 'Статьи' },
+    51→  { key: 'references', icon: Link2, label: 'Ссылки' },
+    52→  { key: 'all', icon: Search, label: 'Все' },
+    53→]
+    54→
+    55→export function CaseSearch() {
+    56→  // Search state
+    57→  const [query, setQuery] = useState('')
+    58→  const [filterType, setFilterType] = useState<string>('all')
+    59→  const [dateFrom, setDateFrom] = useState('')
+    60→  const [dateTo, setDateTo] = useState('')
+    61→  const [personFilter, setPersonFilter] = useState('')
+    62→  const [articleFilter, setArticleFilter] = useState('')
+    63→  const [locationFilter, setLocationFilter] = useState('')
+    64→  const [docTypeFilter, setDocTypeFilter] = useState('')
+    65→  const [crossRefMode, setCrossRefMode] = useState(false)
+    66→  const [showFilters, setShowFilters] = useState(false)
+    67→  const [searchHistory, setSearchHistory] = useState<SearchHistoryItem[]>([])
+    68→  const [activeResultTab, setActiveResultTab] = useState('all')
+    69→
+    70→  // TanStack Query - search mutation
+    71→  const searchMutation = useMutation({
+    72→    mutationFn: caseApi.advancedSearch,
+    73→    onSuccess: (data) => {
+    74→      // Save to history
+    75→      const totalResults = data.documents.length + data.persons.length + data.episodes.length + data.crossReferences.length
+    76→      setSearchHistory(prev => [
+    77→        { query, timestamp: new Date().toISOString(), resultCount: totalResults },
+    78→        ...prev.slice(0, 19), // Keep max 20
+    79→      ])
+    80→    },
+    81→    onError: (error: Error) => {
+    82→      toast.error(`Ошибка поиска: ${error.message}`)
+    83→    },
+    84→  })
+    85→
+    86→  // TanStack Query - documents for filters
+    87→  const { data: documents = [] } = useQuery({
+    88→    queryKey: ['documents'],
+    89→    queryFn: caseApi.getDocuments,
+    90→  })
+    91→  const displayDocs = documents.length > 0 ? documents : mockDocuments
+    92→
+    93→  // TanStack Query - persons for filters
+    94→  const { data: persons = [] } = useQuery({
+    95→    queryKey: ['persons'],
+    96→    queryFn: caseApi.getPersons,
+    97→  })
+    98→  const displayPersons = persons.length > 0 ? persons : mockPersons
+    99→
+   100→  // Results - use mutation data or mock fallback
+   101→  const searchResults = searchMutation.data || (searchMutation.isError ? mockSearchResults : null)
+   102→
+   103→  const handleSearch = useCallback(() => {
+   104→    if (!query.trim()) return
+   105→    searchMutation.mutate({
+   106→      query,
+   107→      filterType,
+   108→      dateFrom: dateFrom || null,
+   109→      dateTo: dateTo || null,
+   110→      person: personFilter || null,
+   111→      article: articleFilter || null,
+   112→      location: locationFilter || null,
+   113→      documentType: docTypeFilter || null,
+   114→      crossReferenceMode: crossRefMode,
+   115→    })
+   116→  }, [query, filterType, dateFrom, dateTo, personFilter, articleFilter, locationFilter, docTypeFilter, crossRefMode, searchMutation])
+   117→
+   118→  const clearFilters = () => {
+   119→    setFilterType('all')
+   120→    setDateFrom('')
+   121→    setDateTo('')
+   122→    setPersonFilter('')
+   123→    setArticleFilter('')
+   124→    setLocationFilter('')
+   125→    setDocTypeFilter('')
+   126→    setCrossRefMode(false)
+   127→  }
+   128→
+   129→  const hasActiveFilters = filterType !== 'all' || dateFrom || dateTo || personFilter || articleFilter || locationFilter || docTypeFilter || crossRefMode
+   130→
+   131→  // Animated variants
+   132→  const resultVariants = {
+   133→    hidden: { opacity: 0, y: 10 },
+   134→    visible: { opacity: 1, y: 0, transition: { duration: 0.25 } },
+   135→    exit: { opacity: 0, y: -5, transition: { duration: 0.15 } },
+   136→  }
+   137→
+   138→  const staggerContainer = {
+   139→    hidden: { opacity: 0 },
+   140→    visible: { opacity: 1, transition: { staggerChildren: 0.04 } },
+   141→  }
+   142→
+   143→  // Cross-reference connection graph data
+   144→  const connections = searchResults?.crossReferences || []
+   145→
+   146→  return (
+   147→    <div className="space-y-6">
+   148→      {/* Search Form */}
+   149→      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}>
+   150→        <Card>
+   151→          <CardHeader>
+   152→            <div className="flex items-center justify-between">
+   153→              <div>
+   154→                <CardTitle className="flex items-center gap-2">
+   155→                  <Search className="h-5 w-5" />
+   156→                  Поиск по материалам дела
+   157→                </CardTitle>
+   158→                <CardDescription className="mt-1">
+   159→                  Расширенный поиск по документам, участникам, эпизодам, статьям и перекрёстным ссылкам
+   160→                </CardDescription>
+   161→              </div>
+   162→              <Button
+   163→                variant="outline"
+   164→                size="sm"
+   165→                onClick={() => setShowFilters(!showFilters)}
+   166→                className="gap-2"
+   167→              >
+   168→                <Filter className="h-4 w-4" />
+   169→                Расширенные фильтры
+   170→                <motion.div animate={{ rotate: showFilters ? 180 : 0 }} transition={{ duration: 0.2 }}>
+   171→                  <ChevronDown className="h-3 w-3" />
+   172→                </motion.div>
+   173→                {hasActiveFilters && <Badge className="bg-orange-600 text-white text-xs ml-1">!</Badge>}
+   174→              </Button>
+   175→            </div>
+   176→          </CardHeader>
+   177→          <CardContent className="space-y-4">
+   178→            {/* Main Search Input */}
+   179→            <div className="flex flex-col sm:flex-row gap-3">
+   180→              <div className="flex-1 relative">
+   181→                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+   182→                <Input
+   183→                  placeholder="Введите запрос для поиска... (поддерживается неточный поиск)"
+   184→                  value={query}
+   185→                  onChange={(e) => setQuery(e.target.value)}
+   186→                  onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+   187→                  className="h-10 pl-9"
+   188→                />
+   189→              </div>
+   190→              <Select value={filterType} onValueChange={setFilterType}>
+   191→                <SelectTrigger className="w-full sm:w-[180px] h-10">
+   192→                  <SelectValue placeholder="Область поиска" />
+   193→                </SelectTrigger>
+   194→                <SelectContent>
+   195→                  <SelectItem value="all">Все типы</SelectItem>
+   196→                  <SelectItem value="documents">Документы</SelectItem>
+   197→                  <SelectItem value="persons">Участники</SelectItem>
+   198→                  <SelectItem value="episodes">Эпизоды</SelectItem>
+   199→                  <SelectItem value="articles">Статьи УК</SelectItem>
+   200→                  <SelectItem value="cross-references">Перекрёстные ссылки</SelectItem>
+   201→                </SelectContent>
+   202→              </Select>
+   203→              <Button onClick={handleSearch} disabled={searchMutation.isPending || !query.trim()} className="gap-2 shrink-0 h-10">
+   204→                {searchMutation.isPending ? (
+   205→                  <Loader2 className="h-4 w-4 animate-spin" />
+   206→                ) : (
+   207→                  <Search className="h-4 w-4" />
+   208→                )}
+   209→                {searchMutation.isPending ? 'Поиск...' : 'Найти'}
+   210→              </Button>
+   211→            </div>
+   212→
+   213→            {/* Cross-reference mode toggle */}
+   214→            <div className="flex items-center gap-3">
+   215→              <div className="flex items-center gap-2">
+   216→                <Switch
+   217→                  checked={crossRefMode}
+   218→                  onCheckedChange={setCrossRefMode}
+   219→                />
+   220→                <Label className="text-sm flex items-center gap-1">
+   221→                  <Network className="h-3.5 w-3.5" />
+   222→                  Режим перекрёстных связей
+   223→                </Label>
+   224→              </div>
+   225→              {crossRefMode && (
+   226→                <motion.div initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }}>
+   227→                  <Badge className="bg-orange-600 text-white text-xs">
+   228→                    <Crosshair className="w-3 h-3 mr-1" />
+   229→                    Связи между объектами
+   230→                  </Badge>
+   231→                </motion.div>
+   232→              )}
+   233→            </div>
+   234→
+   235→            {/* Advanced Filters Panel */}
+   236→            <AnimatePresence>
+   237→              {showFilters && (
+   238→                <motion.div
+   239→                  initial={{ opacity: 0, height: 0 }}
+   240→                  animate={{ opacity: 1, height: 'auto' }}
+   241→                  exit={{ opacity: 0, height: 0 }}
+   242→                  transition={{ duration: 0.25 }}
+   243→                  className="border-t pt-4 space-y-4"
+   244→                >
+   245→                  <h4 className="text-sm font-medium flex items-center gap-2">
+   246→                    <Filter className="h-4 w-4" />
+   247→                    Расширенные фильтры
+   248→                    {hasActiveFilters && (
+   249→                      <Button variant="ghost" size="sm" className="h-6 text-xs gap-1" onClick={clearFilters}>
+   250→                        <X className="h-3 w-3" />
+   251→                        Сбросить
+   252→                      </Button>
+   253→                    )}
+   254→                  </h4>
+   255→
+   256→                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+   257→                    {/* Date range */}
+   258→                    <div className="space-y-1.5">
+   259→                      <label className="text-xs font-medium text-muted-foreground flex items-center gap-1">
+   260→                        <Calendar className="w-3 h-3" />
+   261→                        Период от
+   262→                      </label>
+   263→                      <Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="h-8 text-xs" />
+   264→                    </div>
+   265→                    <div className="space-y-1.5">
+   266→                      <label className="text-xs font-medium text-muted-foreground flex items-center gap-1">
+   267→                        <Calendar className="w-3 h-3" />
+   268→                        Период до
+   269→                      </label>
+   270→                      <Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="h-8 text-xs" />
+   271→                    </div>
+   272→
+   273→                    {/* Person filter */}
+   274→                    <div className="space-y-1.5">
+   275→                      <label className="text-xs font-medium text-muted-foreground flex items-center gap-1">
+   276→                        <Users className="w-3 h-3" />
+   277→                        Участник
+   278→                      </label>
+   279→                      <Input
+   280→                        placeholder="Имя участника..."
+   281→                        value={personFilter}
+   282→                        onChange={(e) => setPersonFilter(e.target.value)}
+   283→                        className="h-8 text-xs"
+   284→                      />
+   285→                    </div>
+   286→
+   287→                    {/* Article filter */}
+   288→                    <div className="space-y-1.5">
+   289→                      <label className="text-xs font-medium text-muted-foreground flex items-center gap-1">
+   290→                        <Scale className="w-3 h-3" />
+   291→                        Статья УК РФ
+   292→                      </label>
+   293→                      <Input
+   294→                        placeholder="Номер статьи..."
+   295→                        value={articleFilter}
+   296→                        onChange={(e) => setArticleFilter(e.target.value)}
+   297→                        className="h-8 text-xs"
+   298→                      />
+   299→                    </div>
+   300→
+   301→                    {/* Location filter */}
+   302→                    <div className="space-y-1.5">
+   303→                      <label className="text-xs font-medium text-muted-foreground flex items-center gap-1">
+   304→                        <MapPin className="w-3 h-3" />
+   305→                        Место/адрес
+   306→                      </label>
+   307→                      <Input
+   308→                        placeholder="Место или адрес..."
+   309→                        value={locationFilter}
+   310→                        onChange={(e) => setLocationFilter(e.target.value)}
+   311→                        className="h-8 text-xs"
+   312→                      />
+   313→                    </div>
+   314→
+   315→                    {/* Document type filter */}
+   316→                    <div className="space-y-1.5">
+   317→                      <label className="text-xs font-medium text-muted-foreground flex items-center gap-1">
+   318→                        <FileText className="w-3 h-3" />
+   319→                        Тип документа
+   320→                      </label>
+   321→                      <Select value={docTypeFilter} onValueChange={setDocTypeFilter}>
+   322→                        <SelectTrigger className="h-8 text-xs">
+   323→                          <SelectValue placeholder="Все типы" />
+   324→                        </SelectTrigger>
+   325→                        <SelectContent>
+   326→                          <SelectItem value="">Все типы</SelectItem>
+   327→                          <SelectItem value="обвинение">Обвинение</SelectItem>
+   328→                          <SelectItem value="показание">Показание</SelectItem>
+   329→                          <SelectItem value="протокол">Протокол</SelectItem>
+   330→                          <SelectItem value="доказательство">Доказательство</SelectItem>
+   331→                          <SelectItem value="заключение">Заключение</SelectItem>
+   332→                        </SelectContent>
+   333→                      </Select>
+   334→                    </div>
+   335→                  </div>
+   336→                </motion.div>
+   337→              )}
+   338→            </AnimatePresence>
+   339→          </CardContent>
+   340→        </Card>
+   341→      </motion.div>
+   342→
+   343→      {/* Search History */}
+   344→      {searchHistory.length > 0 && (
+   345→        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+   346→          <Card>
+   347→            <CardHeader className="pb-2">
+   348→              <div className="flex items-center justify-between">
+   349→                <CardTitle className="text-sm flex items-center gap-2">
+   350→                  <History className="h-4 w-4" />
+   351→                  Последние запросы
+   352→                </CardTitle>
+   353→                <Button variant="ghost" size="sm" className="text-xs h-7" onClick={() => setSearchHistory([])}>
+   354→                  Очистить
+   355→                </Button>
+   356→              </div>
+   357→            </CardHeader>
+   358→            <CardContent>
+   359→              <div className="flex flex-wrap gap-2">
+   360→                {searchHistory.slice(0, 8).map((item, i) => (
+   361→                  <motion.button
+   362→                    key={item.timestamp}
+   363→                    initial={{ opacity: 0, scale: 0.8 }}
+   364→                    animate={{ opacity: 1, scale: 1 }}
+   365→                    transition={{ delay: i * 0.05 }}
+   366→                    onClick={() => { setQuery(item.query); handleSearch() }}
+   367→                    className="px-3 py-1.5 bg-muted/50 rounded-lg text-xs hover:bg-muted transition-colors flex items-center gap-2"
+   368→                  >
+   369→                    <Search className="w-3 h-3 text-muted-foreground" />
+   370→                    <span className="font-medium">{item.query}</span>
+   371→                    <Badge variant="outline" className="text-xs">{item.resultCount}</Badge>
+   372→                  </motion.button>
+   373→                ))}
+   374→              </div>
+   375→            </CardContent>
+   376→          </Card>
+   377→        </motion.div>
+   378→      )}
+   379→
+   380→      {/* Cross-Reference Graph */}
+   381→      {crossRefMode && searchResults && connections.length > 0 && (
+   382→        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
+   383→          <Card className="border-2 border-orange-600/30">
+   384→            <CardHeader className="pb-2">
+   385→              <CardTitle className="text-sm flex items-center gap-2">
+   386→                <Network className="h-4 w-4 text-orange-600" />
+   387→                Граф перекрёстных связей
+   388→              </CardTitle>
+   389→              <CardDescription className="text-xs">
+   390→                Визуализация связей между документами и объектами
+   391→              </CardDescription>
+   392→            </CardHeader>
+   393→            <CardContent>
+   394→              <div className="space-y-3 max-h-96 overflow-y-auto custom-scrollbar">
+   395→                {connections.map((conn, i) => (
+   396→                  <motion.div
+   397→                    key={conn.id}
+   398→                    initial={{ opacity: 0, x: -20 }}
+   399→                    animate={{ opacity: 1, x: 0 }}
+   400→                    transition={{ delay: i * 0.1 }}
+   401→                    className="flex items-center gap-3 p-3 bg-muted/30 rounded-lg"
+   402→                  >
+   403→                    {/* Source node */}
+   404→                    <div className="flex-1 min-w-0">
+   405→                      <div className="flex items-center gap-1.5 mb-1">
+   406→                        <div className="w-2 h-2 rounded-full bg-stone-500 shrink-0" />
+   407→                        <span className="text-xs font-medium truncate">{conn.sourceDocument.originalName}</span>
+   408→                      </div>
+   409→                      {conn.sourceDocument.documentType && (
+   410→                        <Badge variant="outline" className="text-xs">{conn.sourceDocument.documentType}</Badge>
+   411→                      )}
+   412→                    </div>
+   413→
+   414→                    {/* Arrow + reference type */}
+   415→                    <div className="flex flex-col items-center gap-1 shrink-0">
+   416→                      <Badge className="bg-orange-600 text-white text-xs">{conn.referenceType || 'связь'}</Badge>
+   417→                      <ArrowRight className="h-4 w-4 text-orange-600" />
+   418→                    </div>
+   419→
+   420→                    {/* Target node */}
+   421→                    <div className="flex-1 min-w-0">
+   422→                      <div className="flex items-center gap-1.5 mb-1">
+   423→                        <div className="w-2 h-2 rounded-full bg-orange-500 shrink-0" />
+   424→                        <span className="text-xs font-medium truncate">{conn.targetDocument.originalName}</span>
+   425→                      </div>
+   426→                      {conn.targetDocument.documentType && (
+   427→                        <Badge variant="outline" className="text-xs">{conn.targetDocument.documentType}</Badge>
+   428→                      )}
+   429→                    </div>
+   430→                  </motion.div>
+   431→                ))}
+   432→
+   433→                {/* Connection summary text */}
+   434→                {connections.length > 0 && (
+   435→                  <div className="p-3 bg-orange-50/5 dark:bg-orange-950/10 rounded-lg border border-orange-200/20 dark:border-orange-900/20">
+   436→                    <p className="text-xs text-muted-foreground">
+   437→                      {highlightText(
+   438→                        connections.map(c => c.referenceText).join(' | '),
+   439→                        query
+   440→                      )}
+   441→                    </p>
+   442→                  </div>
+   443→                )}
+   444→              </div>
+   445→            </CardContent>
+   446→          </Card>
+   447→        </motion.div>
+   448→      )}
+   449→
+   450→      {/* Loading skeleton */}
+   451→      {searchMutation.isPending && (
+   452→        <div className="space-y-4">
+   453→          {[1, 2, 3, 4].map(i => (
+   454→            <Card key={i}>
+   455→              <CardContent className="p-4">
+   456→                <div className="flex items-center gap-3">
+   457→                  <Skeleton className="h-4 w-4 rounded" />
+   458→                  <div className="flex-1 space-y-2">
+   459→                    <Skeleton className="h-4 w-[200px]" />
+   460→                    <Skeleton className="h-3 w-[120px]" />
+   461→                  </div>
+   462→                </div>
+   463→              </CardContent>
+   464→            </Card>
+   465→          ))}
+   466→        </div>
+   467→      )}
+   468→
+   469→      {/* Search Results */}
+   470→      {searchResults && !searchMutation.isPending && (
+   471→        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}>
+   472→          <Tabs value={activeResultTab} onValueChange={setActiveResultTab} className="w-full">
+   473→            <TabsList className="grid w-full grid-cols-6 h-9">
+   474→              {CATEGORY_TABS.map(tab => {
+   475→                const Icon = tab.icon
+   476→                const count = tab.key === 'all'
+   477→                  ? searchResults.documents.length + searchResults.persons.length + searchResults.episodes.length + searchResults.crossReferences.length
+   478→                  : tab.key === 'documents' ? searchResults.documents.length
+   479→                  : tab.key === 'persons' ? searchResults.persons.length
+   480→                  : tab.key === 'episodes' ? searchResults.episodes.length
+   481→                  : tab.key === 'articles' ? 0
+   482→                  : searchResults.crossReferences.length
+   483→                return (
+   484→                  <TabsTrigger key={tab.key} value={tab.key} className="gap-1 text-xs">
+   485→                    <Icon className="w-3 h-3" />
+   486→                    {tab.label} ({count})
+   487→                  </TabsTrigger>
+   488→                )
+   489→              })}
+   490→            </TabsList>
+   491→
+   492→            {/* Documents Results */}
+   493→            <TabsContent value="documents">
+   494→              <Card>
+   495→                <CardHeader className="pb-2">
+   496→                  <CardTitle className="text-sm flex items-center gap-2">
+   497→                    <FileText className="h-4 w-4" />
+   498→                    Найденные документы
+   499→                  </CardTitle>
+   500→                </CardHeader>
+   501→                <CardContent>
+   502→                  <ScrollArea className="max-h-96 [&>div]:!overflow-y-auto">
+   503→                    <motion.div variants={staggerContainer} initial="hidden" animate="visible" className="space-y-2">
+   504→                      {searchResults.documents.map((doc) => (
+   505→                        <motion.div
+   506→                          key={doc.id}
+   507→                          variants={resultVariants}
+   508→                          whileHover={{ scale: 1.01, backgroundColor: 'rgba(0,0,0,0.04)' }}
+   509→                          className="p-4 bg-muted/50 rounded-lg cursor-pointer transition-colors"
+   510→                        >
+   511→                          <div className="flex items-center gap-2 mb-2">
+   512→                            <motion.div whileHover={{ rotate: 5 }}>
+   513→                              <FileText className="h-4 w-4 text-muted-foreground" />
+   514→                            </motion.div>
+   515→                            <span className="font-medium text-sm">
+   516→                              {highlightText(doc.originalName, query)}
+   517→                            </span>
+   518→                            {doc.documentType && <Badge className="bg-stone-700 text-white text-xs">{doc.documentType}</Badge>}
+   519→                            {doc.sourceReference && <Badge variant="outline" className="text-xs">{doc.sourceReference}</Badge>}
+   520→                          </div>
+   521→                          {doc.summary && (
+   522→                            <p className="text-xs text-muted-foreground line-clamp-3">
+   523→                              {highlightText(doc.summary, query)}
+   524→                            </p>
+   525→                          )}
+   526→                          {doc.documentDate && (
+   527→                            <div className="flex items-center gap-1 mt-2 text-xs text-muted-foreground">
+   528→                              <Calendar className="w-3 h-3" />
+   529→                              {doc.documentDate}
+   530→                            </div>
+   531→                          )}
+   532→                        </motion.div>
+   533→                      ))}
+   534→                      {searchResults.documents.length === 0 && (
+   535→                        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="py-8 text-center">
+   536→                          <FileText className="h-8 w-8 text-muted-foreground/30 mx-auto mb-2" />
+   537→                          <p className="text-sm text-muted-foreground">Документы не найдены</p>
+   538→                        </motion.div>
+   539→                      )}
+   540→                    </motion.div>
+   541→                  </ScrollArea>
+   542→                </CardContent>
+   543→              </Card>
+   544→            </TabsContent>
+   545→
+   546→            {/* Persons Results */}
+   547→            <TabsContent value="persons">
+   548→              <Card>
+   549→                <CardHeader className="pb-2">
+   550→                  <CardTitle className="text-sm flex items-center gap-2">
+   551→                    <Users className="h-4 w-4" />
+   552→                    Найденные участники
+   553→                  </CardTitle>
+   554→                </CardHeader>
+   555→                <CardContent>
+   556→                  <ScrollArea className="max-h-96 [&>div]:!overflow-y-auto">
+   557→                    <motion.div variants={staggerContainer} initial="hidden" animate="visible" className="space-y-2">
+   558→                      {searchResults.persons.map((person) => (
+   559→                        <motion.div
+   560→                          key={person.id}
+   561→                          variants={resultVariants}
+   562→                          whileHover={{ scale: 1.01 }}
+   563→                          className="p-4 bg-muted/50 rounded-lg cursor-pointer"
+   564→                        >
+   565→                          <div className="flex items-center gap-2 mb-2">
+   566→                            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-stone-700 shrink-0">
+   567→                              <Users className="h-3.5 w-3.5 text-stone-200" />
+   568→                            </div>
+   569→                            <div className="min-w-0">
+   570→                              <span className="font-medium text-sm block truncate">
+   571→                                {highlightText(person.fullName, query)}
+   572→                              </span>
+   573→                              {person.shortName && (
+   574→                                <span className="text-xs text-muted-foreground">{person.shortName}</span>
+   575→                              )}
+   576→                            </div>
+   577→                            {person.role && <Badge className="bg-stone-700 text-white text-xs">{person.role}</Badge>}
+   578→                            {person.isKolesnichenko && <Badge className="bg-red-700 text-white text-xs">Ключевой</Badge>}
+   579→                          </div>
+   580→                          {person.description && (
+   581→                            <p className="text-xs text-muted-foreground line-clamp-2">
+   582→                              {highlightText(person.description, query)}
+   583→                            </p>
+   584→                          )}
+   585→                          {person.occupation && (
+   586→                            <div className="flex items-center gap-1 mt-1.5 text-xs text-muted-foreground">
+   587→                              <TrendingUp className="w-3 h-3" />
+   588→                              {person.occupation}
+   589→                            </div>
+   590→                          )}
+   591→                        </motion.div>
+   592→                      ))}
+   593→                      {searchResults.persons.length === 0 && (
+   594→                        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="py-8 text-center">
+   595→                          <Users className="h-8 w-8 text-muted-foreground/30 mx-auto mb-2" />
+   596→                          <p className="text-sm text-muted-foreground">Участники не найдены</p>
+   597→                        </motion.div>
+   598→                      )}
+   599→                    </motion.div>
+   600→                  </ScrollArea>
+   601→                </CardContent>
+   602→              </Card>
+   603→            </TabsContent>
+   604→
+   605→            {/* Episodes Results */}
+   606→            <TabsContent value="episodes">
+   607→              <Card>
+   608→                <CardHeader className="pb-2">
+   609→                  <CardTitle className="text-sm flex items-center gap-2">
+   610→                    <BookOpen className="h-4 w-4" />
+   611→                    Найденные эпизоды
+   612→                  </CardTitle>
+   613→                </CardHeader>
+   614→                <CardContent>
+   615→                  <ScrollArea className="max-h-96 [&>div]:!overflow-y-auto">
+   616→                    <motion.div variants={staggerContainer} initial="hidden" animate="visible" className="space-y-2">
+   617→                      {searchResults.episodes.map((ep) => (
+   618→                        <motion.div
+   619→                          key={ep.id}
+   620→                          variants={resultVariants}
+   621→                          whileHover={{ scale: 1.01 }}
+   622→                          className="p-4 bg-muted/50 rounded-lg cursor-pointer"
+   623→                        >
+   624→                          <div className="flex items-center gap-2 mb-2">
+   625→                            <motion.div whileHover={{ rotate: 5 }}>
+   626→                              <BookOpen className="h-4 w-4 text-muted-foreground" />
+   627→                            </motion.div>
+   628→                            <span className="font-medium text-sm">
+   629→                              {highlightText(ep.title, query)}
+   630→                            </span>
+   631→                            {ep.severity && (
+   632→                              <Badge className={
+   633→                                ep.severity === 'особо тяжкое' ? 'bg-red-700 text-white text-xs'
+   634→                                : ep.severity === 'тяжкое' ? 'bg-orange-600 text-white text-xs'
+   635→                                : 'bg-amber-600 text-white text-xs'
+   636→                              }>
+   637→                                {ep.severity}
+   638→                              </Badge>
+   639→                            )}
+   640→                            {ep.status && <Badge variant="outline" className="text-xs">{ep.status}</Badge>}
+   641→                          </div>
+   642→                          <p className="text-xs text-muted-foreground line-clamp-3">
+   643→                            {highlightText(ep.description, query)}
+   644→                          </p>
+   645→                          {ep.date && (
+   646→                            <div className="flex items-center gap-1 mt-2 text-xs text-muted-foreground">
+   647→                              <Calendar className="w-3 h-3" />
+   648→                              {ep.date}
+   649→                            </div>
+   650→                          )}
+   651→                          {ep.persons && ep.persons.length > 0 && (
+   652→                            <div className="flex items-center gap-2 mt-2">
+   653→                              {ep.persons.map(p => (
+   654→                                <Badge variant="outline" className="text-xs gap-1" key={p.personId}>
+   655→                                  <Users className="w-2.5 h-2.5" />
+   656→                                  {p.person.shortName || p.person.fullName}
+   657→                                </Badge>
+   658→                              ))}
+   659→                            </div>
+   660→                          )}
+   661→                        </motion.div>
+   662→                      ))}
+   663→                      {searchResults.episodes.length === 0 && (
+   664→                        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="py-8 text-center">
+   665→                          <BookOpen className="h-8 w-8 text-muted-foreground/30 mx-auto mb-2" />
+   666→                          <p className="text-sm text-muted-foreground">Эпизоды не найдены</p>
+   667→                        </motion.div>
+   668→                      )}
+   669→                    </motion.div>
+   670→                  </ScrollArea>
+   671→                </CardContent>
+   672→              </Card>
+   673→            </TabsContent>
+   674→
+   675→            {/* Articles tab */}
+   676→            <TabsContent value="articles">
+   677→              <Card>
+   678→                <CardHeader className="pb-2">
+   679→                  <CardTitle className="text-sm flex items-center gap-2">
+   680→                    <Scale className="h-4 w-4" />
+   681→                    Найденные статьи УК РФ
+   682→                  </CardTitle>
+   683→                </CardHeader>
+   684→                <CardContent>
+   685→                  <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="py-8 text-center">
+   686→                    <Scale className="h-8 w-8 text-muted-foreground/30 mx-auto mb-2" />
+   687→                    <p className="text-sm text-muted-foreground">Статьи отображаются в результатах эпизодов</p>
+   688→                  </motion.div>
+   689→                </CardContent>
+   690→              </Card>
+   691→            </TabsContent>
+   692→
+   693→            {/* Cross References */}
+   694→            <TabsContent value="references">
+   695→              <Card>
+   696→                <CardHeader className="pb-2">
+   697→                  <CardTitle className="text-sm flex items-center gap-2">
+   698→                    <Link2 className="h-4 w-4" />
+   699→                    Перекрёстные ссылки
+   700→                  </CardTitle>
+   701→                </CardHeader>
+   702→                <CardContent>
+   703→                  <ScrollArea className="max-h-96 [&>div]:!overflow-y-auto">
+   704→                    <motion.div variants={staggerContainer} initial="hidden" animate="visible" className="space-y-2">
+   705→                      {searchResults.crossReferences.map((ref) => (
+   706→                        <motion.div
+   707→                          key={ref.id}
+   708→                          variants={resultVariants}
+   709→                          whileHover={{ scale: 1.01 }}
+   710→                          className="p-4 bg-muted/50 rounded-lg"
+   711→                        >
+   712→                          <div className="flex items-center gap-2 mb-2">
+   713→                            <Link2 className="h-4 w-4 text-muted-foreground" />
+   714→                            <Badge className="bg-stone-700 text-white text-xs">{ref.referenceType || 'ссылка'}</Badge>
+   715→                          </div>
+   716→                          <p className="text-sm font-medium mb-2">
+   717→                            {highlightText(ref.referenceText, query)}
+   718→                          </p>
+   719→                          <div className="flex items-center gap-3 text-xs">
+   720→                            <div className="flex items-center gap-1.5">
+   721→                              <div className="w-2 h-2 rounded-full bg-stone-500" />
+   722→                              <span className="text-muted-foreground">{ref.sourceDocument.originalName}</span>
+   723→                            </div>
+   724→                            <ArrowRight className="w-3 h-3 text-orange-600" />
+   725→                            <div className="flex items-center gap-1.5">
+   726→                              <div className="w-2 h-2 rounded-full bg-orange-500" />
+   727→                              <span className="text-muted-foreground">{ref.targetDocument.originalName}</span>
+   728→                            </div>
+   729→                          </div>
+   730→                        </motion.div>
+   731→                      ))}
+   732→                      {searchResults.crossReferences.length === 0 && (
+   733→                        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="py-8 text-center">
+   734→                          <Link2 className="h-8 w-8 text-muted-foreground/30 mx-auto mb-2" />
+   735→                          <p className="text-sm text-muted-foreground">Перекрёстные ссылки не найдены</p>
+   736→                        </motion.div>
+   737→                      )}
+   738→                    </motion.div>
+   739→                  </ScrollArea>
+   740→                </CardContent>
+   741→              </Card>
+   742→            </TabsContent>
+   743→
+   744→            {/* All Results - Faceted view */}
+   745→            <TabsContent value="all">
+   746→              <Card>
+   747→                <CardHeader className="pb-2">
+   748→                  <CardTitle className="text-sm flex items-center gap-2">
+   749→                    <Search className="h-4 w-4" />
+   750→                    Все результаты поиска
+   751→                  </CardTitle>
+   752→                  <CardDescription className="text-xs">
+   753→                    Фасеттированный обзор — группировка по типам объектов
+   754→                  </CardDescription>
+   755→                </CardHeader>
+   756→                <CardContent>
+   757→                  <ScrollArea className="max-h-96 [&>div]:!overflow-y-auto">
+   758→                    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-4">
+   759→
+   760→                      {/* Facet counts */}
+   761→                      <div className="flex flex-wrap gap-2 mb-3">
+   762→                        <Badge className="bg-stone-700 text-white text-xs gap-1">
+   763→                          <FileText className="w-2.5 h-2.5" />
+   764→                          Документы: {searchResults.documents.length}
+   765→                        </Badge>
+   766→                        <Badge className="bg-stone-700 text-white text-xs gap-1">
+   767→                          <Users className="w-2.5 h-2.5" />
+   768→                          Участники: {searchResults.persons.length}
+   769→                        </Badge>
+   770→                        <Badge className="bg-stone-700 text-white text-xs gap-1">
+   771→                          <BookOpen className="w-2.5 h-2.5" />
+   772→                          Эпизоды: {searchResults.episodes.length}
+   773→                        </Badge>
+   774→                        <Badge className="bg-stone-700 text-white text-xs gap-1">
+   775→                          <Link2 className="w-2.5 h-2.5" />
+   776→                          Ссылки: {searchResults.crossReferences.length}
+   777→                        </Badge>
+   778→                      </div>
+   779→
+   780→                      {/* Documents section */}
+   781→                      {searchResults.documents.length > 0 && (
+   782→                        <div>
+   783→                          <h4 className="text-sm font-medium mb-2 flex items-center gap-2">
+   784→                            <FileText className="h-4 w-4" />
+   785→                            Документы ({searchResults.documents.length})
+   786→                          </h4>
+   787→                          <div className="space-y-1.5">
+   788→                            {searchResults.documents.slice(0, 5).map((doc) => (
+   789→                              <motion.div
+   790→                                key={doc.id}
+   791→                                initial={{ opacity: 0, y: 5 }}
+   792→                                animate={{ opacity: 1, y: 0 }}
+   793→                                className="p-2 bg-muted/50 rounded text-sm flex items-center gap-2"
+   794→                              >
+   795→                                <FileText className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+   796→                                <span className="truncate">{highlightText(doc.originalName, query)}</span>
+   797→                                {doc.documentType && <Badge variant="outline" className="text-xs">{doc.documentType}</Badge>}
+   798→                              </motion.div>
+   799→                            ))}
+   800→                          </div>
+   801→                        </div>
+   802→                      )}
+   803→                      <Separator />
+   804→
+   805→                      {/* Persons section */}
+   806→                      {searchResults.persons.length > 0 && (
+   807→                        <div>
+   808→                          <h4 className="text-sm font-medium mb-2 flex items-center gap-2">
+   809→                            <Users className="h-4 w-4" />
+   810→                            Участники ({searchResults.persons.length})
+   811→                          </h4>
+   812→                          <div className="space-y-1.5">
+   813→                            {searchResults.persons.slice(0, 5).map((person) => (
+   814→                              <motion.div
+   815→                                key={person.id}
+   816→                                initial={{ opacity: 0, y: 5 }}
+   817→                                animate={{ opacity: 1, y: 0 }}
+   818→                                className="p-2 bg-muted/50 rounded text-sm flex items-center gap-2"
+   819→                              >
+   820→                                <Users className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+   821→                                <span className="truncate">{highlightText(person.fullName, query)}</span>
+   822→                                {person.role && <Badge className="bg-stone-700 text-white text-xs">{person.role}</Badge>}
+   823→                              </motion.div>
+   824→                            ))}
+   825→                          </div>
+   826→                        </div>
+   827→                      )}
+   828→                      <Separator />
+   829→
+   830→                      {/* Episodes section */}
+   831→                      {searchResults.episodes.length > 0 && (
+   832→                        <div>
+   833→                          <h4 className="text-sm font-medium mb-2 flex items-center gap-2">
+   834→                            <BookOpen className="h-4 w-4" />
+   835→                            Эпизоды ({searchResults.episodes.length})
+   836→                          </h4>
+   837→                          <div className="space-y-1.5">
+   838→                            {searchResults.episodes.slice(0, 5).map((ep) => (
+   839→                              <motion.div
+   840→                                key={ep.id}
+   841→                                initial={{ opacity: 0, y: 5 }}
+   842→                                animate={{ opacity: 1, y: 0 }}
+   843→                                className="p-2 bg-muted/50 rounded text-sm flex items-center gap-2"
+   844→                              >
+   845→                                <BookOpen className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+   846→                                <span className="truncate">{highlightText(ep.title, query)}</span>
+   847→                                {ep.severity && <Badge variant="outline" className="text-xs">{ep.severity}</Badge>}
+   848→                              </motion.div>
+   849→                            ))}
+   850→                          </div>
+   851→                        </div>
+   852→                      )}
+   853→                      <Separator />
+   854→
+   855→                      {/* Cross References section */}
+   856→                      {searchResults.crossReferences.length > 0 && (
+   857→                        <div>
+   858→                          <h4 className="text-sm font-medium mb-2 flex items-center gap-2">
+   859→                            <Link2 className="h-4 w-4" />
+   860→                            Перекрёстные ссылки ({searchResults.crossReferences.length})
+   861→                          </h4>
+   862→                          <div className="space-y-1.5">
+   863→                            {searchResults.crossReferences.slice(0, 5).map((ref) => (
+   864→                              <motion.div
+   865→                                key={ref.id}
+   866→                                initial={{ opacity: 0, y: 5 }}
+   867→                                animate={{ opacity: 1, y: 0 }}
+   868→                                className="p-2 bg-muted/50 rounded text-sm flex items-center gap-2"
+   869→                              >
+   870→                                <Link2 className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+   871→                                <span className="truncate">{highlightText(ref.referenceText, query)}</span>
+   872→                              </motion.div>
+   873→                            ))}
+   874→                          </div>
+   875→                        </div>
+   876→                      )}
+   877→                    </motion.div>
+   878→                  </ScrollArea>
+   879→                </CardContent>
+   880→              </Card>
+   881→            </TabsContent>
+   882→          </Tabs>
+   883→        </motion.div>
+   884→      )}
+   885→
+   886→      {/* Empty State */}
+   887→      {!searchResults && !searchMutation.isPending && (
+   888→        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
+   889→          <Card>
+   890→            <CardContent className="py-12">
+   891→              <div className="flex flex-col items-center justify-center text-center">
+   892→                <motion.div
+   893→                  animate={{ y: [0, -5, 0] }}
+   894→                  transition={{ repeat: Infinity, duration: 2, ease: 'easeInOut' }}
+   895→                >
+   896→                  <Search className="h-12 w-12 text-muted-foreground/30 mb-4" />
+   897→                </motion.div>
+   898→                <h3 className="text-lg font-medium mb-2">Начните поиск</h3>
+   899→                <p className="text-sm text-muted-foreground max-w-md">
+   900→                  Введите запрос для поиска по документам, участникам, эпизодам и перекрёстным ссылкам в материалах уголовного дела.
+   901→                  Поддерживается неточный поиск и фасеттированная навигация.
+   902→                </p>
+   903→                {/* Suggested searches */}
+   904→                <div className="flex flex-wrap gap-2 mt-6 max-w-lg">
+   905→                  {['Колесниченко', 'мошенничество', 'процессуальные нарушения', 'ст. 159'].map(suggestion => (
+   906→                    <motion.button
+   907→                      key={suggestion}
+   908→                      whileHover={{ scale: 1.05 }}
+   909→                      whileTap={{ scale: 0.95 }}
+   910→                      onClick={() => { setQuery(suggestion); handleSearch() }}
+   911→                      className="px-3 py-1.5 bg-muted/50 rounded-lg text-xs hover:bg-muted transition-colors"
+   912→                    >
+   913→                      <Sparkles className="w-3 h-3 mr-1 inline" />
+   914→                      {suggestion}
+   915→                    </motion.button>
+   916→                  ))}
+   917→                </div>
+   918→              </div>
+   919→            </CardContent>
+   920→          </Card>
+   921→        </motion.div>
+   922→      )}
+   923→    </div>
+   924→  )
+   925→}
+   926→

@@ -1,0 +1,1003 @@
+     1→'use client'
+     2→
+     3→import { useState, useRef, useCallback, useEffect } from 'react'
+     4→import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+     5→import { motion, AnimatePresence } from 'framer-motion'
+     6→import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+     7→import { Badge } from '@/components/ui/badge'
+     8→import { Button } from '@/components/ui/button'
+     9→import { Progress } from '@/components/ui/progress'
+    10→import { Separator } from '@/components/ui/separator'
+    11→import { ScrollArea } from '@/components/ui/scroll-area'
+    12→import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
+    13→import { Input } from '@/components/ui/input'
+    14→import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+    15→import { Checkbox } from '@/components/ui/checkbox'
+    16→import { Skeleton } from '@/components/ui/skeleton'
+    17→import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
+    18→import { toast } from 'sonner'
+    19→import {
+    20→  FileText, Upload, Trash2, RefreshCw, Eye, CheckCircle, Clock, AlertTriangle,
+    21→  Loader2, Filter, SortAsc, SortDesc, X, Files, Zap, ChevronDown, ChevronUp,
+    22→  GripVertical, ArrowRight, FileIcon as DocumentIcon, GitCompare as Compare, Users, BookOpen, Scale,
+    23→  FolderOpen, ListChecks, ScanSearch
+    24→} from 'lucide-react'
+    25→import { mockDocuments } from '@/lib/mock-data'
+    26→import * as caseApi from '@/lib/case-api'
+    27→import type { DocumentData } from '@/lib/case-store'
+    28→
+    29→function formatFileSize(bytes: number): string {
+    30→  if (bytes < 1024) return bytes + ' Б'
+    31→  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' КБ'
+    32→  return (bytes / (1024 * 1024)).toFixed(1) + ' МБ'
+    33→}
+    34→
+    35→function getStatusConfig(status: string) {
+    36→  switch (status) {
+    37→    case 'completed':
+    38→      return { icon: <CheckCircle className="w-3.5 h-3.5" />, label: 'Завершён', className: 'bg-emerald-700 text-white border-emerald-600', pulse: false }
+    39→    case 'processing':
+    40→      return { icon: <Clock className="w-3.5 h-3.5" />, label: 'Обработка', className: 'bg-orange-600 text-white border-orange-500 animate-pulse', pulse: true }
+    41→    case 'pending':
+    42→      return { icon: <Clock className="w-3.5 h-3.5" />, label: 'Ожидание', className: 'bg-stone-500 text-white border-stone-400', pulse: false }
+    43→    case 'failed':
+    44→      return { icon: <AlertTriangle className="w-3.5 h-3.5" />, label: 'Ошибка', className: 'bg-red-700 text-white border-red-600', pulse: false }
+    45→    default:
+    46→      return { icon: <Clock className="w-3.5 h-3.5" />, label: status, className: 'bg-stone-400 text-white border-stone-300', pulse: false }
+    47→  }
+    48→}
+    49→
+    50→function getDocTypeConfig(type: string | null) {
+    51→  if (!type) return { className: 'bg-stone-500/70 text-stone-200', label: 'Не определён' }
+    52→  const map: Record<string, { className: string; label: string }> = {
+    53→    'обвинение': { className: 'bg-red-700 text-white', label: 'Обвинение' },
+    54→    'показание': { className: 'bg-orange-600 text-white', label: 'Показание' },
+    55→    'протокол': { className: 'bg-amber-600 text-white', label: 'Протокол' },
+    56→    'доказательство': { className: 'bg-emerald-700 text-white', label: 'Доказательство' },
+    57→    'заключение': { className: 'bg-stone-600 text-white', label: 'Заключение' },
+    58→  }
+    59→  return map[type] || { className: 'bg-stone-500 text-white', label: type }
+    60→}
+    61→
+    62→type SortField = 'date' | 'name' | 'size' | 'status'
+    63→type SortDirection = 'asc' | 'desc'
+    64→type FilterType = 'all' | string
+    65→type FilterStatus = 'all' | 'pending' | 'processing' | 'completed' | 'failed'
+    66→
+    67→interface UploadProgress {
+    68→  fileName: string
+    69→  progress: number
+    70→  status: 'uploading' | 'success' | 'error'
+    71→  error?: string
+    72→}
+    73→
+    74→export function CaseDocuments() {
+    75→  const queryClient = useQueryClient()
+    76→  const fileInputRef = useRef<HTMLInputElement>(null)
+    77→
+    78→  // State
+    79→  const [isDragOver, setIsDragOver] = useState(false)
+    80→  const [uploadProgresses, setUploadProgresses] = useState<UploadProgress[]>([])
+    81→  const [selectedDoc, setSelectedDoc] = useState<DocumentData | null>(null)
+    82→  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+    83→  const [compareIds, setCompareIds] = useState<[string, string] | null>(null)
+    84→  const [sortField, setSortField] = useState<SortField>('date')
+    85→  const [sortDir, setSortDir] = useState<SortDirection>('desc')
+    86→  const [filterType, setFilterType] = useState<FilterType>('all')
+    87→  const [filterStatus, setFilterStatus] = useState<FilterStatus>('all')
+    88→  const [showFilters, setShowFilters] = useState(false)
+    89→  const [showPreview, setShowPreview] = useState(false)
+    90→  const [showCompare, setShowCompare] = useState(false)
+    91→  const [processingDocIds, setProcessingDocIds] = useState<Set<string>>(new Set())
+    92→  const [showQueue, setShowQueue] = useState(false)
+    93→
+    94→  // TanStack Query - fetch documents
+    95→  const {
+    96→    data: documents = [],
+    97→    isLoading: isLoadingDocs,
+    98→    error: docsError,
+    99→    refetch: refetchDocs,
+   100→  } = useQuery({
+   101→    queryKey: ['documents'],
+   102→    queryFn: caseApi.getDocuments,
+   103→    refetchInterval: 5000, // Poll every 5s for processing updates
+   104→  })
+   105→
+   106→  // Fallback to mock data if API not available
+   107→  const displayDocs = docsError ? mockDocuments : documents
+   108→
+   109→  // TanStack Query - upload mutation
+   110→  const uploadMutation = useMutation({
+   111→    mutationFn: caseApi.uploadDocuments,
+   112→    onSuccess: () => {
+   113→      queryClient.invalidateQueries({ queryKey: ['documents'] })
+   114→      setUploadProgresses([])
+   115→      toast.success('Документы успешно загружены')
+   116→    },
+   117→    onError: (error: Error) => {
+   118→      toast.error(`Ошибка загрузки: ${error.message}`)
+   119→      setUploadProgresses([])
+   120→    },
+   121→  })
+   122→
+   123→  // TanStack Query - process document mutation
+   124→  const processMutation = useMutation({
+   125→    mutationFn: caseApi.processDocument,
+   126→    onSuccess: () => {
+   127→      queryClient.invalidateQueries({ queryKey: ['documents'] })
+   128→      toast.success('Анализ документа запущен')
+   129→    },
+   130→    onError: (error: Error) => {
+   131→      toast.error(`Ошибка анализа: ${error.message}`)
+   132→    },
+   133→  })
+   134→
+   135→  // TanStack Query - delete mutation
+   136→  const deleteMutation = useMutation({
+   137→    mutationFn: caseApi.deleteDocument,
+   138→    onSuccess: () => {
+   139→      queryClient.invalidateQueries({ queryKey: ['documents'] })
+   140→      toast.success('Документ удалён')
+   141→    },
+   142→    onError: (error: Error) => {
+   143→      toast.error(`Ошибка удаления: ${error.message}`)
+   144→    },
+   145→  })
+   146→
+   147→  // TanStack Query - reprocess mutation
+   148→  const reprocessMutation = useMutation({
+   149→    mutationFn: caseApi.reprocessDocument,
+   150→    onSuccess: () => {
+   151→      queryClient.invalidateQueries({ queryKey: ['documents'] })
+   152→      toast.success('Документ отправлен на повторную обработку')
+   153→    },
+   154→    onError: (error: Error) => {
+   155→      toast.error(`Ошибка: ${error.message}`)
+   156→    },
+   157→  })
+   158→
+   159→  // Drag-and-drop handlers
+   160→  const handleUploadFiles = (files: File[]) => {
+   161→    // Show progress for each file
+   162→    const progresses: UploadProgress[] = files.map(f => ({
+   163→      fileName: f.name,
+   164→      progress: 0,
+   165→      status: 'uploading',
+   166→    }))
+   167→    setUploadProgresses(progresses)
+   168→
+   169→    // Simulate progress updates
+   170→    progresses.forEach((p, i) => {
+   171→      const interval = setInterval(() => {
+   172→        setUploadProgresses(prev => {
+   173→          const updated = [...prev]
+   174→          const current = updated[i]
+   175→          if (current.progress >= 100) {
+   176→            clearInterval(interval)
+   177→            updated[i] = { ...current, status: 'success', progress: 100 }
+   178→            return updated
+   179→          }
+   180→          updated[i] = { ...current, progress: Math.min(current.progress + Math.random() * 30, 100) }
+   181→          return updated
+   182→        })
+   183→      }, 300)
+   184→    })
+   185→
+   186→    uploadMutation.mutate(files)
+   187→  }
+   188→
+   189→  const handleDragOver = useCallback((e: React.DragEvent) => {
+   190→    e.preventDefault()
+   191→    e.stopPropagation()
+   192→    setIsDragOver(true)
+   193→  }, [])
+   194→
+   195→  const handleDragLeave = useCallback((e: React.DragEvent) => {
+   196→    e.preventDefault()
+   197→    e.stopPropagation()
+   198→    setIsDragOver(false)
+   199→  }, [])
+   200→
+   201→  const handleDrop = useCallback((e: React.DragEvent) => {
+   202→    e.preventDefault()
+   203→    e.stopPropagation()
+   204→    setIsDragOver(false)
+   205→    const files = Array.from(e.dataTransfer.files).filter(f => f.type === 'application/pdf' || f.name.endsWith('.pdf'))
+   206→    if (files.length === 0) {
+   207→      toast.error('Поддерживаются только PDF-файлы')
+   208→      return
+   209→    }
+   210→    handleUploadFiles(files)
+   211→  }, [handleUploadFiles])
+   212→
+   213→  const handleFileInput = (e: React.ChangeEvent<HTMLInputElement>) => {
+   214→    const files = e.target.files
+   215→    if (!files || files.length === 0) return
+   216→    handleUploadFiles(Array.from(files))
+   217→    if (fileInputRef.current) fileInputRef.current.value = ''
+   218→  }
+   219→
+   220→  // Document actions
+   221→  const handleProcessDoc = (docId: string) => {
+   222→    setProcessingDocIds(prev => new Set([...prev, docId]))
+   223→    processMutation.mutate(docId, {
+   224→      onSettled: () => {
+   225→        setProcessingDocIds(prev => {
+   226→          const next = new Set(prev)
+   227→          next.delete(docId)
+   228→          return next
+   229→        })
+   230→      },
+   231→    })
+   232→  }
+   233→
+   234→  const handleDeleteDoc = (docId: string) => {
+   235→    deleteMutation.mutate(docId)
+   236→  }
+   237→
+   238→  const handleReprocessDoc = (docId: string) => {
+   239→    reprocessMutation.mutate(docId)
+   240→  }
+   241→
+   242→  // Bulk actions
+   243→  const handleBulkProcess = () => {
+   244→    selectedIds.forEach(id => handleProcessDoc(id))
+   245→    setSelectedIds(new Set())
+   246→  }
+   247→
+   248→  const handleBulkDelete = () => {
+   249→    selectedIds.forEach(id => handleDeleteDoc(id))
+   250→    setSelectedIds(new Set())
+   251→  }
+   252→
+   253→  const toggleSelect = (id: string) => {
+   254→    setSelectedIds(prev => {
+   255→      const next = new Set(prev)
+   256→      if (next.has(id)) next.delete(id)
+   257→      else next.add(id)
+   258→      return next
+   259→    })
+   260→  }
+   261→
+   262→  const toggleSelectAll = () => {
+   263→    if (selectedIds.size === filteredAndSortedDocs.length) {
+   264→      setSelectedIds(new Set())
+   265→    } else {
+   266→      setSelectedIds(new Set(filteredAndSortedDocs.map(d => d.id)))
+   267→    }
+   268→  }
+   269→
+   270→  // Comparison
+   271→  const startCompare = (id1: string, id2: string) => {
+   272→    setCompareIds([id1, id2])
+   273→    setShowCompare(true)
+   274→  }
+   275→
+   276→  // Filtering and sorting
+   277→  const filteredAndSortedDocs = displayDocs
+   278→    .filter(doc => {
+   279→      if (filterType !== 'all' && doc.documentType !== filterType) return false
+   280→      if (filterStatus !== 'all' && doc.processingStatus !== filterStatus) return false
+   281→      return true
+   282→    })
+   283→    .sort((a, b) => {
+   284→      const dir = sortDir === 'asc' ? 1 : -1
+   285→      switch (sortField) {
+   286→        case 'name':
+   287→          return dir * a.originalName.localeCompare(b.originalName, 'ru')
+   288→        case 'size':
+   289→          return dir * (a.fileSize - b.fileSize)
+   290→        case 'status':
+   291→          const statusOrder = { pending: 0, processing: 1, completed: 2, failed: 3 }
+   292→          return dir * ((statusOrder[a.processingStatus as keyof typeof statusOrder] ?? 0) - (statusOrder[b.processingStatus as keyof typeof statusOrder] ?? 0))
+   293→        case 'date':
+   294→          return dir * ((a.documentDate || a.uploadedAt).localeCompare((b.documentDate || b.uploadedAt)))
+   295→        default:
+   296→          return 0
+   297→      }
+   298→    })
+   299→
+   300→  // Stats
+   301→  const completedCount = displayDocs.filter(d => d.processingStatus === 'completed').length
+   302→  const totalCount = displayDocs.length
+   303→  const processingCount = displayDocs.filter(d => d.processingStatus === 'processing').length
+   304→  const pendingCount = displayDocs.filter(d => d.processingStatus === 'pending').length
+   305→  const failedCount = displayDocs.filter(d => d.processingStatus === 'failed').length
+   306→
+   307→  // Get unique document types for filter
+   308→  const docTypes = [...new Set(displayDocs.map(d => d.documentType).filter(Boolean))] as string[]
+   309→
+   310→  // Compare documents
+   311→  const compareDoc1 = compareIds ? displayDocs.find(d => d.id === compareIds[0]) : null
+   312→  const compareDoc2 = compareIds ? displayDocs.find(d => d.id === compareIds[1]) : null
+   313→
+   314→  // Animated variants
+   315→  const cardVariants = {
+   316→    hidden: { opacity: 0, y: 20 },
+   317→    visible: { opacity: 1, y: 0, transition: { duration: 0.3 } },
+   318→    exit: { opacity: 0, y: -10, transition: { duration: 0.2 } },
+   319→  }
+   320→
+   321→  const staggerContainer = {
+   322→    hidden: { opacity: 0 },
+   323→    visible: { opacity: 1, transition: { staggerChildren: 0.05 } },
+   324→  }
+   325→
+   326→  return (
+   327→    <div className="space-y-6">
+   328→      {/* Upload Section */}
+   329→      <motion.div initial={{ hidden: {} }} animate={{ visible: {} }} variants={cardVariants}>
+   330→        <Card className="overflow-hidden">
+   331→          <CardHeader>
+   332→            <div className="flex items-center justify-between">
+   333→              <div>
+   334→                <CardTitle className="flex items-center gap-2">
+   335→                  <Upload className="h-5 w-5" />
+   336→                  Загрузка документов
+   337→                </CardTitle>
+   338→                <CardDescription className="mt-1">
+   339→                  Загрузите PDF-документы материалов уголовного дела для обработки ИИ
+   340→                </CardDescription>
+   341→              </div>
+   342→              <TooltipProvider>
+   343→                <Tooltip>
+   344→                  <TooltipTrigger asChild>
+   345→                    <Badge variant="outline" className="text-xs">
+   346→                      {totalCount} документов
+   347→                    </Badge>
+   348→                  </TooltipTrigger>
+   349→                  <TooltipContent>
+   350→                    <p>Завершено: {completedCount}</p>
+   351→                    <p>В обработке: {processingCount}</p>
+   352→                    <p>Ожидание: {pendingCount}</p>
+   353→                    <p>Ошибка: {failedCount}</p>
+   354→                  </TooltipContent>
+   355→                </Tooltip>
+   356→              </TooltipProvider>
+   357→            </div>
+   358→          </CardHeader>
+   359→          <CardContent className="space-y-4">
+   360→            {/* Drag-and-Drop Area */}
+   361→            <motion.div
+   362→              animate={{
+   363→                borderColor: isDragOver ? '#f97316' : '#374151',
+   364→                backgroundColor: isDragOver ? 'rgba(249,115,22,0.05)' : 'rgba(0,0,0,0)',
+   365→                scale: isDragOver ? 1.02 : 1,
+   366→              }}
+   367→              transition={{ duration: 0.2 }}
+   368→              onDragOver={handleDragOver}
+   369→              onDragLeave={handleDragLeave}
+   370→              onDrop={handleDrop}
+   371→              className="border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-all hover:border-stone-400 hover:bg-stone-50/5"
+   372→              onClick={() => fileInputRef.current?.click()}
+   373→            >
+   374→              <input
+   375→                ref={fileInputRef}
+   376→                type="file"
+   377→                accept=".pdf"
+   378→                multiple
+   379→                className="hidden"
+   380→                onChange={handleFileInput}
+   381→              />
+   382→              <motion.div animate={{ y: isDragOver ? -5 : 0 }} transition={{ type: 'spring', stiffness: 300 }}>
+   383→                <Upload className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
+   384→                <h3 className="text-sm font-medium mb-1">
+   385→                  {isDragOver ? 'Перетащите файлы сюда' : 'Перетащите PDF-файлы или нажмите для выбора'}
+   386→                </h3>
+   387→                <p className="text-xs text-muted-foreground">
+   388→                  Поддерживается многодокументная загрузка. Файлы будут добавлены в очередь обработки ИИ.
+   389→                </p>
+   390→              </motion.div>
+   391→            </motion.div>
+   392→
+   393→            {/* Upload Progress per file */}
+   394→            <AnimatePresence>
+   395→              {uploadProgresses.length > 0 && (
+   396→                <motion.div
+   397→                  initial={{ opacity: 0, height: 0 }}
+   398→                  animate={{ opacity: 1, height: 'auto' }}
+   399→                  exit={{ opacity: 0, height: 0 }}
+   400→                  className="space-y-2"
+   401→                >
+   402→                  <h4 className="text-xs font-medium text-muted-foreground flex items-center gap-2">
+   403→                    <Files className="w-3 h-3" />
+   404→                    Прогресс загрузки файлов
+   405→                  </h4>
+   406→                  {uploadProgresses.map((p, i) => (
+   407→                    <motion.div
+   408→                      key={p.fileName + i}
+   409→                      initial={{ opacity: 0, x: -20 }}
+   410→                      animate={{ opacity: 1, x: 0 }}
+   411→                      exit={{ opacity: 0, x: 20 }}
+   412→                      className="flex items-center gap-3"
+   413→                    >
+   414→                      <FileText className="h-4 w-4 text-muted-foreground shrink-0" />
+   415→                      <div className="flex-1 min-w-0">
+   416→                        <div className="flex items-center justify-between text-xs mb-1">
+   417→                          <span className="truncate font-medium">{p.fileName}</span>
+   418→                          <span className={p.status === 'success' ? 'text-emerald-500' : p.status === 'error' ? 'text-red-500' : 'text-muted-foreground'}>
+   419→                            {p.status === 'success' ? '✓ Загружен' : p.status === 'error' ? '✗ Ошибка' : `${Math.round(p.progress)}%`}
+   420→                          </span>
+   421→                        </div>
+   422→                        <Progress value={p.progress} className="h-1.5" />
+   423→                      </div>
+   424→                    </motion.div>
+   425→                  ))}
+   426→                </motion.div>
+   427→              )}
+   428→            </AnimatePresence>
+   429→
+   430→            {/* Overall Processing Progress */}
+   431→            <div className="space-y-2">
+   432→              <div className="flex justify-between text-sm text-muted-foreground">
+   433→                <span>Общий прогресс обработки</span>
+   434→                <span className="font-medium">{completedCount} из {totalCount} завершено</span>
+   435→              </div>
+   436→              <Progress value={(completedCount / totalCount) * 100} className="h-2.5" />
+   437→              <div className="flex gap-3 text-xs">
+   438→                <Badge className="bg-emerald-700 text-white text-xs"><CheckCircle className="w-2.5 h-2.5 mr-1" />{completedCount} завершено</Badge>
+   439→                <Badge className="bg-orange-600 text-white text-xs"><Clock className="w-2.5 h-2.5 mr-1" />{processingCount} обработка</Badge>
+   440→                <Badge className="bg-stone-500 text-white text-xs"><Clock className="w-2.5 h-2.5 mr-1" />{pendingCount} ожидание</Badge>
+   441→                {failedCount > 0 && <Badge className="bg-red-700 text-white text-xs"><AlertTriangle className="w-2.5 h-2.5 mr-1" />{failedCount} ошибки</Badge>}
+   442→              </div>
+   443→            </div>
+   444→          </CardContent>
+   445→        </Card>
+   446→      </motion.div>
+   447→
+   448→      {/* Processing Queue */}
+   449→      <AnimatePresence>
+   450→        {showQueue && (
+   451→          <motion.div
+   452→            initial={{ opacity: 0, height: 0 }}
+   453→            animate={{ opacity: 1, height: 'auto' }}
+   454→            exit={{ opacity: 0, height: 0 }}
+   455→          >
+   456→            <Card>
+   457→              <CardHeader className="pb-3">
+   458→                <div className="flex items-center justify-between">
+   459→                  <CardTitle className="text-sm flex items-center gap-2">
+   460→                    <ListChecks className="h-4 w-4" />
+   461→                    Очередь обработки
+   462→                  </CardTitle>
+   463→                  <Button variant="ghost" size="sm" onClick={() => setShowQueue(false)}>
+   464→                    <X className="h-4 w-4" />
+   465→                  </Button>
+   466→                </div>
+   467→              </CardHeader>
+   468→              <CardContent>
+   469→                <div className="space-y-2">
+   470→                  {displayDocs.filter(d => d.processingStatus === 'processing' || d.processingStatus === 'pending').map((doc, i) => (
+   471→                    <motion.div
+   472→                      key={doc.id}
+   473→                      initial={{ opacity: 0, x: -20 }}
+   474→                      animate={{ opacity: 1, x: 0 }}
+   475→                      transition={{ delay: i * 0.1 }}
+   476→                      className="flex items-center gap-3 p-2 bg-muted/50 rounded-lg"
+   477→                    >
+   478→                      <div className="flex h-6 w-6 items-center justify-center rounded-full bg-stone-700 text-white text-xs font-bold">
+   479→                        {i + 1}
+   480→                      </div>
+   481→                      <FileText className="h-4 w-4 text-muted-foreground shrink-0" />
+   482→                      <div className="flex-1 min-w-0">
+   483→                        <span className="text-xs font-medium truncate">{doc.originalName}</span>
+   484→                      </div>
+   485→                      <AnimatePresence mode="wait">
+   486→                        <motion.div
+   487→                          key={doc.processingStatus}
+   488→                          initial={{ scale: 0.8, opacity: 0 }}
+   489→                          animate={{ scale: 1, opacity: 1 }}
+   490→                          exit={{ scale: 0.8, opacity: 0 }}
+   491→                        >
+   492→                          <Badge className={getStatusConfig(doc.processingStatus).className}>
+   493→                            {getStatusConfig(doc.processingStatus).icon}
+   494→                            <span className="ml-1">{getStatusConfig(doc.processingStatus).label}</span>
+   495→                          </Badge>
+   496→                        </motion.div>
+   497→                      </AnimatePresence>
+   498→                    </motion.div>
+   499→                  ))}
+   500→                  {displayDocs.filter(d => d.processingStatus === 'processing' || d.processingStatus === 'pending').length === 0 && (
+   501→                    <p className="text-xs text-muted-foreground text-center py-3">Нет документов в очереди</p>
+   502→                  )}
+   503→                </div>
+   504→              </CardContent>
+   505→            </Card>
+   506→          </motion.div>
+   507→        )}
+   508→      </AnimatePresence>
+   509→
+   510→      {/* Filters & Sorting Bar */}
+   511→      <motion.div variants={cardVariants} initial="hidden" animate="visible">
+   512→        <Card>
+   513→          <CardContent className="p-4">
+   514→            <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center">
+   515→              {/* Quick Filter Toggle */}
+   516→              <Button
+   517→                variant="outline"
+   518→                size="sm"
+   519→                onClick={() => setShowFilters(!showFilters)}
+   520→                className="gap-2 shrink-0"
+   521→              >
+   522→                <Filter className="h-4 w-4" />
+   523→                Фильтры
+   524→                <ChevronDown className={`h-3 w-3 transition-transform ${showFilters ? 'rotate-180' : ''}`} />
+   525→              </Button>
+   526→
+   527→              {/* Sort Controls */}
+   528→              <div className="flex items-center gap-2">
+   529→                <Select value={sortField} onValueChange={(v) => setSortField(v as SortField)}>
+   530→                  <SelectTrigger className="w-[140px] h-8 text-xs">
+   531→                    <SelectValue />
+   532→                  </SelectTrigger>
+   533→                  <SelectContent>
+   534→                    <SelectItem value="date">По дате</SelectItem>
+   535→                    <SelectItem value="name">По имени</SelectItem>
+   536→                    <SelectItem value="size">По размеру</SelectItem>
+   537→                    <SelectItem value="status">По статусу</SelectItem>
+   538→                  </SelectContent>
+   539→                </Select>
+   540→                <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => setSortDir(sortDir === 'asc' ? 'desc' : 'asc')}>
+   541→                  {sortDir === 'asc' ? <SortAsc className="h-4 w-4" /> : <SortDesc className="h-4 w-4" />}
+   542→                </Button>
+   543→              </div>
+   544→
+   545→              {/* Queue Toggle */}
+   546→              <Button variant="outline" size="sm" onClick={() => setShowQueue(!showQueue)} className="gap-2 shrink-0">
+   547→                <ListChecks className="h-4 w-4" />
+   548→                Очередь
+   549→              </Button>
+   550→
+   551→              {/* Bulk Actions */}
+   552→              {selectedIds.size > 0 && (
+   553→                <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="flex items-center gap-2">
+   554→                  <Badge variant="outline">{selectedIds.size} выбрано</Badge>
+   555→                  <Button variant="outline" size="sm" className="gap-1 text-xs h-8" onClick={handleBulkProcess}>
+   556→                    <Zap className="h-3.5 w-3.5" />
+   557→                    Анализировать все
+   558→                  </Button>
+   559→                  <Button variant="destructive" size="sm" className="gap-1 text-xs h-8" onClick={handleBulkDelete}>
+   560→                    <Trash2 className="h-3.5 w-3.5" />
+   561→                    Удалить все
+   562→                  </Button>
+   563→                  <Button variant="ghost" size="sm" className="h-8" onClick={() => setSelectedIds(new Set())}>
+   564→                    <X className="h-3.5 w-3.5" />
+   565→                  </Button>
+   566→                </motion.div>
+   567→              )}
+   568→
+   569→              {/* Select All */}
+   570→              <div className="flex items-center gap-2 ml-auto">
+   571→                <Checkbox
+   572→                  checked={selectedIds.size === filteredAndSortedDocs.length && filteredAndSortedDocs.length > 0}
+   573→                  onCheckedChange={toggleSelectAll}
+   574→                />
+   575→                <span className="text-xs text-muted-foreground">Выбрать все</span>
+   576→              </div>
+   577→
+   578→              {/* Results count */}
+   579→              <span className="text-xs text-muted-foreground shrink-0">
+   580→                {filteredAndSortedDocs.length} из {totalCount} документов
+   581→              </span>
+   582→            </div>
+   583→
+   584→            {/* Expanded Filters Panel */}
+   585→            <AnimatePresence>
+   586→              {showFilters && (
+   587→                <motion.div
+   588→                  initial={{ opacity: 0, height: 0 }}
+   589→                  animate={{ opacity: 1, height: 'auto' }}
+   590→                  exit={{ opacity: 0, height: 0 }}
+   591→                  className="mt-4 pt-4 border-t"
+   592→                >
+   593→                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+   594→                    <div>
+   595→                      <label className="text-xs font-medium text-muted-foreground mb-1 block">Тип документа</label>
+   596→                      <Select value={filterType} onValueChange={setFilterType}>
+   597→                        <SelectTrigger className="h-8 text-xs">
+   598→                          <SelectValue />
+   599→                        </SelectTrigger>
+   600→                        <SelectContent>
+   601→                          <SelectItem value="all">Все типы</SelectItem>
+   602→                          {docTypes.map(type => (
+   603→                            <SelectItem key={type} value={type}>{type}</SelectItem>
+   604→                          ))}
+   605→                        </SelectContent>
+   606→                      </Select>
+   607→                    </div>
+   608→                    <div>
+   609→                      <label className="text-xs font-medium text-muted-foreground mb-1 block">Статус обработки</label>
+   610→                      <Select value={filterStatus} onValueChange={setFilterStatus}>
+   611→                        <SelectTrigger className="h-8 text-xs">
+   612→                          <SelectValue />
+   613→                        </SelectTrigger>
+   614→                        <SelectContent>
+   615→                          <SelectItem value="all">Все статусы</SelectItem>
+   616→                          <SelectItem value="pending">Ожидание</SelectItem>
+   617→                          <SelectItem value="processing">В обработке</SelectItem>
+   618→                          <SelectItem value="completed">Завершено</SelectItem>
+   619→                          <SelectItem value="failed">Ошибка</SelectItem>
+   620→                        </SelectContent>
+   621→                      </Select>
+   622→                    </div>
+   623→                    <div className="flex items-end gap-2 sm:col-span-2">
+   624→                      <Button variant="outline" size="sm" className="h-8 text-xs gap-1" onClick={() => { setFilterType('all'); setFilterStatus('all') }}>
+   625→                        <X className="h-3 w-3" />
+   626→                        Сбросить фильтры
+   627→                      </Button>
+   628→                    </div>
+   629→                  </div>
+   630→                </motion.div>
+   631→              )}
+   632→            </AnimatePresence>
+   633→          </CardContent>
+   634→        </Card>
+   635→      </motion.div>
+   636→
+   637→      {/* Loading skeleton */}
+   638→      {isLoadingDocs && !docsError && (
+   639→        <div className="space-y-3">
+   640→          {[1, 2, 3].map(i => (
+   641→            <Card key={i}>
+   642→              <CardContent className="p-4">
+   643→                <div className="flex items-center gap-3">
+   644→                  <Skeleton className="h-5 w-5 rounded" />
+   645→                  <div className="flex-1 space-y-2">
+   646→                    <Skeleton className="h-4 w-[250px]" />
+   647→                    <Skeleton className="h-3 w-[150px]" />
+   648→                  </div>
+   649→                  <Skeleton className="h-6 w-[80px] rounded-full" />
+   650→                </div>
+   651→              </CardContent>
+   652→            </Card>
+   653→          ))}
+   654→        </div>
+   655→      )}
+   656→
+   657→      {/* Documents List */}
+   658→      <motion.div variants={staggerContainer} initial="hidden" animate="visible">
+   659→        <Card>
+   660→          <CardHeader>
+   661→            <CardTitle className="flex items-center gap-2">
+   662→              <FolderOpen className="h-5 w-5" />
+   663→              Документы дела
+   664→            </CardTitle>
+   665→            <CardDescription>Все загруженные документы с извлечёнными данными и связями</CardDescription>
+   666→          </CardHeader>
+   667→          <CardContent>
+   668→            <ScrollArea className="max-h-[600px] [&>div]:!overflow-y-auto [&>div>div]:space-y-0">
+   669→              <div className="space-y-2">
+   670→                <AnimatePresence>
+   671→                  {filteredAndSortedDocs.map((doc, index) => {
+   672→                    const statusConfig = getStatusConfig(doc.processingStatus)
+   673→                    const typeConfig = getDocTypeConfig(doc.documentType)
+   674→                    const isSelected = selectedIds.has(doc.id)
+   675→                    const isProcessing = processingDocIds.has(doc.id)
+   676→
+   677→                    return (
+   678→                      <motion.div
+   679→                        key={doc.id}
+   680→                        variants={cardVariants}
+   681→                        initial="hidden"
+   682→                        animate="visible"
+   683→                        exit="exit"
+   684→                        layout
+   685→                        transition={{ delay: index * 0.03 }}
+   686→                        className={`group flex items-start gap-3 p-4 rounded-lg transition-colors ${
+   687→                          isSelected ? 'bg-orange-600/10 border border-orange-600/30' : 'bg-muted/50 hover:bg-muted/80'
+   688→                        }`}
+   689→                      >
+   690→                        {/* Checkbox */}
+   691→                        <Checkbox
+   692→                          checked={isSelected}
+   693→                          onCheckedChange={() => toggleSelect(doc.id)}
+   694→                          className="mt-1 shrink-0"
+   695→                        />
+   696→
+   697→                        {/* File icon */}
+   698→                        <motion.div whileHover={{ scale: 1.1 }} className="shrink-0 mt-0.5">
+   699→                          <FileText className="h-5 w-5 text-muted-foreground" />
+   700→                        </motion.div>
+   701→
+   702→                        {/* Content */}
+   703→                        <div className="min-w-0 flex-1 space-y-1.5">
+   704→                          {/* Title row */}
+   705→                          <div className="flex items-center gap-2 flex-wrap">
+   706→                            <p className="text-sm font-medium truncate">{doc.originalName}</p>
+   707→                            <AnimatePresence mode="wait">
+   708→                              <motion.div
+   709→                                key={doc.processingStatus}
+   710→                                initial={{ scale: 0.8, opacity: 0 }}
+   711→                                animate={{ scale: 1, opacity: 1 }}
+   712→                                exit={{ scale: 0.8, opacity: 0 }}
+   713→                                transition={{ type: 'spring', stiffness: 500 }}
+   714→                              >
+   715→                                <Badge className={statusConfig.className}>
+   716→                                  {statusConfig.icon}
+   717→                                  <span className="ml-1">{statusConfig.label}</span>
+   718→                                </Badge>
+   719→                              </motion.div>
+   720→                            </AnimatePresence>
+   721→                            <Badge className={typeConfig.className}>{typeConfig.label}</Badge>
+   722→                          </div>
+   723→
+   724→                          {/* Metadata row */}
+   725→                          <div className="flex items-center gap-2 text-xs text-muted-foreground flex-wrap">
+   726→                            {doc.sourceReference && (
+   727→                              <span className="flex items-center gap-1">
+   728→                                <ScanSearch className="w-3 h-3" />
+   729→                                {doc.sourceReference}
+   730→                              </span>
+   731→                            )}
+   732→                            <span>{formatFileSize(doc.fileSize)}</span>
+   733→                            {doc.documentDate && <span>Дата: {doc.documentDate}</span>}
+   734→                            {doc.processedAt && <span>Обработано: {new Date(doc.processedAt).toLocaleDateString('ru-RU')}</span>}
+   735→                          </div>
+   736→
+   737→                          {/* Summary */}
+   738→                          {doc.summary && (
+   739→                            <p className="text-xs text-muted-foreground line-clamp-2">{doc.summary}</p>
+   740→                          )}
+   741→
+   742→                          {/* Linked entities */}
+   743→                          {doc.processingStatus === 'completed' && (
+   744→                            <div className="flex items-center gap-2 flex-wrap mt-1">
+   745→                              <Badge variant="outline" className="text-xs gap-1">
+   746→                                <Users className="w-2.5 h-2.5" />
+   747→                                Участники
+   748→                              </Badge>
+   749→                              <Badge variant="outline" className="text-xs gap-1">
+   750→                                <BookOpen className="w-2.5 h-2.5" />
+   751→                                Эпизоды
+   752→                              </Badge>
+   753→                              <Badge variant="outline" className="text-xs gap-1">
+   754→                                <Scale className="w-2.5 h-2.5" />
+   755→                                Статьи
+   756→                              </Badge>
+   757→                            </div>
+   758→                          )}
+   759→
+   760→                          {/* Error display */}
+   761→                          {doc.processingError && (
+   762→                            <motion.div
+   763→                              initial={{ opacity: 0, y: 5 }}
+   764→                              animate={{ opacity: 1, y: 0 }}
+   765→                              className="flex items-center gap-1 text-xs text-red-500 mt-1"
+   766→                            >
+   767→                              <AlertTriangle className="w-3 h-3" />
+   768→                              {doc.processingError}
+   769→                            </motion.div>
+   770→                          )}
+   771→                        </div>
+   772→
+   773→                        {/* Actions */}
+   774→                        <div className="flex items-center gap-1 shrink-0 opacity-60 group-hover:opacity-100 transition-opacity">
+   775→                          {/* Preview */}
+   776→                          {doc.processingStatus === 'completed' && (
+   777→                            <TooltipProvider>
+   778→                              <Tooltip>
+   779→                                <TooltipTrigger asChild>
+   780→                                  <Button
+   781→                                    variant="ghost"
+   782→                                    size="icon"
+   783→                                    className="h-7 w-7"
+   784→                                    onClick={() => { setSelectedDoc(doc); setShowPreview(true) }}
+   785→                                  >
+   786→                                    <Eye className="h-3.5 w-3.5" />
+   787→                                  </Button>
+   788→                                </TooltipTrigger>
+   789→                                <TooltipContent>Просмотр текста</TooltipContent>
+   790→                              </Tooltip>
+   791→                            </TooltipProvider>
+   792→                          )}
+   793→
+   794→                          {/* Process/Analyze */}
+   795→                          {(doc.processingStatus === 'pending' || doc.processingStatus === 'failed') && (
+   796→                            <TooltipProvider>
+   797→                              <Tooltip>
+   798→                                <TooltipTrigger asChild>
+   799→                                  <Button
+   800→                                    variant="ghost"
+   801→                                    size="icon"
+   802→                                    className="h-7 w-7 text-orange-600 hover:text-orange-500"
+   803→                                    onClick={() => handleProcessDoc(doc.id)}
+   804→                                    disabled={isProcessing}
+   805→                                  >
+   806→                                    {isProcessing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Zap className="h-3.5 w-3.5" />}
+   807→                                  </Button>
+   808→                                </TooltipTrigger>
+   809→                                <TooltipContent>Запустить анализ ИИ</TooltipContent>
+   810→                              </Tooltip>
+   811→                            </TooltipProvider>
+   812→                          )}
+   813→
+   814→                          {/* Reprocess */}
+   815→                          {doc.processingStatus === 'completed' && (
+   816→                            <TooltipProvider>
+   817→                              <Tooltip>
+   818→                                <TooltipTrigger asChild>
+   819→                                  <Button
+   820→                                    variant="ghost"
+   821→                                    size="icon"
+   822→                                    className="h-7 w-7"
+   823→                                    onClick={() => handleReprocessDoc(doc.id)}
+   824→                                  >
+   825→                                    <RefreshCw className="h-3.5 w-3.5" />
+   826→                                  </Button>
+   827→                                </TooltipTrigger>
+   828→                                <TooltipContent>Повторная обработка</TooltipContent>
+   829→                              </Tooltip>
+   830→                            </TooltipProvider>
+   831→                          )}
+   832→
+   833→                          {/* Compare */}
+   834→                          {doc.processingStatus === 'completed' && (
+   835→                            <TooltipProvider>
+   836→                              <Tooltip>
+   837→                                <TooltipTrigger asChild>
+   838→                                  <Button
+   839→                                    variant="ghost"
+   840→                                    size="icon"
+   841→                                    className="h-7 w-7"
+   842→                                    onClick={() => {
+   843→                                      if (selectedIds.size >= 2) {
+   844→                                        const ids = Array.from(selectedIds)
+   845→                                        startCompare(ids[0], ids[1])
+   846→                                      }
+   847→                                    }}
+   848→                                  >
+   849→                                    <Compare className="h-3.5 w-3.5" />
+   850→                                  </Button>
+   851→                                </TooltipTrigger>
+   852→                                <TooltipContent>Сравнить (выберите 2 документа)</TooltipContent>
+   853→                              </Tooltip>
+   854→                            </TooltipProvider>
+   855→                          )}
+   856→
+   857→                          {/* Delete */}
+   858→                          <TooltipProvider>
+   859→                            <Tooltip>
+   860→                              <TooltipTrigger asChild>
+   861→                                <Button
+   862→                                  variant="ghost"
+   863→                                  size="icon"
+   864→                                  className="h-7 w-7 text-destructive hover:text-destructive"
+   865→                                  onClick={() => handleDeleteDoc(doc.id)}
+   866→                                >
+   867→                                  <Trash2 className="h-3.5 w-3.5" />
+   868→                                </Button>
+   869→                              </TooltipTrigger>
+   870→                              <TooltipContent>Удалить документ</TooltipContent>
+   871→                            </Tooltip>
+   872→                          </TooltipProvider>
+   873→                        </div>
+   874→                      </motion.div>
+   875→                    )
+   876→                  })}
+   877→                </AnimatePresence>
+   878→
+   879→                {filteredAndSortedDocs.length === 0 && (
+   880→                  <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="py-8 text-center">
+   881→                    <FolderOpen className="h-10 w-10 text-muted-foreground/30 mx-auto mb-3" />
+   882→                    <p className="text-sm text-muted-foreground">
+   883→                      {totalCount === 0 ? 'Нет загруженных документов' : 'Нет документов по заданным фильтрам'}
+   884→                    </p>
+   885→                  </motion.div>
+   886→                )}
+   887→              </div>
+   888→            </ScrollArea>
+   889→          </CardContent>
+   890→        </Card>
+   891→      </motion.div>
+   892→
+   893→      {/* Document Preview Dialog */}
+   894→      <Dialog open={showPreview} onOpenChange={setShowPreview}>
+   895→        <DialogContent className="max-w-3xl max-h-[85vh]">
+   896→          <DialogHeader>
+   897→            <DialogTitle className="flex items-center gap-2">
+   898→              <Eye className="h-4 w-4" />
+   899→              {selectedDoc?.originalName}
+   900→            </DialogTitle>
+   901→            <DialogDescription className="flex items-center gap-2 flex-wrap">
+   902→              {selectedDoc?.sourceReference && (
+   903→                <Badge variant="outline" className="text-xs gap-1">
+   904→                  <ScanSearch className="w-3 h-3" />
+   905→                  {selectedDoc.sourceReference}
+   906→                </Badge>
+   907→              )}
+   908→              {selectedDoc?.documentType && (
+   909→                <Badge className={getDocTypeConfig(selectedDoc.documentType).className + ' text-xs'}>
+   910→                  {getDocTypeConfig(selectedDoc.documentType).label}
+   911→                </Badge>
+   912→              )}
+   913→              {selectedDoc?.documentDate && <span className="text-xs">Дата: {selectedDoc.documentDate}</span>}
+   914→            </DialogDescription>
+   915→          </DialogHeader>
+   916→
+   917→          {/* Metadata section */}
+   918→          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 py-2">
+   919→            <div className="p-2 bg-muted/50 rounded-lg text-center">
+   920→              <p className="text-xs text-muted-foreground">Размер</p>
+   921→              <p className="text-sm font-medium">{selectedDoc ? formatFileSize(selectedDoc.fileSize) : '-'}</p>
+   922→            </div>
+   923→            <div className="p-2 bg-muted/50 rounded-lg text-center">
+   924→              <p className="text-xs text-muted-foreground">Статус</p>
+   925→              <p className="text-sm font-medium">{selectedDoc ? getStatusConfig(selectedDoc.processingStatus).label : '-'}</p>
+   926→            </div>
+   927→            <div className="p-2 bg-muted/50 rounded-lg text-center">
+   928→              <p className="text-xs text-muted-foreground">Тип</p>
+   929→              <p className="text-sm font-medium">{selectedDoc ? getDocTypeConfig(selectedDoc.documentType).label : '-'}</p>
+   930→            </div>
+   931→            <div className="p-2 bg-muted/50 rounded-lg text-center">
+   932→              <p className="text-xs text-muted-foreground">Загружен</p>
+   933→              <p className="text-sm font-medium">{selectedDoc ? new Date(selectedDoc.uploadedAt).toLocaleDateString('ru-RU') : '-'}</p>
+   934→            </div>
+   935→          </div>
+   936→
+   937→          {/* Linked entities */}
+   938→          {selectedDoc?.summary && (
+   939→            <div className="p-3 bg-muted/30 rounded-lg mb-3">
+   940→              <h4 className="text-xs font-medium mb-1 flex items-center gap-1">
+   941→                <FileText className="w-3 h-3" />
+   942→                Резюме документа
+   943→              </h4>
+   944→              <p className="text-sm text-muted-foreground">{selectedDoc.summary}</p>
+   945→            </div>
+   946→          )}
+   947→
+   948→          <Separator />
+   949→
+   950→          {/* Extracted text */}
+   951→          <ScrollArea className="max-h-[50vh] [&>div]:!overflow-y-auto">
+   952→            <div className="text-sm whitespace-pre-wrap py-2 leading-relaxed">
+   953→              {selectedDoc?.extractedText || 'Текст не извлечён из документа'}
+   954→            </div>
+   955→          </ScrollArea>
+   956→        </DialogContent>
+   957→      </Dialog>
+   958→
+   959→      {/* Document Comparison Dialog */}
+   960→      <Dialog open={showCompare} onOpenChange={setShowCompare}>
+   961→        <DialogContent className="max-w-5xl max-h-[85vh]">
+   962→          <DialogHeader>
+   963→            <DialogTitle className="flex items-center gap-2">
+   964→              <Compare className="h-4 w-4" />
+   965→              Сравнение документов
+   966→            </DialogTitle>
+   967→            <DialogDescription>Параллельное сравнение двух документов</DialogDescription>
+   968→          </DialogHeader>
+   969→          <div className="grid grid-cols-2 gap-4">
+   970→            {/* Doc 1 */}
+   971→            <div className="space-y-3">
+   972→              <div className="p-3 bg-muted/50 rounded-lg">
+   973→                <h4 className="text-sm font-medium mb-2">{compareDoc1?.originalName || 'Документ 1'}</h4>
+   974→                {compareDoc1?.documentType && <Badge className={getDocTypeConfig(compareDoc1.documentType).className + ' text-xs mb-2'}>{getDocTypeConfig(compareDoc1.documentType).label}</Badge>}
+   975→                {compareDoc1?.sourceReference && <p className="text-xs text-muted-foreground">{compareDoc1.sourceReference}</p>}
+   976→              </div>
+   977→              <ScrollArea className="max-h-[50vh] [&>div]:!overflow-y-auto">
+   978→                <div className="text-sm whitespace-pre-wrap leading-relaxed">
+   979→                  {compareDoc1?.extractedText || 'Текст не извлечён'}
+   980→                </div>
+   981→              </ScrollArea>
+   982→            </div>
+   983→
+   984→            {/* Doc 2 */}
+   985→            <div className="space-y-3">
+   986→              <div className="p-3 bg-muted/50 rounded-lg">
+   987→                <h4 className="text-sm font-medium mb-2">{compareDoc2?.originalName || 'Документ 2'}</h4>
+   988→                {compareDoc2?.documentType && <Badge className={getDocTypeConfig(compareDoc2.documentType).className + ' text-xs mb-2'}>{getDocTypeConfig(compareDoc2.documentType).label}</Badge>}
+   989→                {compareDoc2?.sourceReference && <p className="text-xs text-muted-foreground">{compareDoc2.sourceReference}</p>}
+   990→              </div>
+   991→              <ScrollArea className="max-h-[50vh] [&>div]:!overflow-y-auto">
+   992→                <div className="text-sm whitespace-pre-wrap leading-relaxed">
+   993→                  {compareDoc2?.extractedText || 'Текст не извлечён'}
+   994→                </div>
+   995→              </ScrollArea>
+   996→            </div>
+   997→          </div>
+   998→        </DialogContent>
+   999→      </Dialog>
+  1000→    </div>
+  1001→  )
+  1002→}
+  1003→

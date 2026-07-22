@@ -1,0 +1,1005 @@
+     1→'use client'
+     2→
+     3→import { useState, useMemo } from 'react'
+     4→import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+     5→import { Badge } from '@/components/ui/badge'
+     6→import { Button } from '@/components/ui/button'
+     7→import { Progress } from '@/components/ui/progress'
+     8→import { Skeleton } from '@/components/ui/skeleton'
+     9→import { Separator } from '@/components/ui/separator'
+    10→import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion'
+    11→import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+    12→import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+    13→import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+    14→import { ChartContainer, ChartTooltip, ChartTooltipContent } from '@/components/ui/chart'
+    15→import { Bar, BarChart, Cell, Pie, PieChart } from 'recharts'
+    16→import { motion, AnimatePresence } from 'framer-motion'
+    17→import { useQuery } from '@tanstack/react-query'
+    18→import {
+    19→  BookOpen, MapPin, Users, Scale, Clock, CheckCircle, AlertTriangle,
+    20→  HelpCircle, Eye, TrendingUp, Filter, FileText, ChevronRight,
+    21→  Activity, XCircle, Info, Zap, ArrowRight, Network, BarChart3
+    22→} from 'lucide-react'
+    23→import { mockEpisodes, mockPersons } from '@/lib/mock-data'
+    24→import { getEpisodes } from '@/lib/case-api'
+    25→import { useCaseStore } from '@/lib/case-store'
+    26→import type { EpisodeData } from '@/lib/case-store'
+    27→
+    28→const SEVERITY_COLORS: Record<string, string> = {
+    29→  'особо тяжкое': 'bg-red-700 text-white',
+    30→  'тяжкое': 'bg-red-600 text-white',
+    31→  'средней тяжести': 'bg-orange-600 text-white',
+    32→  'небольшое': 'bg-amber-600 text-white',
+    33→}
+    34→
+    35→const SEVERITY_HEX: Record<string, string> = {
+    36→  'особо тяжкое': '#dc2626',
+    37→  'тяжкое': '#ea580c',
+    38→  'средней тяжести': '#ca8a04',
+    39→  'небольшое': '#525252',
+    40→}
+    41→
+    42→const SEVERITY_NUMERIC: Record<string, number> = {
+    43→  'особо тяжкое': 4,
+    44→  'тяжкое': 3,
+    45→  'средней тяжести': 2,
+    46→  'небольшое': 1,
+    47→}
+    48→
+    49→const STATUS_COLORS: Record<string, { className: string; icon: React.ReactNode }> = {
+    50→  'расследуется': { className: 'bg-stone-600 text-white', icon: <Clock className="w-3 h-3 mr-1" /> },
+    51→  'доказано': { className: 'bg-red-700 text-white', icon: <CheckCircle className="w-3 h-3 mr-1" /> },
+    52→  'не доказано': { className: 'bg-emerald-700 text-white', icon: <CheckCircle className="w-3 h-3 mr-1" /> },
+    53→  'сомнительно': { className: 'bg-amber-600 text-white', icon: <HelpCircle className="w-3 h-3 mr-1" /> },
+    54→}
+    55→
+    56→const STATUS_NUMERIC: Record<string, number> = {
+    57→  'расследуется': 50,
+    58→  'доказано': 100,
+    59→  'не доказано': 0,
+    60→  'сомнительно': 25,
+    61→}
+    62→
+    63→const INVOLVEMENT_COLORS: Record<string, string> = {
+    64→  'органиатор': 'bg-red-700 text-white',
+    65→  'подозреваемый': 'bg-red-600 text-white',
+    66→  'соучастник': 'bg-orange-600 text-white',
+    67→  'исполнитель': 'bg-red-500 text-white',
+    68→  'свидетель': 'bg-amber-600 text-white',
+    69→  'потерпевший': 'bg-emerald-700 text-white',
+    70→}
+    71→
+    72→export function CaseEpisodes() {
+    73→  const [selectedEpisode, setSelectedEpisode] = useState<EpisodeData | null>(null)
+    74→  const [detailOpen, setDetailOpen] = useState(false)
+    75→  const [severityFilter, setSeverityFilter] = useState<string>('all')
+    76→  const [statusFilter, setStatusFilter] = useState<string>('all')
+    77→
+    78→  const { setActiveSection } = useCaseStore()
+    79→
+    80→  // TanStack Query for real episodes data
+    81→  const { data: apiData, isLoading, isError } = useQuery({
+    82→    queryKey: ['episodes'],
+    83→    queryFn: getEpisodes,
+    84→    staleTime: 30000,
+    85→  })
+    86→
+    87→  // Use real data or fall back to mock
+    88→  const episodes = apiData || mockEpisodes
+    89→
+    90→  // Filtering logic
+    91→  const filteredEpisodes = useMemo(() => {
+    92→    return episodes.filter(ep => {
+    93→      const severityMatch = severityFilter === 'all' || ep.severity === severityFilter
+    94→      const statusMatch = statusFilter === 'all' || ep.status === statusFilter
+    95→      return severityMatch && statusMatch
+    96→    })
+    97→  }, [episodes, severityFilter, statusFilter])
+    98→
+    99→  // Severity distribution data for heat map
+   100→  const severityDistribution = [
+   101→    { severity: 'Особо тяжкое', count: episodes.filter(ep => ep.severity === 'особо тяжкое').length, fill: '#dc2626' },
+   102→    { severity: 'Тяжкое', count: episodes.filter(ep => ep.severity === 'тяжкое').length, fill: '#ea580c' },
+   103→    { severity: 'Средней тяжести', count: episodes.filter(ep => ep.severity === 'средней тяжести').length, fill: '#ca8a04' },
+   104→    { severity: 'Небольшое', count: episodes.filter(ep => ep.severity === 'небольшое').length, fill: '#525252' },
+   105→  ]
+   106→
+   107→  // Status distribution for pie chart
+   108→  const statusDistribution = Object.entries(
+   109→    episodes.reduce((acc, ep) => {
+   110→      if (ep.status) acc[ep.status] = (acc[ep.status] || 0) + 1
+   111→      return acc
+   112→    }, {} as Record<string, number>)
+   113→  ).map(([status, count]) => ({
+   114→    status,
+   115→    count,
+   116→    fill: status === 'расследуется' ? '#57534e' : status === 'доказано' ? '#dc2626' : status === 'не доказано' ? '#16a34a' : '#ca8a04',
+   117→  }))
+   118→
+   119→  // Timeline data from episodes
+   120→  const timelineData = filteredEpisodes
+   121→    .filter(ep => ep.date)
+   122→    .sort((a, b) => {
+   123→      const dateA = a.date?.split('/')[0] || a.date || ''
+   124→      const dateB = b.date?.split('/')[0] || b.date || ''
+   125→      return dateA.localeCompare(dateB)
+   126→    })
+   127→
+   128→  const handleOpenDetail = (episode: EpisodeData) => {
+   129→    setSelectedEpisode(episode)
+   130→    setDetailOpen(true)
+   131→  }
+   132→
+   133→  if (isLoading) {
+   134→    return (
+   135→      <div className="space-y-6">
+   136→        <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+   137→          {[1, 2, 3].map(i => (
+   138→            <Skeleton key={i} className="h-[150px] w-full" />
+   139→          ))}
+   140→        </div>
+   141→        <Skeleton className="h-[400px] w-full" />
+   142→      </div>
+   143→    )
+   144→  }
+   145→
+   146→  return (
+   147→    <div className="space-y-6">
+   148→      {/* Filter Controls */}
+   149→      <motion.div
+   150→        initial={{ opacity: 0, y: -20 }}
+   151→        animate={{ opacity: 1, y: 0 }}
+   152→        transition={{ duration: 0.3 }}
+   153→      >
+   154→        <Card className="shadow-md border-stone-700/50 bg-gradient-to-r from-stone-900 to-stone-800">
+   155→          <CardContent className="p-4">
+   156→            <div className="flex items-center gap-4 flex-wrap">
+   157→              <div className="flex items-center gap-2">
+   158→                <Filter className="w-4 h-4 text-muted-foreground" />
+   159→                <span className="text-sm font-medium">Фильтрация:</span>
+   160→              </div>
+   161→              <Select value={severityFilter} onValueChange={setSeverityFilter}>
+   162→                <SelectTrigger className="w-[160px]">
+   163→                  <SelectValue placeholder="Тяжесть" />
+   164→                </SelectTrigger>
+   165→                <SelectContent>
+   166→                  <SelectItem value="all">Все уровни</SelectItem>
+   167→                  <SelectItem value="особо тяжкое">Особо тяжкое</SelectItem>
+   168→                  <SelectItem value="тяжкое">Тяжкое</SelectItem>
+   169→                  <SelectItem value="средней тяжести">Средней тяжести</SelectItem>
+   170→                  <SelectItem value="небольшое">Небольшое</SelectItem>
+   171→                </SelectContent>
+   172→              </Select>
+   173→              <Select value={statusFilter} onValueChange={setStatusFilter}>
+   174→                <SelectTrigger className="w-[160px]">
+   175→                  <SelectValue placeholder="Статус" />
+   176→                </SelectTrigger>
+   177→                <SelectContent>
+   178→                  <SelectItem value="all">Все статусы</SelectItem>
+   179→                  <SelectItem value="расследуется">Расследуется</SelectItem>
+   180→                  <SelectItem value="доказано">Доказано</SelectItem>
+   181→                  <SelectItem value="не доказано">Не доказано</SelectItem>
+   182→                  <SelectItem value="сомнительно">Сомнительно</SelectItem>
+   183→                </SelectContent>
+   184→              </Select>
+   185→              <Badge variant="outline" className="text-xs">
+   186→                {filteredEpisodes.length} из {episodes.length} эпизодов
+   187→              </Badge>
+   188→            </div>
+   189→          </CardContent>
+   190→        </Card>
+   191→      </motion.div>
+   192→
+   193→      {/* Episode Summary Stats Row */}
+   194→      <motion.div
+   195→        initial={{ opacity: 0, y: 20 }}
+   196→        animate={{ opacity: 1, y: 0 }}
+   197→        transition={{ duration: 0.4 }}
+   198→      >
+   199→        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+   200→          {[
+   201→            { title: 'Всего эпизодов', value: episodes.length, icon: <BookOpen className="w-5 h-5 text-orange-500" />, gradient: 'from-orange-600/20 to-stone-900' },
+   202→            { title: 'Особо тяжких', value: episodes.filter(ep => ep.severity === 'особо тяжкое').length, icon: <AlertTriangle className="w-5 h-5 text-red-500" />, gradient: 'from-red-600/20 to-stone-900' },
+   203→            { title: 'Доказанных', value: episodes.filter(ep => ep.status === 'доказано').length, icon: <CheckCircle className="w-5 h-5 text-green-500" />, gradient: 'from-green-600/20 to-stone-900' },
+   204→            { title: 'Расследуемых', value: episodes.filter(ep => ep.status === 'расследуется').length, icon: <Clock className="w-5 h-5 text-stone-400" />, gradient: 'from-stone-600/20 to-stone-900' },
+   205→          ].map((card, index) => (
+   206→            <motion.div
+   207→              key={card.title}
+   208→              initial={{ opacity: 0, scale: 0.9 }}
+   209→              animate={{ opacity: 1, scale: 1 }}
+   210→              transition={{ duration: 0.3, delay: index * 0.1 }}
+   211→            >
+   212→              <Card className={`bg-gradient-to-br ${card.gradient} border-stone-700/30 shadow-md hover:shadow-lg transition-shadow`}>
+   213→                <CardHeader className="flex flex-row items-center justify-between pb-2">
+   214→                  <CardTitle className="text-sm font-medium text-muted-foreground">{card.title}</CardTitle>
+   215→                  {card.icon}
+   216→                </CardHeader>
+   217→                <CardContent>
+   218→                  <div className="text-2xl font-bold">{card.value}</div>
+   219→                </CardContent>
+   220→              </Card>
+   221→            </motion.div>
+   222→          ))}
+   223→        </div>
+   224→      </motion.div>
+   225→
+   226→      {/* Severity Heat Map + Status Distribution */}
+   227→      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+   228→        {/* Severity Heat Map */}
+   229→        <motion.div
+   230→          initial={{ opacity: 0, x: -30 }}
+   231→          animate={{ opacity: 1, x: 0 }}
+   232→          transition={{ duration: 0.5 }}
+   233→        >
+   234→          <Card className="shadow-md border-stone-700/50">
+   235→            <CardHeader>
+   236→              <CardTitle className="flex items-center gap-2">
+   237→                <BarChart3 className="w-4 h-4 text-red-500" />
+   238→                Карта тяжести эпизодов
+   239→              </CardTitle>
+   240→              <CardDescription>Распределение эпизодов по степени тяжести</CardDescription>
+   241→            </CardHeader>
+   242→            <CardContent>
+   243→              <ChartContainer
+   244→                config={{
+   245→                  'Особо тяжкое': { label: 'Особо тяжкое', color: '#dc2626' },
+   246→                  'Тяжкое': { label: 'Тяжкое', color: '#ea580c' },
+   247→                  'Средней тяжести': { label: 'Средней тяжести', color: '#ca8a04' },
+   248→                  'Небольшое': { label: 'Небольшое', color: '#525252' },
+   249→                }}
+   250→                className="h-[200px] w-full"
+   251→              >
+   252→                <BarChart data={severityDistribution} accessibilityLayer>
+   253→                  <Bar dataKey="count" radius={6}>
+   254→                    {severityDistribution.map((entry, index) => (
+   255→                      <Cell key={`cell-${index}`} fill={entry.fill} />
+   256→                    ))}
+   257→                  </Bar>
+   258→                  <ChartTooltip content={<ChartTooltipContent />} />
+   259→                </BarChart>
+   260→              </ChartContainer>
+   261→
+   262→              {/* Heat Map Visual */}
+   263→              <div className="grid grid-cols-4 gap-2 mt-3">
+   264→                {severityDistribution.map(sd => (
+   265→                  <div
+   266→                    key={sd.severity}
+   267→                    className="p-2 rounded-lg text-center border border-stone-800"
+   268→                    style={{
+   269→                      backgroundColor: sd.fill + '30',
+   270→                      borderColor: sd.fill + '50',
+   271→                    }}
+   272→                  >
+   273→                    <p className="text-xs font-bold" style={{ color: sd.fill }}>{sd.count}</p>
+   274→                    <p className="text-xs text-muted-foreground">{sd.severity}</p>
+   275→                  </div>
+   276→                ))}
+   277→              </div>
+   278→            </CardContent>
+   279→          </Card>
+   280→        </motion.div>
+   281→
+   282→        {/* Status Distribution */}
+   283→        <motion.div
+   284→          initial={{ opacity: 0, x: 30 }}
+   285→          animate={{ opacity: 1, x: 0 }}
+   286→          transition={{ duration: 0.5 }}
+   287→        >
+   288→          <Card className="shadow-md border-stone-700/50">
+   289→            <CardHeader>
+   290→              <CardTitle className="flex items-center gap-2">
+   291→                <Activity className="w-4 h-4 text-amber-500" />
+   292→                Статус расследования
+   293→              </CardTitle>
+   294→              <CardDescription>Распределение эпизодов по статусу расследования</CardDescription>
+   295→            </CardHeader>
+   296→            <CardContent>
+   297→              <ChartContainer
+   298→                config={{
+   299→                  'расследуется': { label: 'Расследуется', color: '#57534e' },
+   300→                  'доказано': { label: 'Доказано', color: '#dc2626' },
+   301→                  'не доказано': { label: 'Не доказано', color: '#16a34a' },
+   302→                  'сомнительно': { label: 'Сомнительно', color: '#ca8a04' },
+   303→                }}
+   304→                className="h-[180px] w-full"
+   305→              >
+   306→                <PieChart>
+   307→                  <Pie
+   308→                    data={statusDistribution}
+   309→                    dataKey="count"
+   310→                    nameKey="status"
+   311→                    cx="50%"
+   312→                    cy="50%"
+   313→                    outerRadius={70}
+   314→                    innerRadius={30}
+   315→                  >
+   316→                    {statusDistribution.map((entry, index) => (
+   317→                      <Cell key={`cell-${index}`} fill={entry.fill} />
+   318→                    ))}
+   319→                  </Pie>
+   320→                  <ChartTooltip content={<ChartTooltipContent />} />
+   321→                </PieChart>
+   322→              </ChartContainer>
+   323→
+   324→              {/* Investigation Progress Bars */}
+   325→              <div className="space-y-3 mt-3">
+   326→                {filteredEpisodes.map(ep => (
+   327→                  <div key={ep.id} className="space-y-1">
+   328→                    <div className="flex items-center justify-between text-xs">
+   329→                      <span className="font-medium truncate">{ep.episodeNumber ? `Эп.${ep.episodeNumber}` : ep.title.substring(0, 20)}</span>
+   330→                      <Badge className={STATUS_COLORS[ep.status || '']?.className || 'bg-stone-500 text-white'}>
+   331→                        {STATUS_COLORS[ep.status || '']?.icon}
+   332→                        {ep.status}
+   333→                      </Badge>
+   334→                    </div>
+   335→                    <Progress
+   336→                      value={STATUS_NUMERIC[ep.status || ''] || 50}
+   337→                      className="h-1.5"
+   338→                    />
+   339→                  </div>
+   340→                ))}
+   341→              </div>
+   342→            </CardContent>
+   343→          </Card>
+   344→        </motion.div>
+   345→      </div>
+   346→
+   347→      {/* Episode Timeline */}
+   348→      <motion.div
+   349→        initial={{ opacity: 0, y: 20 }}
+   350→        animate={{ opacity: 1, y: 0 }}
+   351→        transition={{ duration: 0.5, delay: 0.3 }}
+   352→      >
+   353→        <Card className="shadow-md border-stone-700/50">
+   354→          <CardHeader>
+   355→            <CardTitle className="flex items-center gap-2">
+   356→              <Clock className="w-4 h-4 text-amber-500" />
+   357→              Хронологическая Timeline эпизодов
+   358→            </CardTitle>
+   359→            <CardDescription>Временная последовательность преступных эпизодов</CardDescription>
+   360→          </CardHeader>
+   361→          <CardContent>
+   362→            <div className="relative space-y-0 pl-8 max-h-80 overflow-y-auto custom-scrollbar">
+   363→              {/* Timeline line */}
+   364→              <div className="absolute left-[18px] top-2 bottom-2 w-0.5 bg-gradient-to-b from-red-600 via-orange-600 to-amber-600" />
+   365→
+   366→              {timelineData.map((episode, index) => (
+   367→                <motion.div
+   368→                  key={episode.id}
+   369→                  initial={{ opacity: 0, x: -20 }}
+   370→                  animate={{ opacity: 1, x: 0 }}
+   371→                  transition={{ delay: index * 0.15 }}
+   372→                  className="relative pb-5"
+   373→                >
+   374→                  {/* Timeline dot */}
+   375→                  <div className="absolute -left-[22px] top-2 w-5 h-5 rounded-full border-2 border-stone-700 bg-stone-900 flex items-center justify-center">
+   376→                    <div
+   377→                      className="w-3 h-3 rounded-full"
+   378→                      style={{ backgroundColor: SEVERITY_HEX[episode.severity || ''] || '#525252' }}
+   379→                    />
+   380→                  </div>
+   381→
+   382→                  <div className="p-4 rounded-lg bg-stone-900/80 border border-stone-800 hover:border-stone-700 transition-colors cursor-pointer"
+   383→                    onClick={() => handleOpenDetail(episode)}
+   384→                  >
+   385→                    <div className="flex items-center justify-between mb-2">
+   386→                      <div className="flex items-center gap-2">
+   387→                        <span className="text-xs text-muted-foreground font-mono">{episode.date}</span>
+   388→                        {episode.severity && (
+   389→                          <Badge className={`${SEVERITY_COLORS[episode.severity] || 'bg-stone-500 text-white'} text-xs`}>
+   390→                            {episode.severity}
+   391→                          </Badge>
+   392→                        )}
+   393→                        {episode.status && (
+   394→                          <Badge className={STATUS_COLORS[episode.status]?.className || 'bg-stone-500 text-white'}>
+   395→                            {STATUS_COLORS[episode.status]?.icon}
+   396→                            {episode.status}
+   397→                          </Badge>
+   398→                        )}
+   399→                      </div>
+   400→                      <Button variant="ghost" size="sm" className="h-6 gap-1">
+   401→                        <Eye className="w-3 h-3" />
+   402→                      </Button>
+   403→                    </div>
+   404→                    <p className="text-sm font-medium">{episode.episodeNumber ? `Эпизод ${episode.episodeNumber}: ` : ''}{episode.title}</p>
+   405→                    <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{episode.description}</p>
+   406→                    <div className="flex items-center gap-3 mt-2 text-xs text-muted-foreground">
+   407→                      <span className="flex items-center gap-1"><Users className="w-3 h-3" />{episode.persons.length} участников</span>
+   408→                      <span className="flex items-center gap-1"><Scale className="w-3 h-3" />{episode.articles.length} статей</span>
+   409→                      {episode.locations.length > 0 && (
+   410→                        <span className="flex items-center gap-1"><MapPin className="w-3 h-3" />{episode.locations.length} мест</span>
+   411→                      )}
+   412→                    </div>
+   413→                  </div>
+   414→                </motion.div>
+   415→              ))}
+   416→            </div>
+   417→          </CardContent>
+   418→        </Card>
+   419→      </motion.div>
+   420→
+   421→      {/* Episode Connection Graph */}
+   422→      <motion.div
+   423→        initial={{ opacity: 0, y: 20 }}
+   424→        animate={{ opacity: 1, y: 0 }}
+   425→        transition={{ duration: 0.5, delay: 0.4 }}
+   426→      >
+   427→        <Card className="shadow-md border-stone-700/50">
+   428→          <CardHeader>
+   429→            <CardTitle className="flex items-center gap-2">
+   430→              <Network className="w-4 h-4 text-orange-500" />
+   431→              Граф связей: эпизоды ↔ участники ↔ статьи
+   432→            </CardTitle>
+   433→            <CardDescription>Визуализация связей между эпизодами, участниками и статьями УК РФ</CardDescription>
+   434→          </CardHeader>
+   435→          <CardContent>
+   436→            <div className="relative min-h-[350px] bg-stone-900/60 rounded-lg border border-stone-800 overflow-hidden">
+   437→              <svg viewBox="0 0 500 350" className="w-full h-full">
+   438→                {/* Episode nodes (center) */}
+   439→                {filteredEpisodes.map((ep, i) => {
+   440→                  const x = 250
+   441→                  const y = 70 + i * 85
+   442→                  return (
+   443→                    <g key={ep.id}>
+   444→                      <rect
+   445→                        x={x - 55}
+   446→                        y={y - 18}
+   447→                        width={110}
+   448→                        height={36}
+   449→                        rx={10}
+   450→                        fill={SEVERITY_HEX[ep.severity || ''] || '#525252'}
+   451→                        stroke="#a1a1aa"
+   452→                        strokeWidth={1}
+   453→                      />
+   454→                      <text x={x} y={y + 4} textAnchor="middle" fill="white" fontSize={9} fontWeight="bold">
+   455→                        {ep.episodeNumber ? `Эп.${ep.episodeNumber}` : ep.title.substring(0, 14)}
+   456→                      </text>
+   457→                    </g>
+   458→                  )
+   459→                })}
+   460→
+   461→                {/* Person nodes (left side) */}
+   462→                {mockPersons.slice(0, 4).map((person, i) => {
+   463→                  const y = 40 + i * 75
+   464→                  const isKey = person.isKolesnichenko
+   465→                  // Find episodes this person is connected to
+   466→                  const connectedEps = filteredEpisodes.filter(ep =>
+   467→                    ep.persons.some(pe => pe.personId === person.id)
+   468→                  )
+   469→                  return (
+   470→                    <g key={person.id}>
+   471→                      <circle
+   472→                        cx={60}
+   473→                        cy={y}
+   474→                        r={isKey ? 22 : 16}
+   475→                        fill={isKey ? '#dc2626' : '#575252'}
+   476→                        stroke={isKey ? '#f87171' : '#a1a1aa'}
+   477→                        strokeWidth={isKey ? 2.5 : 1}
+   478→                      />
+   479→                      <text x={60} y={y + 4} textAnchor="middle" fill="white" fontSize={isKey ? 8 : 7} fontWeight={isKey ? 'bold' : 'normal'}>
+   480→                        {person.shortName?.split(' ')[0] || person.fullName.split(' ')[0]}
+   481→                      </text>
+   482→                      {/* Connection lines */}
+   483→                      {connectedEps.map((ep) => {
+   484→                        const epIdx = filteredEpisodes.findIndex(e => e.id === ep.id)
+   485→                        if (epIdx === -1) return null
+   486→                        const epY = 70 + epIdx * 85
+   487→                        const involvement = ep.persons.find(pe => pe.personId === person.id)?.involvement
+   488→                        const lineWidth = involvement === 'органиатор' ? 2.5 : involvement === 'соучастник' ? 1.5 : 0.8
+   489→                        const lineColor = involvement === 'органиатор' ? '#dc2626' : involvement === 'соучастник' ? '#ea580c' : involvement === 'исполнитель' ? '#ea580c' : '#ca8a04'
+   490→                        return (
+   491→                          <line
+   492→                            key={`${person.id}-${ep.id}`}
+   493→                            x1={82}
+   494→                            y1={y}
+   495→                            x2={195}
+   496→                            y2={epY}
+   497→                            stroke={lineColor}
+   498→                            strokeWidth={lineWidth}
+   499→                            opacity={0.7}
+   500→                            strokeDasharray={involvement === 'свидетель' ? '4,4' : 'none'}
+   501→                          />
+   502→                        )
+   503→                      })}
+   504→                    </g>
+   505→                  )
+   506→                })}
+   507→
+   508→                {/* Article nodes (right side) */}
+   509→                {(() => {
+   510→                  const articles = filteredEpisodes.flatMap(ep => ep.articles.map(ea => ea.article))
+   511→                  const uniqueArticles = [...new Map(articles.map(a => [a.id, a])).values()]
+   512→                  return uniqueArticles.map((article, i) => {
+   513→                    const x = 440
+   514→                    const y = 50 + i * 70
+   515→                    // Find episodes this article is connected to
+   516→                    const connectedEps = filteredEpisodes.filter(ep =>
+   517→                      ep.articles.some(ea => ea.articleId === article.id)
+   518→                    )
+   519→                    return (
+   520→                      <g key={article.id}>
+   521→                        <rect
+   522→                          x={x - 35}
+   523→                          y={y - 14}
+   524→                          width={70}
+   525→                          height={28}
+   526→                          rx={6}
+   527→                          fill="#57534e"
+   528→                          stroke="#a1a1aa"
+   529→                          strokeWidth={1}
+   530→                        />
+   531→                        <text x={x} y={y + 4} textAnchor="middle" fill="white" fontSize={8} fontWeight="bold">
+   532→                          {article.code}
+   533→                        </text>
+   534→                        {/* Connection lines */}
+   535→                        {connectedEps.map(ep => {
+   536→                          const epIdx = filteredEpisodes.findIndex(e => e.id === ep.id)
+   537→                          if (epIdx === -1) return null
+   538→                          const epY = 70 + epIdx * 85
+   539→                          return (
+   540→                            <line
+   541→                              key={`${article.id}-${ep.id}`}
+   542→                              x1={305}
+   543→                              y1={epY}
+   544→                              x2={x - 35}
+   545→                              y2={y}
+   546→                              stroke="#78716c"
+   547→                              strokeWidth={1}
+   548→                              opacity={0.5}
+   549→                            />
+   550→                          )
+   551→                        })}
+   552→                      </g>
+   553→                    )
+   554→                  })
+   555→                })()}
+   556→
+   557→                {/* Labels */}
+   558→                <text x={60} y={16} textAnchor="middle" fill="#a1a1aa" fontSize={10} fontWeight="bold">Участники</text>
+   559→                <text x={250} y={16} textAnchor="middle" fill="#a1a1aa" fontSize={10} fontWeight="bold">Эпизоды</text>
+   560→                <text x={440} y={16} textAnchor="middle" fill="#a1a1aa" fontSize={10} fontWeight="bold">Статьи УК</text>
+   561→              </svg>
+   562→            </div>
+   563→            <div className="flex items-center gap-4 mt-3 text-xs text-muted-foreground">
+   564→              <div className="flex items-center gap-1"><div className="w-8 h-0.5 bg-red-600" /><span>Органиатор</span></div>
+   565→              <div className="flex items-center gap-1"><div className="w-8 h-0.5 bg-orange-600" /><span>Соучастник</span></div>
+   566→              <div className="flex items-center gap-1"><div className="w-8 h-0.5 bg-amber-600" style={{ borderTop: '2px dashed #ca8a04' }} /><span>Свидетель</span></div>
+   567→            </div>
+   568→          </CardContent>
+   569→        </Card>
+   570→      </motion.div>
+   571→
+   572→      {/* Episode Summary Cards Grid */}
+   573→      <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+   574→        <AnimatePresence>
+   575→          {filteredEpisodes.map((episode, index) => (
+   576→            <motion.div
+   577→              key={episode.id}
+   578→              initial={{ opacity: 0, y: 20 }}
+   579→              animate={{ opacity: 1, y: 0 }}
+   580→              exit={{ opacity: 0, y: -20 }}
+   581→              transition={{ duration: 0.3, delay: index * 0.05 }}
+   582→              whileHover={{ scale: 1.03 }}
+   583→              layout
+   584→            >
+   585→              <Card
+   586→                className="shadow-md hover:shadow-lg transition-all cursor-pointer border-stone-700/50 bg-gradient-to-br from-stone-900/80 to-stone-900"
+   587→                onClick={() => handleOpenDetail(episode)}
+   588→              >
+   589→                <CardHeader className="pb-3">
+   590→                  <div className="flex items-start gap-2">
+   591→                    <BookOpen className="h-4 w-4 text-muted-foreground shrink-0 mt-1" />
+   592→                    <div className="min-w-0 flex-1">
+   593→                      <CardTitle className="text-sm leading-tight">{episode.title}</CardTitle>
+   594→                    </div>
+   595→                  </div>
+   596→                </CardHeader>
+   597→                <CardContent className="space-y-3">
+   598→                  <div className="flex flex-wrap gap-1 mb-2">
+   599→                    {episode.severity && (
+   600→                      <Badge className={SEVERITY_COLORS[episode.severity] || 'bg-stone-500 text-white'}>
+   601→                        {episode.severity}
+   602→                      </Badge>
+   603→                    )}
+   604→                    {episode.status && (
+   605→                      <Badge className={STATUS_COLORS[episode.status]?.className || 'bg-stone-500 text-white'}>
+   606→                        {STATUS_COLORS[episode.status]?.icon}
+   607→                        {episode.status}
+   608→                      </Badge>
+   609→                    )}
+   610→                  </div>
+   611→
+   612→                  {/* Investigation Progress */}
+   613→                  <div>
+   614→                    <div className="flex justify-between text-xs mb-1">
+   615→                      <span className="text-muted-foreground">Прогресс расследования</span>
+   616→                      <span className="font-medium">{STATUS_NUMERIC[episode.status || ''] || 50}%</span>
+   617→                    </div>
+   618→                    <Progress value={STATUS_NUMERIC[episode.status || ''] || 50} className="h-1.5" />
+   619→                  </div>
+   620→
+   621→                  <div className="text-xs text-muted-foreground space-y-1">
+   622→                    {episode.date && <p>📅 Дата: {episode.date}</p>}
+   623→                    <p className="flex items-center gap-1"><Users className="w-3 h-3" /> Участников: {episode.persons.length}</p>
+   624→                    <p className="flex items-center gap-1"><Scale className="w-3 h-3" /> Статей УК: {episode.articles.length}</p>
+   625→                    {episode.locations.length > 0 && (
+   626→                      <p className="flex items-center gap-1"><MapPin className="w-3 h-3" /> Мест: {episode.locations.length}</p>
+   627→                    )}
+   628→                  </div>
+   629→
+   630→                  <div className="flex items-center justify-end gap-1 text-xs text-muted-foreground">
+   631→                    <Eye className="w-3 h-3" />
+   632→                    <span>Нажмите для деталей</span>
+   633→                  </div>
+   634→                </CardContent>
+   635→              </Card>
+   636→            </motion.div>
+   637→          ))}
+   638→        </AnimatePresence>
+   639→      </div>
+   640→
+   641→      {/* Detailed Episodes Accordion */}
+   642→      <Card className="shadow-md border-stone-700/50">
+   643→        <CardHeader>
+   644→          <CardTitle className="flex items-center gap-2">
+   645→            <BookOpen className="w-4 h-4 text-stone-400" />
+   646→            Детали эпизодов
+   647→          </CardTitle>
+   648→          <CardDescription>Полная информация о каждом преступном эпизоде</CardDescription>
+   649→        </CardHeader>
+   650→        <CardContent>
+   651→          <Accordion type="multiple" className="w-full">
+   652→            {filteredEpisodes.map((episode) => (
+   653→              <AccordionItem key={episode.id} value={episode.id}>
+   654→                <AccordionTrigger className="hover:no-underline">
+   655→                  <div className="flex items-center gap-3 text-left">
+   656→                    <BookOpen className="h-4 w-4 text-muted-foreground shrink-0" />
+   657→                    <div className="min-w-0 flex-1">
+   658→                      <div className="flex items-center gap-2 flex-wrap">
+   659→                        <span className="font-medium">{episode.episodeNumber && `Эпизод ${episode.episodeNumber}: `}{episode.title}</span>
+   660→                        {episode.severity && (
+   661→                          <Badge className={`${SEVERITY_COLORS[episode.severity] || 'bg-stone-500 text-white'} text-xs`}>
+   662→                            {episode.severity}
+   663→                          </Badge>
+   664→                        )}
+   665→                        {episode.status && (
+   666→                          <Badge className={STATUS_COLORS[episode.status]?.className || 'bg-stone-500 text-white'}>
+   667→                            {episode.status}
+   668→                          </Badge>
+   669→                        )}
+   670→                      </div>
+   671→                    </div>
+   672→                  </div>
+   673→                </AccordionTrigger>
+   674→                <AccordionContent>
+   675→                  <div className="space-y-4 pt-2">
+   676→                    {/* Description */}
+   677→                    <div>
+   678→                      <p className="text-sm text-muted-foreground">{episode.description}</p>
+   679→                    </div>
+   680→
+   681→                    <Separator className="bg-stone-700" />
+   682→
+   683→                    {/* Investigation Progress */}
+   684→                    <div className="p-3 bg-stone-900/80 rounded-lg border border-stone-800">
+   685→                      <div className="flex items-center justify-between mb-2">
+   686→                        <span className="text-xs font-medium">Прогресс расследования</span>
+   687→                        <Badge className={STATUS_COLORS[episode.status || '']?.className || 'bg-stone-500 text-white'}>
+   688→                          {STATUS_COLORS[episode.status]?.icon}
+   689→                          {episode.status}
+   690→                        </Badge>
+   691→                      </div>
+   692→                      <Progress value={STATUS_NUMERIC[episode.status || ''] || 50} className="h-2" />
+   693→                    </div>
+   694→
+   695→                    {/* Participants */}
+   696→                    <div>
+   697→                      <h4 className="text-sm font-medium mb-2 flex items-center gap-2">
+   698→                        <Users className="h-4 w-4" />
+   699→                        Участники эпизода
+   700→                      </h4>
+   701→                      <div className="space-y-2">
+   702→                        {episode.persons.map((pe) => (
+   703→                          <div key={pe.personId} className="flex items-center gap-2 p-2 bg-muted/50 rounded">
+   704→                            <div className="flex items-center gap-2 min-w-0 flex-1">
+   705→                              <span className="text-sm font-medium truncate">{pe.person.fullName}</span>
+   706→                              <Badge className={`${INVOLVEMENT_COLORS[pe.involvement || ''] || 'bg-stone-500 text-white'} text-xs`}>
+   707→                                {pe.involvement || 'не указано'}
+   708→                              </Badge>
+   709→                            </div>
+   710→                            <Badge variant="outline" className="text-xs shrink-0">{pe.person.role}</Badge>
+   711→                          </div>
+   712→                        ))}
+   713→                      </div>
+   714→                    </div>
+   715→
+   716→                    {/* Articles */}
+   717→                    {episode.articles.length > 0 && (
+   718→                      <div>
+   719→                        <h4 className="text-sm font-medium mb-2 flex items-center gap-2">
+   720→                          <Scale className="h-4 w-4" />
+   721→                          Статьи УК РФ
+   722→                        </h4>
+   723→                        <div className="space-y-2">
+   724→                          {episode.articles.map((ea) => (
+   725→                            <div key={ea.articleId} className="p-3 bg-muted/50 rounded">
+   726→                              <div className="flex items-center gap-2 mb-1">
+   727→                                <Badge className="bg-stone-700 text-white">{ea.article.code}</Badge>
+   728→                                {ea.article.category && (
+   729→                                  <Badge variant="outline" className="text-xs">{ea.article.category}</Badge>
+   730→                                )}
+   731→                              </div>
+   732→                              <p className="text-sm text-muted-foreground">{ea.article.description}</p>
+   733→                              <div className="text-xs text-muted-foreground mt-1">
+   734→                                <span>Наказание: от {ea.article.punishmentMin || '—'} до {ea.article.punishmentMax || '—'}</span>
+   735→                              </div>
+   736→                            </div>
+   737→                          ))}
+   738→                        </div>
+   739→                      </div>
+   740→                    )}
+   741→
+   742→                    {/* Locations */}
+   743→                    {episode.locations.length > 0 && (
+   744→                      <div>
+   745→                        <h4 className="text-sm font-medium mb-2 flex items-center gap-2">
+   746→                          <MapPin className="h-4 w-4" />
+   747→                          Места
+   748→                        </h4>
+   749→                        <div className="space-y-2">
+   750→                          {episode.locations.map((el) => (
+   751→                            <div key={el.locationId} className="p-3 bg-muted/50 rounded border border-stone-800">
+   752→                              <div className="flex items-center gap-2">
+   753→                                <div className="flex items-center justify-center w-6 h-6 rounded-full bg-orange-600/20">
+   754→                                  <MapPin className="h-3 w-3 text-orange-500" />
+   755→                                </div>
+   756→                                <span className="text-sm font-medium">{el.location.name}</span>
+   757→                                <Badge variant="outline" className="text-xs">{el.location.type || '—'}</Badge>
+   758→                              </div>
+   759→                              {el.location.address && (
+   760→                                <p className="text-xs text-muted-foreground mt-1">📍 {el.location.address}</p>
+   761→                              )}
+   762→                              {el.context && (
+   763→                                <p className="text-xs text-muted-foreground mt-1 italic">{el.context}</p>
+   764→                              )}
+   765→                            </div>
+   766→                          ))}
+   767→                        </div>
+   768→                      </div>
+   769→                    )}
+   770→
+   771→                    {/* Date */}
+   772→                    {episode.date && (
+   773→                      <div className="text-xs text-muted-foreground flex items-center gap-2 p-2 bg-muted/30 rounded">
+   774→                        <Clock className="h-3 h-3" />
+   775→                        <span>Дата эпизода: {episode.date}</span>
+   776→                      </div>
+   777→                    )}
+   778→                  </div>
+   779→                </AccordionContent>
+   780→              </AccordionItem>
+   781→            ))}
+   782→          </Accordion>
+   783→        </CardContent>
+   784→      </Card>
+   785→
+   786→      {/* Episode Detail Dialog */}
+   787→      <Dialog open={detailOpen} onOpenChange={setDetailOpen}>
+   788→        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto custom-scrollbar">
+   789→          {selectedEpisode && (
+   790→            <>
+   791→              <DialogHeader>
+   792→                <DialogTitle className="flex items-center gap-2">
+   793→                  <BookOpen className="w-5 h-5 text-orange-500" />
+   794→                  {selectedEpisode.episodeNumber ? `Эпизод ${selectedEpisode.episodeNumber}: ` : ''}{selectedEpisode.title}
+   795→                </DialogTitle>
+   796→                <DialogDescription>
+   797→                  <div className="flex items-center gap-2 flex-wrap mt-1">
+   798→                    {selectedEpisode.severity && (
+   799→                      <Badge className={SEVERITY_COLORS[selectedEpisode.severity] || 'bg-stone-500'}>
+   800→                        {selectedEpisode.severity}
+   801→                      </Badge>
+   802→                    )}
+   803→                    {selectedEpisode.status && (
+   804→                      <Badge className={STATUS_COLORS[selectedEpisode.status]?.className || 'bg-stone-500'}>
+   805→                        {STATUS_COLORS[selectedEpisode.status]?.icon}
+   806→                        {selectedEpisode.status}
+   807→                      </Badge>
+   808→                    )}
+   809→                    {selectedEpisode.date && (
+   810→                      <Badge variant="outline">📅 {selectedEpisode.date}</Badge>
+   811→                    )}
+   812→                  </div>
+   813→                </DialogDescription>
+   814→              </DialogHeader>
+   815→
+   816→              <Tabs defaultValue="details" className="w-full">
+   817→                <TabsList className="grid w-full grid-cols-3">
+   818→                  <TabsTrigger value="details">Детали</TabsTrigger>
+   819→                  <TabsTrigger value="connections">Связи</TabsTrigger>
+   820→                  <TabsTrigger value="articles">Статьи</TabsTrigger>
+   821→                </TabsList>
+   822→
+   823→                {/* Details Tab */}
+   824→                <TabsContent value="details" className="space-y-4 mt-4">
+   825→                  <div className="p-4 bg-muted/50 rounded-lg border border-stone-700">
+   826→                    <p className="text-sm">{selectedEpisode.description}</p>
+   827→                  </div>
+   828→
+   829→                  {/* Investigation Progress */}
+   830→                  <div className="p-4 bg-gradient-to-r from-stone-900 to-stone-800 rounded-lg border border-stone-700">
+   831→                    <div className="flex items-center justify-between mb-2">
+   832→                      <span className="text-sm font-medium">Прогресс расследования</span>
+   833→                      <span className="text-sm font-bold">{STATUS_NUMERIC[selectedEpisode.status || ''] || 50}%</span>
+   834→                    </div>
+   835→                    <Progress value={STATUS_NUMERIC[selectedEpisode.status || ''] || 50} className="h-3" />
+   836→                  </div>
+   837→
+   838→                  {/* Participants */}
+   839→                  <div>
+   840→                    <h4 className="text-sm font-medium mb-2 flex items-center gap-2">
+   841→                      <Users className="h-4 h-4" /> Участники эпизода ({selectedEpisode.persons.length})
+   842→                    </h4>
+   843→                    <div className="space-y-2">
+   844→                      {selectedEpisode.persons.map(pe => (
+   845→                        <div key={pe.personId} className="flex items-center gap-3 p-3 bg-muted/50 rounded-lg border border-stone-800">
+   846→                          <div className="flex items-center justify-center w-8 h-8 rounded-full bg-stone-700 text-white text-xs font-bold">
+   847→                            {pe.person.isKolesnichenko ? '★' : pe.person.fullName.charAt(0)}
+   848→                          </div>
+   849→                          <div className="flex-1 min-w-0">
+   850→                            <p className="text-sm font-medium">{pe.person.fullName}</p>
+   851→                            <div className="flex items-center gap-2 mt-1">
+   852→                              <Badge className={`${INVOLVEMENT_COLORS[pe.involvement || ''] || 'bg-stone-500 text-white'} text-xs`}>
+   853→                                {pe.involvement || 'не указано'}
+   854→                              </Badge>
+   855→                              <Badge variant="outline" className="text-xs">{pe.person.role}</Badge>
+   856→                            </div>
+   857→                          </div>
+   858→                        </div>
+   859→                      ))}
+   860→                    </div>
+   861→                  </div>
+   862→
+   863→                  {/* Locations */}
+   864→                  {selectedEpisode.locations.length > 0 && (
+   865→                    <div>
+   866→                      <h4 className="text-sm font-medium mb-2 flex items-center gap-2">
+   867→                        <MapPin className="h-4 h-4" /> Места ({selectedEpisode.locations.length})
+   868→                      </h4>
+   869→                      <div className="space-y-2">
+   870→                        {selectedEpisode.locations.map(el => (
+   871→                          <div key={el.locationId} className="p-3 bg-muted/50 rounded-lg border border-stone-800">
+   872→                            <div className="flex items-center gap-2">
+   873→                              <MapPin className="w-4 h-4 text-orange-500" />
+   874→                              <span className="text-sm font-medium">{el.location.name}</span>
+   875→                              <Badge variant="outline">{el.location.type || '—'}</Badge>
+   876→                            </div>
+   877→                            {el.location.address && (
+   878→                              <p className="text-xs text-muted-foreground mt-1">📍 {el.location.address}</p>
+   879→                            )}
+   880→                          </div>
+   881→                        ))}
+   882→                      </div>
+   883→                    </div>
+   884→                  )}
+   885→                </TabsContent>
+   886→
+   887→                {/* Connections Tab */}
+   888→                <TabsContent value="connections" className="space-y-3 mt-4">
+   889→                  {/* Connection Network SVG */}
+   890→                  <div className="relative min-h-[200px] bg-stone-900/60 rounded-lg border border-stone-800">
+   891→                    <svg viewBox="0 0 400 200" className="w-full h-full">
+   892→                      {/* Center episode node */}
+   893→                      <rect
+   894→                        x={160}
+   895→                        y={85}
+   896→                        width={80}
+   897→                        height={30}
+   898→                        rx={8}
+   899→                        fill={SEVERITY_HEX[selectedEpisode.severity || ''] || '#525252'}
+   900→                      />
+   901→                      <text x={200} y={104} textAnchor="middle" fill="white" fontSize={9} fontWeight="bold">
+   902→                        Эп.{selectedEpisode.episodeNumber || '?'}
+   903→                      </text>
+   904→
+   905→                      {/* Person nodes */}
+   906→                      {selectedEpisode.persons.map((pe, i) => {
+   907→                        const angle = (2 * Math.PI * i) / selectedEpisode.persons.length - Math.PI / 2
+   908→                        const px = 200 + Math.cos(angle) * 130
+   909→                        const py = 100 + Math.sin(angle) * 70
+   910→                        const involvementColor = pe.involvement === 'органиатор' ? '#dc2626' : pe.involvement === 'соучастник' ? '#ea580c' : '#ca8a04'
+   911→                        return (
+   912→                          <g key={pe.personId}>
+   913→                            <line x1={200} y1={100} x2={px} y2={py} stroke={involvementColor} strokeWidth={1.5} opacity={0.6} />
+   914→                            <circle cx={px} cy={py} r={14} fill={pe.person.isKolesnichenko ? '#dc2626' : '#525252'} stroke={involvementColor} strokeWidth={1.5} />
+   915→                            <text x={px} y={py + 4} textAnchor="middle" fill="white" fontSize={7}>
+   916→                              {pe.person.shortName?.split(' ')[0] || 'P'}
+   917→                            </text>
+   918→                            <text x={px} y={py - 18} textAnchor="middle" fill={involvementColor} fontSize={6}>
+   919→                              {pe.involvement || ''}
+   920→                            </text>
+   921→                          </g>
+   922→                        )
+   923→                      })}
+   924→                    </svg>
+   925→                  </div>
+   926→
+   927→                  {/* Related Persons list */}
+   928→                  <div className="space-y-2 max-h-48 overflow-y-auto custom-scrollbar">
+   929→                    {selectedEpisode.persons.map(pe => (
+   930→                      <div key={pe.personId} className="p-3 bg-muted/50 rounded-lg border border-stone-800 flex items-center gap-3">
+   931→                        <div className="w-2 h-2 rounded-full" style={{ backgroundColor: pe.involvement === 'органиатор' ? '#dc2626' : pe.involvement === 'соучастник' ? '#ea580c' : '#ca8a04' }} />
+   932→                        <span className="text-sm font-medium">{pe.person.fullName}</span>
+   933→                        <Badge className={`${INVOLVEMENT_COLORS[pe.involvement || ''] || 'bg-stone-500'} text-xs`}>
+   934→                          {pe.involvement || 'не указано'}
+   935→                        </Badge>
+   936→                        <Badge variant="outline" className="text-xs">{pe.person.role}</Badge>
+   937→                      </div>
+   938→                    ))}
+   939→                  </div>
+   940→                </TabsContent>
+   941→
+   942→                {/* Articles Tab */}
+   943→                <TabsContent value="articles" className="space-y-3 mt-4">
+   944→                  {selectedEpisode.articles.map(ea => (
+   945→                    <Card key={ea.articleId} className="border-stone-700">
+   946→                      <CardHeader className="pb-2">
+   947→                        <div className="flex items-center gap-3">
+   948→                          <Scale className="w-5 h-5 text-orange-500" />
+   949→                          <CardTitle className="text-base">{ea.article.code}</CardTitle>
+   950→                          {ea.article.category && (
+   951→                            <Badge variant="outline">{ea.article.category}</Badge>
+   952→                          )}
+   953→                          <Badge className={SEVERITY_COLORS[ea.article.category || ''] || 'bg-stone-500'}>
+   954→                            {ea.article.category}
+   955→                          </Badge>
+   956→                        </div>
+   957→                      </CardHeader>
+   958→                      <CardContent className="space-y-2">
+   959→                        <p className="text-sm text-muted-foreground">{ea.article.description}</p>
+   960→                        <div className="p-3 bg-muted/50 rounded-lg border border-stone-800 text-xs">
+   961→                          <p className="text-muted-foreground">
+   962→                            <span className="font-medium">Наказание:</span> от {ea.article.punishmentMin || '—'} до {ea.article.punishmentMax || '—'}
+   963→                          </p>
+   964→                        </div>
+   965→                        {/* Person guilt assessments for this article */}
+   966→                        {selectedEpisode.persons
+   967→                          .filter(pe => pe.person.guiltAssessments?.[0]?.episodeId === selectedEpisode.id)
+   968→                          .map(pe => (
+   969→                            <div key={pe.personId} className="p-2 bg-muted/30 rounded text-xs">
+   970→                              <span className="font-medium">{pe.person.fullName}</span>: 
+   971→                              <Badge variant="outline" className="ml-1 text-xs">{pe.person.guiltAssessments?.[0]?.guiltLevel || '—'}</Badge>
+   972→                            </div>
+   973→                          ))
+   974→                        }
+   975→                      </CardContent>
+   976→                    </Card>
+   977→                  ))}
+   978→                </TabsContent>
+   979→              </Tabs>
+   980→            </>
+   981→          )}
+   982→        </DialogContent>
+   983→      </Dialog>
+   984→
+   985→      {/* Custom scrollbar CSS */}
+   986→      <style jsx global>{`
+   987→        .custom-scrollbar::-webkit-scrollbar {
+   988→          width: 6px;
+   989→        }
+   990→        .custom-scrollbar::-webkit-scrollbar-track {
+   991→          background: #1c1917;
+   992→          border-radius: 3px;
+   993→        }
+   994→        .custom-scrollbar::-webkit-scrollbar-thumb {
+   995→          background: #57534e;
+   996→          border-radius: 3px;
+   997→        }
+   998→        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+   999→          background: #78716c;
+  1000→        }
+  1001→      `}</style>
+  1002→    </div>
+  1003→  )
+  1004→}
+  1005→

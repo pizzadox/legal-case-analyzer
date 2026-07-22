@@ -288,3 +288,57 @@ Stage Summary:
 - case-api.ts: added 3 new API functions (processDocument, processDocuments, advancedSearch)
 - case-dashboard.tsx: fixed MessageSquare import
 - ESLint clean, dev server running
+
+---
+Task ID: 7
+Agent: optimizer
+Task: Optimize components to fix OOM issue
+
+Work Log:
+- Read worklog.md and all 8 component files to understand current state (7339 total lines causing OOM)
+- Read supporting files: case-store.ts, case-api.ts, mock-data.ts, page.tsx, query-provider.tsx
+- Rewrote case-dashboard.tsx: 1105 → 175 lines. Removed framer-motion animations, animated counters, health score gauge, guilt radar chart, relationship network graph SVG, compliance pie chart, timeline visualization. Kept: stats cards, guilt pie chart, doc type bar chart, processing queue, recent documents, quick action buttons.
+- Rewrote case-documents.tsx: 1002 → 173 lines. Removed drag-and-drop animations, per-file progress, document comparison feature, bulk actions, real-time polling, sorting. Kept: upload area with drag-drop, document list with status badges, trigger analysis button, document preview dialog, delete/reprocess buttons.
+- Rewrote case-persons.tsx: 922 → 165 lines. Removed detail dialog with tabs, relationship visualization matrix, guilt radar chart per person, framer-motion. Kept: person cards with role/status/guilt badges, Kolesnichenko highlight card, guilt bar chart, expand/collapse details, role filter.
+- Rewrote case-episodes.tsx: 1004 → 157 lines. Removed episode connection graph SVG, detail dialog, severity/status pie/bar charts, framer-motion. Kept: summary stats, timeline view, episode accordion with linked persons/articles/locations, severity filter.
+- Rewrote case-search.tsx: 925 → 200 lines. Removed search history, cross-reference search mode toggle, visual cross-reference graph, text highlighting function, faceted search with counts. Kept: search input with filter dropdown, tabbed results (All/Documents/Persons/Episodes/References), suggested searches, useMutation for search API.
+- Rewrite case-qa.tsx: 645 → 154 lines. Removed typing indicator animation, message reactions, export chat feature, follow-up questions per answer, complex context buttons. Kept: chat bubbles (user right/AI left), context selector dropdown, suggested questions, send question to API via useMutation, mock fallback on error.
+- Rewrote case-defense.tsx: 917 → 131 lines. Removed RadarChart, probability BarChart, comparison matrix table, risk assessment panel, timeline evolution, ranking algorithm, counter-argument analysis, complementary strategies, framer-motion. Kept: header card, recommended strategy highlight, strategy accordion with strength/probability/evidence/legal basis, trigger analysis button.
+- Rewrote case-legal-check.tsx: 819 → 158 lines. Removed compliance score animated gauge, interactive filtering charts, pie/bar charts for distribution, timeline visualization, detail dialog. Kept: summary stats cards, compliance score progress bar, trigger new check button, status filter, accordion with recommendation/legal basis, useQuery for reading + useMutation for triggering.
+- Fixed legal-check to use getComplianceResults() for GET query instead of checkCompliance() (POST) 
+- Removed all framer-motion imports from all 8 component files (no more 'from framer-motion' references)
+- Used simple CSS transitions (hover:shadow-md, transition-colors) instead of complex framer-motion animations
+- Consolidated repeated patterns: STATUS/BADGE/GUILT config maps at top of each file
+- Ran ESLint — clean, 0 errors 0 warnings
+- Verified dev server running and ready
+
+Stage Summary:
+- Total lines reduced from 7339 → 1313 (82% reduction, well below 2500 max target)
+- Per file: dashboard 175, documents 173, persons 165, episodes 157, search 200, qa 154, defense 131, legal-check 158
+- All framer-motion imports removed (major memory reduction for Turbopack compilation)
+- All key features preserved: stats cards, charts, upload, person cards, Kolesnichenko highlight, episode timeline/accordion, search with tabs, Q&A chat, defense strategies, compliance checks
+- Removed: animated counters, relationship graphs, radar charts, detail dialogs with tabs, search history, typing indicators, message reactions, document comparison, bulk actions, comparison matrices
+- ESLint clean, dev server running successfully
+---
+Task ID: 7
+Agent: Main Coordinator
+Task: Fix OOM issue and optimize components
+
+Work Log:
+- Identified OOM killer as root cause of server crashes (2.4GB RSS for next-server)
+- Reduced all 8 section components from 7339 to 1313 lines (82% reduction)
+- Reduced mock-data.ts from 564 to 88 lines
+- Switched from Turbopack to webpack (--webpack flag) for lower memory usage
+- Added lazy loading for section components (React.lazy + Suspense)
+- Added NODE_OPTIONS memory limit (1024MB)
+- Fixed mock data import names
+- Fixed Chinese text in mock data
+- Fixed lucide-react import
+- Fixed nested button hydration error
+- Server compiles and serves pages successfully
+
+Stage Summary:
+- Application fully functional when server is running
+- Server periodically killed by OOM due to memory constraints
+- All 8 sections render correctly
+- Need keep-alive mechanism for persistent server operation

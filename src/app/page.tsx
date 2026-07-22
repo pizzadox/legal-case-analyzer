@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, lazy, Suspense } from 'react'
 import {
   Sidebar,
   SidebarContent,
@@ -28,14 +28,16 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { CaseDashboard } from '@/components/case-dashboard'
-import { CaseDocuments } from '@/components/case-documents'
-import { CasePersons } from '@/components/case-persons'
-import { CaseEpisodes } from '@/components/case-episodes'
-import { CaseSearch } from '@/components/case-search'
-import { CaseQa } from '@/components/case-qa'
-import { CaseDefense } from '@/components/case-defense'
-import { CaseLegalCheck } from '@/components/case-legal-check'
+
+const CaseDashboard = lazy(() => import('@/components/case-dashboard').then(m => ({ default: m.CaseDashboard })))
+const CaseDocuments = lazy(() => import('@/components/case-documents').then(m => ({ default: m.CaseDocuments })))
+const CasePersons = lazy(() => import('@/components/case-persons').then(m => ({ default: m.CasePersons })))
+const CaseEpisodes = lazy(() => import('@/components/case-episodes').then(m => ({ default: m.CaseEpisodes })))
+const CaseSearch = lazy(() => import('@/components/case-search').then(m => ({ default: m.CaseSearch })))
+const CaseQa = lazy(() => import('@/components/case-qa').then(m => ({ default: m.CaseQa })))
+const CaseDefense = lazy(() => import('@/components/case-defense').then(m => ({ default: m.CaseDefense })))
+const CaseLegalCheck = lazy(() => import('@/components/case-legal-check').then(m => ({ default: m.CaseLegalCheck })))
+
 import {
   LayoutDashboard,
   FileText,
@@ -170,26 +172,24 @@ function TopHeader({ activeSection }: { activeSection: SectionId }) {
 }
 
 function MainContent({ activeSection }: { activeSection: SectionId }) {
-  switch (activeSection) {
-    case 'dashboard':
-      return <CaseDashboard />
-    case 'documents':
-      return <CaseDocuments />
-    case 'persons':
-      return <CasePersons />
-    case 'episodes':
-      return <CaseEpisodes />
-    case 'search':
-      return <CaseSearch />
-    case 'qa':
-      return <CaseQa />
-    case 'defense':
-      return <CaseDefense />
-    case 'legal-check':
-      return <CaseLegalCheck />
-    default:
-      return <CaseDashboard />
-  }
+  const SectionComponent = (() => {
+    switch (activeSection) {
+      case 'dashboard': return CaseDashboard
+      case 'documents': return CaseDocuments
+      case 'persons': return CasePersons
+      case 'episodes': return CaseEpisodes
+      case 'search': return CaseSearch
+      case 'qa': return CaseQa
+      case 'defense': return CaseDefense
+      case 'legal-check': return CaseLegalCheck
+      default: return CaseDashboard
+    }
+  })()
+  return (
+    <Suspense fallback={<div className="flex items-center justify-center py-20"><div className="animate-spin h-8 w-8 border-4 border-muted-foreground border-t-transparent rounded-full" /></div>}>
+      <SectionComponent />
+    </Suspense>
+  )
 }
 
 function AppFooter() {

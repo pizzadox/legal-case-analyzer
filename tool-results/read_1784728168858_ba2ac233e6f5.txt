@@ -1,0 +1,1106 @@
+     1→'use client'
+     2→
+     3→import { useState, useEffect, useCallback } from 'react'
+     4→import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+     5→import { Badge } from '@/components/ui/badge'
+     6→import { Button } from '@/components/ui/button'
+     7→import { Progress } from '@/components/ui/progress'
+     8→import { Skeleton } from '@/components/ui/skeleton'
+     9→import { Separator } from '@/components/ui/separator'
+    10→import { ChartContainer, ChartTooltip, ChartTooltipContent, ChartLegend, ChartLegendContent } from '@/components/ui/chart'
+    11→import { Bar, BarChart, Pie, PieChart, Cell, Area, AreaChart, Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis } from 'recharts'
+    12→import { motion, AnimatePresence } from 'framer-motion'
+    13→import { useQuery } from '@tanstack/react-query'
+    14→import {
+    15→  FileText, Users, BookOpen, AlertTriangle, Clock, CheckCircle,
+    16→  Activity, Upload, Zap, Shield, Scale, TrendingUp, TrendingDown,
+    17→  Heart, Gauge, ArrowRight, Eye, RefreshCw, XCircle, Info,
+    18→  MapPin, ChevronRight, Sparkles, BarChart3, MessageSquare
+    19→} from 'lucide-react'
+    20→import { mockDashboardStats, mockPersons, mockEpisodes, mockCompliance } from '@/lib/mock-data'
+    21→import { getDashboardStats } from '@/lib/case-api'
+    22→import { useCaseStore } from '@/lib/case-store'
+    23→import type { DashboardStats } from '@/lib/case-store'
+    24→
+    25→const guiltChartConfig = {
+    26→  'Высокая': { label: 'Высокая', color: '#dc2626' },
+    27→  'Средняя': { label: 'Средняя', color: '#ea580c' },
+    28→  'Низкая': { label: 'Низкая', color: '#ca8a04' },
+    29→  'Нет': { label: 'Нет', color: '#525252' },
+    30→} as const
+    31→
+    32→const docTypeChartConfig = {
+    33→  'Обвинение': { label: 'Обвинение', color: '#dc2626' },
+    34→  'Показание': { label: 'Показание', color: '#ea580c' },
+    35→  'Протокол': { label: 'Протокол', color: '#ca8a04' },
+    36→  'Другое': { label: 'Другое', color: '#525252' },
+    37→} as const
+    38→
+    39→const healthChartConfig = {
+    40→  score: { label: 'Оценка', color: '#ea580c' },
+    41→  threshold: { label: 'Порог', color: '#525252' },
+    42→} as const
+    43→
+    44→const GUILT_COLORS = ['#dc2626', '#ea580c', '#ca8a04', '#525252']
+    45→
+    46→const COMPLIANCE_COLORS: Record<string, string> = {
+    47→  violation: '#dc2626',
+    48→  warning: '#ea580c',
+    49→  compliant: '#16a34a',
+    50→  needs_review: '#ca8a04',
+    51→}
+    52→
+    53→const SEVERITY_COLORS: Record<string, string> = {
+    54→  'особо тяжкое': '#dc2626',
+    55→  'тяжкое': '#ea580c',
+    56→  'средней тяжести': '#ca8a04',
+    57→  'небольшое': '#525252',
+    58→}
+    59→
+    60→function formatFileSize(bytes: number): string {
+    61→  if (bytes < 1024) return bytes + ' Б'
+    62→  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' КБ'
+    63→  return (bytes / (1024 * 1024)).toFixed(1) + ' МБ'
+    64→}
+    65→
+    66→function getStatusBadge(status: string) {
+    67→  switch (status) {
+    68→    case 'completed':
+    69→      return <Badge variant="default" className="bg-green-700 text-white"><CheckCircle className="w-3 h-3 mr-1" />Завершён</Badge>
+    70→    case 'processing':
+    71→      return <Badge variant="default" className="bg-orange-600 text-white"><Clock className="w-3 h-3 mr-1" />Обработка</Badge>
+    72→    case 'pending':
+    73→      return <Badge variant="secondary">Ожидание</Badge>
+    74→    case 'failed':
+    75→      return <Badge variant="destructive"><AlertTriangle className="w-3 h-3 mr-1" />Ошибка</Badge>
+    76→    case 'queued':
+    77→      return <Badge variant="outline">В очереди</Badge>
+    78→    default:
+    79→      return <Badge variant="outline">{status}</Badge>
+    80→  }
+    81→}
+    82→
+    83→function getGuiltLevelLabel(level: string): string {
+    84→  const map: Record<string, string> = {
+    85→    high: 'Высокая',
+    86→    moderate: 'Средняя',
+    87→    low: 'Низкая',
+    88→    none: 'Нет',
+    89→    unproven: 'Недоказана',
+    90→  }
+    91→  return map[level] || level
+    92→}
+    93→
+    94→function getGuiltColor(level: string): string {
+    95→  const map: Record<string, string> = {
+    96→    high: '#dc2626',
+    97→    moderate: '#ea580c',
+    98→    low: '#ca8a04',
+    99→    none: '#525252',
+   100→    unproven: '#a1a1aa',
+   101→  }
+   102→  return map[level] || '#525252'
+   103→}
+   104→
+   105→// Animated counter component
+   106→function AnimatedCounter({ value, duration = 1200 }: { value: number; duration?: number }) {
+   107→  const [displayValue, setDisplayValue] = useState(0)
+   108→
+   109→  useEffect(() => {
+   110→    let startTime: number | null = null
+   111→    let animationFrame: number
+   112→
+   113→    const animate = (timestamp: number) => {
+   114→      if (!startTime) startTime = timestamp
+   115→      const progress = Math.min((timestamp - startTime) / duration, 1)
+   116→      const eased = 1 - Math.pow(1 - progress, 3)
+   117→      setDisplayValue(Math.floor(eased * value))
+   118→      if (progress < 1) {
+   119→        animationFrame = requestAnimationFrame(animate)
+   120→      }
+   121→    }
+   122→
+   123→    animationFrame = requestAnimationFrame(animate)
+   124→    return () => cancelAnimationFrame(animationFrame)
+   125→  }, [value, duration])
+   126→
+   127→  return <span>{displayValue}</span>
+   128→}
+   129→
+   130→// Case health score calculation
+   131→function calculateHealthScore(stats: DashboardStats | null): number {
+   132→  if (!stats) return 65
+   133→  const processedRatio = stats.totalDocuments > 0 ? stats.processedDocuments / stats.totalDocuments : 0
+   134→  const guiltBalance = stats.guiltDistribution.reduce((acc, item) => {
+   135→    const weight: Record<string, number> = { 'Высокая': 0.7, 'Средняя': 0.5, 'Низкая': 0.3, 'Нет': 0.9 }
+   136→    return acc + (weight[item.level] || 0.5) * item.count
+   137→  }, 0) / (stats.guiltDistribution.reduce((acc, item) => acc + item.count, 0) || 1)
+   138→  const queueHealth = stats.totalDocuments > 0 ? 1 - (stats.pendingInQueue / stats.totalDocuments) : 1
+   139→  return Math.round(processedRatio * 30 + guiltBalance * 40 + queueHealth * 30)
+   140→}
+   141→
+   142→export function CaseDashboard() {
+   143→  const { setActiveSection } = useCaseStore()
+   144→  const [isRefreshing, setIsRefreshing] = useState(false)
+   145→
+   146→  // TanStack Query for real dashboard data
+   147→  const { data: apiData, isLoading, isError, error, refetch } = useQuery({
+   148→    queryKey: ['dashboard'],
+   149→    queryFn: getDashboardStats,
+   150→    staleTime: 30000,
+   151→  })
+   152→
+   153→  // Use real data or fall back to mock
+   154→  const stats = apiData || mockDashboardStats
+   155→
+   156→  // Case health score
+   157→  const healthScore = calculateHealthScore(stats)
+   158→
+   159→  // Timeline events from mock data
+   160→  const timelineEvents = [
+   161→    { date: '10 янв 2024', event: 'Загрузка обвинительного заключения', type: 'document', icon: <FileText className="w-4 h-4" /> },
+   162→    { date: '15 янв 2024', event: 'Допрос Колесниченко Д.А.', type: 'person', icon: <Users className="w-4 h-4" /> },
+   163→    { date: '20 янв 2024', event: 'Осмотр места происшествия', type: 'episode', icon: <MapPin className="w-4 h-4" /> },
+   164→    { date: '5 фев 2024', event: 'Загрузка показаний', type: 'document', icon: <FileText className="w-4 h-4" /> },
+   165→    { date: '15 фев 2024', event: 'Протокол осмотра', type: 'document', icon: <FileText className="w-4 h-4" /> },
+   166→    { date: '25 фев 2024', event: 'Правовая проверка материалов', type: 'compliance', icon: <Scale className="w-4 h-4" /> },
+   167→  ]
+   168→
+   169→  // Relationship data for network visualization
+   170→  const relationships = [
+   171→    { from: 'Колесниченко Д.А.', to: 'Эпизод 1: Хищение', strength: 'strong', type: 'органиатор' },
+   172→    { from: 'Колесниченко Д.А.', to: 'Эпизод 2: Присвоение', strength: 'strong', type: 'подозреваемый' },
+   173→    { from: 'Колесниченко Д.А.', to: 'Эпизод 3: Подделка', strength: 'strong', type: 'органиатор' },
+   174→    { from: 'Сидоров В.П.', to: 'Эпизод 1: Хищение', strength: 'moderate', type: 'соучастник' },
+   175→    { from: 'Сидоров В.П.', to: 'Эпизод 3: Подделка', strength: 'moderate', type: 'исполнитель' },
+   176→    { from: 'Петров И.С.', to: 'Эпизод 1: Хищение', strength: 'weak', type: 'свидетель' },
+   177→    { from: 'Петров И.С.', to: 'Эпизод 2: Присвоение', strength: 'weak', type: 'свидетель' },
+   178→    { from: 'Козлова М.Д.', to: 'Эпизод 1: Хищение', strength: 'moderate', type: 'потерпевший' },
+   179→  ]
+   180→
+   181→  // Guilt radar data
+   182→  const guiltRadarData = mockPersons.filter(p => p.guiltLevel).map(p => ({
+   183→    name: p.shortName || p.fullName.split(' ').slice(0, 2).join(' '),
+   184→    guilt: p.guiltLevel === 'high' ? 90 : p.guiltLevel === 'moderate' ? 60 : p.guiltLevel === 'low' ? 30 : 10,
+   185→    evidence: p.guiltAssessments?.[0]?.evidenceStrength === 'strong' ? 85 : p.guiltAssessments?.[0]?.evidenceStrength === 'moderate' ? 55 : 25,
+   186→    confidence: p.guiltAssessments?.[0]?.confidence === 'high' ? 80 : p.guiltAssessments?.[0]?.confidence === 'moderate' ? 50 : 20,
+   187→  }))
+   188→
+   189→  const radarConfig = {
+   190→    guilt: { label: 'Виновность', color: '#dc2626' },
+   191→    evidence: { label: 'Доказательства', color: '#ea580c' },
+   192→    confidence: { label: 'Уверенность', color: '#ca8a04' },
+   193→  } as const
+   194→
+   195→  // Compliance summary data
+   196→  const complianceSummaryData = Object.entries(
+   197→    mockCompliance.reduce((acc, c) => {
+   198→      acc[c.status] = (acc[c.status] || 0) + 1
+   199→      return acc
+   200→    }, {} as Record<string, number>)
+   201→  ).map(([status, count]) => ({
+   202→    status: status === 'violation' ? 'Нарушение' : status === 'warning' ? 'Предупр.' : status === 'compliant' ? 'Соотв.' : 'Проверка',
+   203→    count,
+   204→    fill: COMPLIANCE_COLORS[status],
+   205→  }))
+   206→
+   207→  // Episode severity distribution
+   208→  const episodeSeverityData = mockEpisodes.map(ep => ({
+   209→    name: ep.episodeNumber ? `Эп.${ep.episodeNumber}` : ep.title.substring(0, 15),
+   210→    severity: ep.severity === 'особо тяжкое' ? 4 : ep.severity === 'тяжкое' ? 3 : ep.severity === 'средней тяжести' ? 2 : 1,
+   211→    fill: SEVERITY_COLORS[ep.severity || ''] || '#525252',
+   212→  }))
+   213→
+   214→  // Activity feed
+   215→  const activityFeed = [
+   216→    { time: '2 мин назад', action: 'Загружен документ', detail: 'Экспертное заключение №45', type: 'upload' },
+   217→    { time: '15 мин назад', action: 'Обработка завершена', detail: 'Показания свидетеля Петрова', type: 'process' },
+   218→    { time: '1 час назад', action: 'Анализ виновности', detail: 'Колесниченко Д.А. — Высокая', type: 'analysis' },
+   219→    { time: '3 часа назад', action: 'Правовая проверка', detail: 'Обвинительное заключение', type: 'compliance' },
+   220→    { time: '5 часов назад', action: 'Загружен документ', detail: 'Заключение фин. аудита', type: 'upload' },
+   221→    { time: '1 день назад', action: 'ИИ-ответ', detail: 'Статьи УК РФ по делу', type: 'qa' },
+   222→  ]
+   223→
+   224→  const handleRefresh = useCallback(async () => {
+   225→    setIsRefreshing(true)
+   226→    await refetch()
+   227→    setTimeout(() => setIsRefreshing(false), 600)
+   228→  }, [refetch])
+   229→
+   230→  if (isLoading) {
+   231→    return (
+   232→      <div className="space-y-6">
+   233→        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+   234→          {[1, 2, 3, 4].map(i => (
+   235→            <Card key={i}><CardContent className="p-6"><Skeleton className="h-20 w-full" /></CardContent></Card>
+   236→          ))}
+   237→        </div>
+   238→        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+   239→          {[1, 2].map(i => (
+   240→            <Card key={i}><CardContent className="p-6"><Skeleton className="h-[250px] w-full" /></CardContent></Card>
+   241→          ))}
+   242→        </div>
+   243→      </div>
+   244→    )
+   245→  }
+   246→
+   247→  return (
+   248→    <div className="space-y-6">
+   249→      {/* Quick Actions Bar */}
+   250→      <motion.div
+   251→        initial={{ opacity: 0, y: -20 }}
+   252→        animate={{ opacity: 1, y: 0 }}
+   253→        transition={{ duration: 0.4 }}
+   254→      >
+   255→        <Card className="bg-gradient-to-r from-stone-900 to-stone-800 border-stone-700 shadow-lg">
+   256→          <CardContent className="p-4">
+   257→            <div className="flex items-center justify-between gap-4 flex-wrap">
+   258→              <div className="flex items-center gap-3">
+   259→                <div className="flex items-center gap-2">
+   260→                  <Gauge className="w-5 h-5 text-orange-500" />
+   261→                  <span className="text-sm font-medium">Оценка состояния дела</span>
+   262→                </div>
+   263→                <div className="flex items-center gap-1.5">
+   264→                  <motion.div
+   265→                    initial={{ scale: 0 }}
+   266→                    animate={{ scale: 1 }}
+   267→                    transition={{ type: 'spring', stiffness: 200, delay: 0.2 }}
+   268→                  >
+   269→                    {healthScore >= 80 ? (
+   270→                      <Heart className="w-5 h-5 text-green-500" />
+   271→                    ) : healthScore >= 60 ? (
+   272→                      <Activity className="w-5 h-5 text-orange-500" />
+   273→                    ) : (
+   274→                      <AlertTriangle className="w-5 h-5 text-red-500" />
+   275→                    )}
+   276→                  </motion.div>
+   277→                  <motion.span
+   278→                    initial={{ opacity: 0 }}
+   279→                    animate={{ opacity: 1 }}
+   280→                    className="text-lg font-bold"
+   281→                    style={{ color: healthScore >= 80 ? '#16a34a' : healthScore >= 60 ? '#ea580c' : '#dc2626' }}
+   282→                  >
+   283→                    <AnimatedCounter value={healthScore} />
+   284→                  </motion.span>
+   285→                  <span className="text-xs text-muted-foreground">/100</span>
+   286→                </div>
+   287→                <Badge
+   288→                  variant="outline"
+   289→                  className={
+   290→                    healthScore >= 80
+   291→                      ? 'border-green-600 text-green-600'
+   292→                      : healthScore >= 60
+   293→                        ? 'border-orange-600 text-orange-600'
+   294→                        : 'border-red-600 text-red-600'
+   295→                  }
+   296→                >
+   297→                  {healthScore >= 80 ? 'Хорошее' : healthScore >= 60 ? 'Удовлетворительное' : 'Проблемное'}
+   298→                </Badge>
+   299→              </div>
+   300→              <div className="flex items-center gap-2 flex-wrap">
+   301→                <Button
+   302→                  variant="outline"
+   303→                  size="sm"
+   304→                  className="gap-1.5 border-stone-600 hover:bg-stone-700"
+   305→                  onClick={() => setActiveSection('documents')}
+   306→                >
+   307→                  <Upload className="w-3.5 h-3.5" />
+   308→                  Загрузить документ
+   309→                </Button>
+   310→                <Button
+   311→                  variant="outline"
+   312→                  size="sm"
+   313→                  className="gap-1.5 border-stone-600 hover:bg-stone-700"
+   314→                  onClick={() => setActiveSection('qa')}
+   315→                >
+   316→                  <Sparkles className="w-3.5 h-3.5" />
+   317→                  Запросить ИИ
+   318→                </Button>
+   319→                <Button
+   320→                  variant="outline"
+   321→                  size="sm"
+   322→                  className="gap-1.5 border-stone-600 hover:bg-stone-700"
+   323→                  onClick={() => setActiveSection('legal-check')}
+   324→                >
+   325→                  <Scale className="w-3.5 h-3.5" />
+   326→                  Правовая проверка
+   327→                </Button>
+   328→                <Button
+   329→                  variant="ghost"
+   330→                  size="sm"
+   331→                  onClick={handleRefresh}
+   332→                  disabled={isRefreshing}
+   333→                  className="gap-1.5"
+   334→                >
+   335→                  <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin' : ''}`} />
+   336→                  Обновить
+   337→                </Button>
+   338→              </div>
+   339→            </div>
+   340→          </CardContent>
+   341→        </Card>
+   342→      </motion.div>
+   343→
+   344→      {/* Error Display */}
+   345→      {isError && (
+   346→        <motion.div
+   347→          initial={{ opacity: 0, y: -10 }}
+   348→          animate={{ opacity: 1, y: 0 }}
+   349→        >
+   350→          <Card className="border-red-700 bg-red-950/30">
+   351→            <CardContent className="p-4">
+   352→              <div className="flex items-center gap-2 text-red-400">
+   353→                <XCircle className="w-4 h-4" />
+   354→                <span className="text-sm">Ошибка загрузки данных: {error?.message || 'Неизвестная ошибка'}</span>
+   355→                <Button variant="outline" size="sm" onClick={handleRefresh} className="ml-auto gap-1.5 border-red-700 text-red-400">
+   356→                  <RefreshCw className="w-3 h-3" />
+   357→                  Повторить
+   358→                </Button>
+   359→              </div>
+   360→            </CardContent>
+   361→          </Card>
+   362→        </motion.div>
+   363→      )}
+   364→
+   365→      {/* Stats Cards - Enhanced with animated counters and gradients */}
+   366→      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+   367→        {[
+   368→          {
+   369→            title: 'Документы',
+   370→            value: stats.totalDocuments,
+   371→            sub: `${stats.processedDocuments} обработано, ${stats.pendingInQueue} в очереди`,
+   372→            icon: <FileText className="h-5 w-5" />,
+   373→            gradient: 'from-orange-600/20 to-stone-900',
+   374→            iconColor: 'text-orange-500',
+   375→            borderColor: 'border-orange-700/30',
+   376→          },
+   377→          {
+   378→            title: 'Участники',
+   379→            value: stats.totalPersons,
+   380→            sub: 'обвиняемых, свидетелей, потерпевших',
+   381→            icon: <Users className="h-5 w-5" />,
+   382→            gradient: 'from-red-600/20 to-stone-900',
+   383→            iconColor: 'text-red-500',
+   384→            borderColor: 'border-red-700/30',
+   385→          },
+   386→          {
+   387→            title: 'Эпизоды',
+   388→            value: stats.totalEpisodes,
+   389→            sub: 'преступных эпизодов в деле',
+   390→            icon: <BookOpen className="h-5 w-5" />,
+   391→            gradient: 'from-amber-600/20 to-stone-900',
+   392→            iconColor: 'text-amber-500',
+   393→            borderColor: 'border-amber-700/30',
+   394→          },
+   395→          {
+   396→            title: 'Статьи УК',
+   397→            value: stats.totalArticles,
+   398→            sub: 'статей применено в деле',
+   399→            icon: <AlertTriangle className="h-5 w-5" />,
+   400→            gradient: 'from-stone-600/20 to-stone-900',
+   401→            iconColor: 'text-stone-400',
+   402→            iconBg: 'bg-stone-800',
+   403→            borderColor: 'border-stone-700/30',
+   404→          },
+   405→        ].map((card, index) => (
+   406→          <motion.div
+   407→            key={card.title}
+   408→            initial={{ opacity: 0, y: 20 }}
+   409→            animate={{ opacity: 1, y: 0 }}
+   410→            transition={{ duration: 0.4, delay: index * 0.1 }}
+   411→          >
+   412→            <Card className={`bg-gradient-to-br ${card.gradient} ${card.borderColor} shadow-md hover:shadow-lg transition-shadow`}>
+   413→              <CardHeader className="flex flex-row items-center justify-between pb-2">
+   414→                <CardTitle className="text-sm font-medium text-muted-foreground">{card.title}</CardTitle>
+   415→                <motion.div
+   416→                  initial={{ rotate: -10 }}
+   417→                  animate={{ rotate: 0 }}
+   418→                  transition={{ type: 'spring', stiffness: 300, delay: index * 0.1 + 0.3 }}
+   419→                  className={card.iconColor}
+   420→                >
+   421→                  {card.icon}
+   422→                </motion.div>
+   423→              </CardHeader>
+   424→              <CardContent>
+   425→                <div className="text-3xl font-bold tracking-tight">
+   426→                  <AnimatedCounter value={card.value} />
+   427→                </div>
+   428→                <p className="text-xs text-muted-foreground mt-1">{card.sub}</p>
+   429→              </CardContent>
+   430→            </Card>
+   431→          </motion.div>
+   432→        ))}
+   433→      </div>
+   434→
+   435→      {/* Charts Row */}
+   436→      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+   437→        {/* Guilt Distribution */}
+   438→        <motion.div
+   439→          initial={{ opacity: 0, x: -30 }}
+   440→          animate={{ opacity: 1, x: 0 }}
+   441→          transition={{ duration: 0.5 }}
+   442→        >
+   443→          <Card className="shadow-md hover:shadow-lg transition-shadow border-stone-700/50">
+   444→            <CardHeader>
+   445→              <CardTitle className="flex items-center gap-2">
+   446→                <BarChart3 className="w-4 h-4 text-red-500" />
+   447→                Распределение виновности
+   448→              </CardTitle>
+   449→              <CardDescription>Уровень виновности участников дела</CardDescription>
+   450→            </CardHeader>
+   451→            <CardContent>
+   452→              <ChartContainer config={guiltChartConfig} className="h-[250px] w-full">
+   453→                <PieChart>
+   454→                  <Pie
+   455→                    data={stats.guiltDistribution}
+   456→                    dataKey="count"
+   457→                    nameKey="level"
+   458→                    cx="50%"
+   459→                    cy="50%"
+   460→                    outerRadius={80}
+   461→                    innerRadius={30}
+   462→                    label={({ level, count }) => `${level}: ${count}`}
+   463→                  >
+   464→                    {stats.guiltDistribution.map((_, index) => (
+   465→                      <Cell key={`cell-${index}`} fill={GUILT_COLORS[index % GUILT_COLORS.length]} />
+   466→                    ))}
+   467→                  </Pie>
+   468→                  <ChartTooltip content={<ChartTooltipContent nameKey="level" />} />
+   469→                  <ChartLegend content={<ChartLegendContent nameKey="level" />} />
+   470→                </PieChart>
+   471→              </ChartContainer>
+   472→            </CardContent>
+   473→          </Card>
+   474→        </motion.div>
+   475→
+   476→        {/* Document Types */}
+   477→        <motion.div
+   478→          initial={{ opacity: 0, x: 30 }}
+   479→          animate={{ opacity: 1, x: 0 }}
+   480→          transition={{ duration: 0.5 }}
+   481→        >
+   482→          <Card className="shadow-md hover:shadow-lg transition-shadow border-stone-700/50">
+   483→            <CardHeader>
+   484→              <CardTitle className="flex items-center gap-2">
+   485→                <FileText className="w-4 h-4 text-orange-500" />
+   486→                Типы документов
+   487→              </CardTitle>
+   488→              <CardDescription>Распределение по типам в материалах дела</CardDescription>
+   489→            </CardHeader>
+   490→            <CardContent>
+   491→              <ChartContainer config={docTypeChartConfig} className="h-[250px] w-full">
+   492→                <BarChart data={stats.documentTypeDistribution} accessibilityLayer>
+   493→                  <Bar dataKey="count" nameKey="type" radius={4}>
+   494→                    {stats.documentTypeDistribution.map((_, index) => (
+   495→                      <Cell key={`cell-${index}`} fill={GUILT_COLORS[index % GUILT_COLORS.length]} />
+   496→                    ))}
+   497→                  </Bar>
+   498→                  <ChartTooltip content={<ChartTooltipContent nameKey="type" />} />
+   499→                  <ChartLegend content={<ChartLegendContent nameKey="type" />} />
+   500→                </BarChart>
+   501→              </ChartContainer>
+   502→            </CardContent>
+   503→          </Card>
+   504→        </motion.div>
+   505→      </div>
+   506→
+   507→      {/* Guilt Assessment Summary + Compliance Overview */}
+   508→      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+   509→        {/* Guilt Assessment Summary with visual indicators */}
+   510→        <motion.div
+   511→          initial={{ opacity: 0, y: 20 }}
+   512→          animate={{ opacity: 1, y: 0 }}
+   513→          transition={{ duration: 0.5, delay: 0.2 }}
+   514→        >
+   515→          <Card className="shadow-md border-stone-700/50">
+   516→            <CardHeader>
+   517→              <CardTitle className="flex items-center gap-2">
+   518→                <Shield className="w-4 h-4 text-red-500" />
+   519→                Оценка виновности участников
+   520→              </CardTitle>
+   521→              <CardDescription>Сводные показатели виновности и доказательств</CardDescription>
+   522→            </CardHeader>
+   523→            <CardContent className="space-y-4">
+   524→              {/* Guilt Level Bars */}
+   525→              {stats.guiltDistribution.map((item, index) => {
+   526→                const maxCount = Math.max(...stats.guiltDistribution.map(d => d.count))
+   527→                const percentage = maxCount > 0 ? (item.count / maxCount) * 100 : 0
+   528→                return (
+   529→                  <motion.div
+   530→                    key={item.level}
+   531→                    initial={{ opacity: 0, width: 0 }}
+   532→                    animate={{ opacity: 1, width: 'auto' }}
+   533→                    transition={{ duration: 0.4, delay: index * 0.1 }}
+   534→                    className="space-y-1.5"
+   535→                  >
+   536→                    <div className="flex items-center justify-between text-sm">
+   537→                      <div className="flex items-center gap-2">
+   538→                        <div
+   539→                          className="w-3 h-3 rounded-full"
+   540→                          style={{ backgroundColor: GUILT_COLORS[index] }}
+   541→                        />
+   542→                        <span className="font-medium">{item.level}</span>
+   543→                      </div>
+   544→                      <span className="text-muted-foreground">{item.count} чел.</span>
+   545→                    </div>
+   546→                    <div className="h-2 bg-stone-800 rounded-full overflow-hidden">
+   547→                      <motion.div
+   548→                        initial={{ width: 0 }}
+   549→                        animate={{ width: `${percentage}%` }}
+   550→                        transition={{ duration: 0.8, delay: index * 0.1 + 0.3 }}
+   551→                        className="h-full rounded-full"
+   552→                        style={{ backgroundColor: GUILT_COLORS[index] }}
+   553→                      />
+   554→                    </div>
+   555→                  </motion.div>
+   556→                )
+   557→              })}
+   558→
+   559→              <Separator className="bg-stone-700" />
+   560→
+   561→              {/* Guilt Radar Chart */}
+   562→              {guiltRadarData.length > 0 && (
+   563→                <ChartContainer config={radarConfig} className="h-[200px] w-full">
+   564→                  <RadarChart data={guiltRadarData} cx="50%" cy="50%" outerRadius="75%">
+   565→                    <PolarGrid stroke="#525252" />
+   566→                    <PolarAngleAxis dataKey="name" tick={{ fill: '#a1a1aa', fontSize: 10 }} />
+   567→                    <PolarRadiusAxis angle={30} tick={{ fill: '#a1a1aa', fontSize: 8 }} />
+   568→                    <Radar name="Виновность" dataKey="guilt" stroke="#dc2626" fill="#dc2626" fillOpacity={0.3} />
+   569→                    <Radar name="Доказательства" dataKey="evidence" stroke="#ea580c" fill="#ea580c" fillOpacity={0.2} />
+   570→                    <ChartTooltip content={<ChartTooltipContent />} />
+   571→                  </RadarChart>
+   572→                </ChartContainer>
+   573→              )}
+   574→            </CardContent>
+   575→          </Card>
+   576→        </motion.div>
+   577→
+   578→        {/* Compliance Check Status Overview */}
+   579→        <motion.div
+   580→          initial={{ opacity: 0, y: 20 }}
+   581→          animate={{ opacity: 1, y: 0 }}
+   582→          transition={{ duration: 0.5, delay: 0.3 }}
+   583→        >
+   584→          <Card className="shadow-md border-stone-700/50">
+   585→            <CardHeader>
+   586→              <CardTitle className="flex items-center gap-2">
+   587→                <Scale className="w-4 h-4 text-orange-500" />
+   588→                Правовая проверка
+   589→              </CardTitle>
+   590→              <CardDescription>Сводные результаты compliance проверки</CardDescription>
+   591→            </CardHeader>
+   592→            <CardContent className="space-y-4">
+   593→              {/* Compliance Status Bars */}
+   594→              <div className="grid grid-cols-2 gap-3">
+   595→                {[
+   596→                  { label: 'Нарушения', count: mockCompliance.filter(c => c.status === 'violation').length, color: '#dc2626', icon: <XCircle className="w-4 h-4" /> },
+   597→                  { label: 'Предупреждения', count: mockCompliance.filter(c => c.status === 'warning').length, color: '#ea580c', icon: <AlertTriangle className="w-4 h-4" /> },
+   598→                  { label: 'Соответствия', count: mockCompliance.filter(c => c.status === 'compliant').length, color: '#16a34a', icon: <CheckCircle className="w-4 h-4" /> },
+   599→                  { label: 'Требует проверки', count: mockCompliance.filter(c => c.status === 'needs_review').length, color: '#ca8a04', icon: <Info className="w-4 h-4" /> },
+   600→                ].map((item, index) => (
+   601→                  <motion.div
+   602→                    key={item.label}
+   603→                    initial={{ opacity: 0, scale: 0.9 }}
+   604→                    animate={{ opacity: 1, scale: 1 }}
+   605→                    transition={{ duration: 0.3, delay: index * 0.1 }}
+   606→                    className="p-3 rounded-lg bg-stone-900/80 border border-stone-800"
+   607→                  >
+   608→                    <div className="flex items-center justify-between">
+   609→                      <div className="flex items-center gap-2 text-sm" style={{ color: item.color }}>
+   610→                        {item.icon}
+   611→                        <span className="font-medium">{item.label}</span>
+   612→                      </div>
+   613→                      <span className="text-xl font-bold" style={{ color: item.color }}>
+   614→                        <AnimatedCounter value={item.count} duration={800} />
+   615→                      </span>
+   616→                    </div>
+   617→                  </motion.div>
+   618→                ))}
+   619→              </div>
+   620→
+   621→              <Separator className="bg-stone-700" />
+   622→
+   623→              {/* Compliance Distribution Pie */}
+   624→              <ChartContainer
+   625→                config={{
+   626→                  'Нарушение': { label: 'Нарушение', color: '#dc2626' },
+   627→                  'Предупр.': { label: 'Предупр.', color: '#ea580c' },
+   628→                  'Соотв.': { label: 'Соотв.', color: '#16a34a' },
+   629→                  'Проверка': { label: 'Проверка', color: '#ca8a04' },
+   630→                }}
+   631→                className="h-[160px] w-full"
+   632→              >
+   633→                <PieChart>
+   634→                  <Pie
+   635→                    data={complianceSummaryData}
+   636→                    dataKey="count"
+   637→                    nameKey="status"
+   638→                    cx="50%"
+   639→                    cy="50%"
+   640→                    outerRadius={60}
+   641→                    innerRadius={25}
+   642→                  >
+   643→                    {complianceSummaryData.map((entry, index) => (
+   644→                      <Cell key={`cell-${index}`} fill={entry.fill} />
+   645→                    ))}
+   646→                  </Pie>
+   647→                  <ChartTooltip content={<ChartTooltipContent />} />
+   648→                </PieChart>
+   649→              </ChartContainer>
+   650→
+   651→              {/* Key Violations */}
+   652→              <div className="space-y-2 max-h-36 overflow-y-auto custom-scrollbar">
+   653→                {mockCompliance.filter(c => c.status === 'violation').map(cr => (
+   654→                  <motion.div
+   655→                    key={cr.id}
+   656→                    initial={{ opacity: 0, x: -10 }}
+   657→                    animate={{ opacity: 1, x: 0 }}
+   658→                    className="flex items-start gap-2 p-2 rounded-lg bg-red-950/30 border border-red-900/50"
+   659→                  >
+   660→                    <XCircle className="w-3.5 h-3.5 text-red-500 shrink-0 mt-0.5" />
+   661→                    <div className="min-w-0">
+   662→                      <p className="text-xs font-medium text-red-400 truncate">{cr.description.substring(0, 60)}</p>
+   663→                      <p className="text-xs text-muted-foreground">Рекомендация: {cr.recommendation?.substring(0, 50)}</p>
+   664→                    </div>
+   665→                  </motion.div>
+   666→                ))}
+   667→              </div>
+   668→            </CardContent>
+   669→          </Card>
+   670→        </motion.div>
+   671→      </div>
+   672→
+   673→      {/* Case Timeline + Relationship Network */}
+   674→      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+   675→        {/* Case Timeline */}
+   676→        <motion.div
+   677→          initial={{ opacity: 0, y: 20 }}
+   678→          animate={{ opacity: 1, y: 0 }}
+   679→          transition={{ duration: 0.5, delay: 0.4 }}
+   680→        >
+   681→          <Card className="shadow-md border-stone-700/50">
+   682→            <CardHeader>
+   683→              <CardTitle className="flex items-center gap-2">
+   684→                <Clock className="w-4 h-4 text-amber-500" />
+   685→                Хронология дела
+   686→              </CardTitle>
+   687→              <CardDescription>Ключевые события в порядке возникновения</CardDescription>
+   688→            </CardHeader>
+   689→            <CardContent>
+   690→              <div className="relative space-y-0 max-h-80 overflow-y-auto custom-scrollbar pl-6">
+   691→                {/* Timeline line */}
+   692→                <div className="absolute left-3 top-2 bottom-2 w-0.5 bg-stone-700" />
+   693→
+   694→                {timelineEvents.map((event, index) => (
+   695→                  <motion.div
+   696→                    key={index}
+   697→                    initial={{ opacity: 0, x: -20 }}
+   698→                    animate={{ opacity: 1, x: 0 }}
+   699→                    transition={{ duration: 0.3, delay: index * 0.1 }}
+   700→                    className="relative pb-4"
+   701→                  >
+   702→                    {/* Timeline dot */}
+   703→                    <div className="absolute -left-[21px] top-1 w-4 h-4 rounded-full border-2 border-stone-700 bg-stone-900 flex items-center justify-center">
+   704→                      <div
+   705→                        className="w-2 h-2 rounded-full"
+   706→                        style={{
+   707→                          backgroundColor:
+   708→                            event.type === 'document' ? '#ea580c'
+   709→                              : event.type === 'person' ? '#dc2626'
+   710→                              : event.type === 'episode' ? '#ca8a04'
+   711→                              : event.type === 'compliance' ? '#16a34a'
+   712→                              : '#525252'
+   713→                        }}
+   714→                      />
+   715→                    </div>
+   716→                    <div className="p-3 rounded-lg bg-stone-900/80 border border-stone-800 hover:border-stone-700 transition-colors">
+   717→                      <div className="flex items-center gap-2 mb-1">
+   718→                        <span className="text-xs text-muted-foreground font-mono">{event.date}</span>
+   719→                        <Badge variant="outline" className="text-xs">
+   720→                          {event.icon}
+   721→                          {event.type === 'document' ? 'Документ'
+   722→                            : event.type === 'person' ? 'Лицо'
+   723→                            : event.type === 'episode' ? 'Эпизод'
+   724→                            : 'Проверка'}
+   725→                        </Badge>
+   726→                      </div>
+   727→                      <p className="text-sm font-medium">{event.event}</p>
+   728→                    </div>
+   729→                  </motion.div>
+   730→                ))}
+   731→              </div>
+   732→            </CardContent>
+   733→          </Card>
+   734→        </motion.div>
+   735→
+   736→        {/* Relationship Network */}
+   737→        <motion.div
+   738→          initial={{ opacity: 0, y: 20 }}
+   739→          animate={{ opacity: 1, y: 0 }}
+   740→          transition={{ duration: 0.5, delay: 0.5 }}
+   741→        >
+   742→          <Card className="shadow-md border-stone-700/50">
+   743→            <CardHeader>
+   744→              <CardTitle className="flex items-center gap-2">
+   745→                <Users className="w-4 h-4 text-red-500" />
+   746→                Сеть связей: лица — эпизоды
+   747→              </CardTitle>
+   748→              <CardDescription>Визуализация связей между участниками и эпизодами</CardDescription>
+   749→            </CardHeader>
+   750→            <CardContent>
+   751→              <div className="relative min-h-[320px] bg-stone-900/60 rounded-lg border border-stone-800 overflow-hidden">
+   752→                {/* SVG Network Visualization */}
+   753→                <svg viewBox="0 0 400 320" className="w-full h-full">
+   754→                  {/* Person nodes (left side) */}
+   755→                  {mockPersons.map((person, i) => {
+   756→                    const y = 40 + i * 55
+   757→                    const isKey = person.isKolesnichenko
+   758→                    return (
+   759→                      <g key={person.id}>
+   760→                        <circle
+   761→                          cx={70}
+   762→                          cy={y}
+   763→                          r={isKey ? 20 : 14}
+   764→                          fill={isKey ? '#dc2626' : '#525252'}
+   765→                          stroke={isKey ? '#dc2626' : '#a1a1aa'}
+   766→                          strokeWidth={isKey ? 3 : 1.5}
+   767→                        />
+   768→                        <text
+   769→                          x={70}
+   770→                          y={y + 4}
+   771→                          textAnchor="middle"
+   772→                          fill="white"
+   773→                          fontSize={isKey ? 9 : 8}
+   774→                          fontWeight={isKey ? 'bold' : 'normal'}
+   775→                        >
+   776→                          {person.shortName?.split(' ')[0] || person.fullName.split(' ')[0]}
+   777→                        </text>
+   778→                      </g>
+   779→                    )
+   780→                  })}
+   781→
+   782→                  {/* Episode nodes (right side) */}
+   783→                  {mockEpisodes.map((ep, i) => {
+   784→                    const y = 55 + i * 80
+   785→                    return (
+   786→                      <g key={ep.id}>
+   787→                        <rect
+   788→                          x={270}
+   789→                          y={y - 16}
+   790→                          width={120}
+   791→                          height={32}
+   792→                          rx={8}
+   793→                          fill={SEVERITY_COLORS[ep.severity || ''] || '#525252'}
+   794→                          stroke="#a1a1aa"
+   795→                          strokeWidth={1}
+   796→                        />
+   797→                        <text
+   798→                          x={330}
+   799→                          y={y + 4}
+   800→                          textAnchor="middle"
+   801→                          fill="white"
+   802→                          fontSize={8}
+   803→                          fontWeight="bold"
+   804→                        >
+   805→                          {ep.episodeNumber ? `Эп.${ep.episodeNumber}` : ep.title.substring(0, 12)}
+   806→                        </text>
+   807→                      </g>
+   808→                    )
+   809→                  })}
+   810→
+   811→                  {/* Connection lines */}
+   812→                  {relationships.map((rel, i) => {
+   813→                    const personIdx = mockPersons.findIndex(p =>
+   814→                      p.fullName.startsWith(rel.from.split(' ')[0])
+   815→                    )
+   816→                    const episodeIdx = mockEpisodes.findIndex(ep =>
+   817→                      ep.title.includes(rel.to.split(': ')[1]?.split(' ')[0] || '')
+   818→                    )
+   819→                    if (personIdx === -1 || episodeIdx === -1) return null
+   820→                    const py = 40 + personIdx * 55
+   821→                    const ey = 55 + episodeIdx * 80
+   822→                    const strengthWidth = rel.strength === 'strong' ? 2.5 : rel.strength === 'moderate' ? 1.5 : 0.8
+   823→                    const strengthColor = rel.strength === 'strong' ? '#dc2626' : rel.strength === 'moderate' ? '#ea580c' : '#ca8a04'
+   824→                    return (
+   825→                      <line
+   826→                        key={i}
+   827→                        x1={90}
+   828→                        y1={py}
+   829→                        x2={270}
+   830→                        y2={ey}
+   831→                        stroke={strengthColor}
+   832→                        strokeWidth={strengthWidth}
+   833→                        strokeDasharray={rel.strength === 'weak' ? '4,4' : 'none'}
+   834→                        opacity={0.7}
+   835→                      />
+   836→                    )
+   837→                  })}
+   838→
+   839→                  {/* Labels */}
+   840→                  <text x={70} y={18} textAnchor="middle" fill="#a1a1aa" fontSize={10} fontWeight="bold">Участники</text>
+   841→                  <text x={330} y={18} textAnchor="middle" fill="#a1a1aa" fontSize={10} fontWeight="bold">Эпизоды</text>
+   842→                </svg>
+   843→              </div>
+   844→
+   845→              {/* Legend */}
+   846→              <div className="flex items-center gap-4 mt-3 text-xs text-muted-foreground">
+   847→                <div className="flex items-center gap-1">
+   848→                  <div className="w-8 h-0.5 bg-red-600" />
+   849→                  <span>Сильная связь</span>
+   850→                </div>
+   851→                <div className="flex items-center gap-1">
+   852→                  <div className="w-8 h-0.5 bg-orange-600" />
+   853→                  <span>Средняя</span>
+   854→                </div>
+   855→                <div className="flex items-center gap-1">
+   856→                  <div className="w-8 h-0.5 bg-amber-600" style={{ borderTop: '2px dashed #ca8a04' }} />
+   857→                  <span>Слабая</span>
+   858→                </div>
+   859→              </div>
+   860→            </CardContent>
+   861→          </Card>
+   862→        </motion.div>
+   863→      </div>
+   864→
+   865→      {/* Episode Severity Heat Map */}
+   866→      <motion.div
+   867→        initial={{ opacity: 0, y: 20 }}
+   868→        animate={{ opacity: 1, y: 0 }}
+   869→        transition={{ duration: 0.5, delay: 0.6 }}
+   870→      >
+   871→        <Card className="shadow-md border-stone-700/50">
+   872→          <CardHeader>
+   873→            <CardTitle className="flex items-center gap-2">
+   874→              <TrendingUp className="w-4 h-4 text-amber-500" />
+   875→              Карта тяжести эпизодов
+   876→            </CardTitle>
+   877→            <CardDescription>Визуализация степени тяжести преступных эпизодов</CardDescription>
+   878→          </CardHeader>
+   879→          <CardContent>
+   880→            <ChartContainer
+   881→              config={{
+   882→                severity: { label: 'Тяжесть', color: '#ea580c' },
+   883→              }}
+   884→              className="h-[120px] w-full"
+   885→            >
+   886→              <BarChart data={episodeSeverityData} accessibilityLayer>
+   887→                <Bar dataKey="severity" radius={4}>
+   888→                  {episodeSeverityData.map((entry, index) => (
+   889→                    <Cell key={`cell-${index}`} fill={entry.fill} />
+   890→                  ))}
+   891→                </Bar>
+   892→                <ChartTooltip
+   893→                  content={<ChartTooltipContent
+   894→                    formatter={(value: number) => {
+   895→                      const labels: Record<number, string> = { 4: 'Особо тяжкое', 3: 'Тяжкое', 2: 'Средней тяжести', 1: 'Небольшое' }
+   896→                      return labels[value] || String(value)
+   897→                    }}
+   898→                  />}
+   899→                />
+   900→              </BarChart>
+   901→            </ChartContainer>
+   902→          </CardContent>
+   903→        </Card>
+   904→      </motion.div>
+   905→
+   906→      {/* Processing Queue + Recent Activity */}
+   907→      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+   908→        {/* Document Processing Progress Tracker */}
+   909→        <motion.div
+   910→          initial={{ opacity: 0, y: 20 }}
+   911→          animate={{ opacity: 1, y: 0 }}
+   912→          transition={{ duration: 0.5, delay: 0.7 }}
+   913→        >
+   914→          <Card className="shadow-md border-stone-700/50">
+   915→            <CardHeader>
+   916→              <CardTitle className="flex items-center gap-2">
+   917→                <Zap className="w-4 h-4 text-orange-500" />
+   918→                Очередь обработки документов
+   919→              </CardTitle>
+   920→              <CardDescription>Статус обработки загруженных документов с прогрессом</CardDescription>
+   921→            </CardHeader>
+   922→            <CardContent className="space-y-4">
+   923→              {/* Overall Progress */}
+   924→              <div className="p-4 rounded-lg bg-gradient-to-r from-stone-900 to-stone-800 border border-stone-700">
+   925→                <div className="flex items-center justify-between mb-2">
+   926→                  <span className="text-sm font-medium">Общий прогресс</span>
+   927→                  <span className="text-sm font-bold text-orange-500">
+   928→                    {stats.processedDocuments}/{stats.totalDocuments} ({Math.round((stats.processedDocuments / stats.totalDocuments) * 100)}%)
+   929→                  </span>
+   930→                </div>
+   931→                <Progress
+   932→                  value={(stats.processedDocuments / stats.totalDocuments) * 100}
+   933→                  className="h-3"
+   934→                />
+   935→                <div className="grid grid-cols-4 gap-2 mt-3 text-xs">
+   936→                  <div className="flex items-center gap-1">
+   937→                    <CheckCircle className="w-3 h-3 text-green-500" />
+   938→                    <span>{stats.processedDocuments} завершено</span>
+   939→                  </div>
+   940→                  <div className="flex items-center gap-1">
+   941→                    <Clock className="w-3 h-3 text-orange-500" />
+   942→                    <span>1 обработка</span>
+   943→                  </div>
+   944→                  <div className="flex items-center gap-1">
+   945→                    <FileText className="w-3 h-3 text-muted-foreground" />
+   946→                    <span>{stats.pendingInQueue} в очереди</span>
+   947→                  </div>
+   948→                  <div className="flex items-center gap-1">
+   949→                    <XCircle className="w-3 h-3 text-red-500" />
+   950→                    <span>1 ошибка</span>
+   951→                  </div>
+   952→                </div>
+   953→              </div>
+   954→
+   955→              {/* Queue Items */}
+   956→              <div className="space-y-3 max-h-60 overflow-y-auto custom-scrollbar">
+   957→                {stats.processingQueue.map((item, index) => (
+   958→                  <motion.div
+   959→                    key={item.id}
+   960→                    initial={{ opacity: 0, y: 10 }}
+   961→                    animate={{ opacity: 1, y: 0 }}
+   962→                    transition={{ delay: index * 0.1 }}
+   963→                    className="flex items-center justify-between p-3 bg-muted/50 rounded-lg hover:bg-muted/80 transition-colors"
+   964→                  >
+   965→                    <div className="flex items-center gap-3 min-w-0">
+   966→                      <FileText className="h-4 w-4 text-muted-foreground shrink-0" />
+   967→                      <div className="min-w-0">
+   968→                        <p className="text-sm font-medium truncate">{item.document?.originalName || 'Документ #' + item.documentId}</p>
+   969→                        <p className="text-xs text-muted-foreground">
+   970→                          Позиция: {item.queuePosition} • Приоритет: {item.priority}
+   971→                        </p>
+   972→                      </div>
+   973→                    </div>
+   974→                    <div className="shrink-0">{getStatusBadge(item.status)}</div>
+   975→                  </motion.div>
+   976→                ))}
+   977→              </div>
+   978→            </CardContent>
+   979→          </Card>
+   980→        </motion.div>
+   981→
+   982→        {/* Recent Activity Feed */}
+   983→        <motion.div
+   984→          initial={{ opacity: 0, y: 20 }}
+   985→          animate={{ opacity: 1, y: 0 }}
+   986→          transition={{ duration: 0.5, delay: 0.8 }}
+   987→        >
+   988→          <Card className="shadow-md border-stone-700/50">
+   989→            <CardHeader>
+   990→              <CardTitle className="flex items-center gap-2">
+   991→                <Activity className="w-4 h-4 text-green-500" />
+   992→                Последняя активность
+   993→              </CardTitle>
+   994→              <CardDescription>Недавние действия в системе анализа дела</CardDescription>
+   995→            </CardHeader>
+   996→            <CardContent>
+   997→              <div className="space-y-3 max-h-60 overflow-y-auto custom-scrollbar">
+   998→                {activityFeed.map((activity, index) => (
+   999→                  <motion.div
+  1000→                    key={index}
+  1001→                    initial={{ opacity: 0, x: -15 }}
+  1002→                    animate={{ opacity: 1, x: 0 }}
+  1003→                    transition={{ delay: index * 0.08 }}
+  1004→                    className="flex items-start gap-3 p-3 bg-muted/50 rounded-lg hover:bg-muted/80 transition-colors"
+  1005→                  >
+  1006→                    <div className="shrink-0 mt-0.5">
+  1007→                      {activity.type === 'upload' ? <Upload className="w-4 h-4 text-orange-500" />
+  1008→                        : activity.type === 'process' ? <Zap className="w-4 h-4 text-green-500" />
+  1009→                        : activity.type === 'analysis' ? <Eye className="w-4 h-4 text-red-500" />
+  1010→                        : activity.type === 'compliance' ? <Scale className="w-4 h-4 text-amber-500" />
+  1011→                        : <MessageSquare className="w-4 h-4 text-stone-400" />}
+  1012→                    </div>
+  1013→                    <div className="min-w-0 flex-1">
+  1014→                      <div className="flex items-center gap-2">
+  1015→                        <p className="text-sm font-medium">{activity.action}</p>
+  1016→                        <span className="text-xs text-muted-foreground shrink-0">{activity.time}</span>
+  1017→                      </div>
+  1018→                      <p className="text-xs text-muted-foreground truncate">{activity.detail}</p>
+  1019→                    </div>
+  1020→                    <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />
+  1021→                  </motion.div>
+  1022→                ))}
+  1023→              </div>
+  1024→            </CardContent>
+  1025→          </Card>
+  1026→        </motion.div>
+  1027→      </div>
+  1028→
+  1029→      {/* Recent Documents */}
+  1030→      <motion.div
+  1031→        initial={{ opacity: 0, y: 20 }}
+  1032→        animate={{ opacity: 1, y: 0 }}
+  1033→        transition={{ duration: 0.5, delay: 0.9 }}
+  1034→      >
+  1035→        <Card className="shadow-md border-stone-700/50">
+  1036→          <CardHeader>
+  1037→            <CardTitle className="flex items-center gap-2">
+  1038→              <FileText className="w-4 h-4 text-stone-400" />
+  1039→              Последние документы
+  1040→            </CardTitle>
+  1041→            <CardDescription>Недавно загруженные документы по делу</CardDescription>
+  1042→          </CardHeader>
+  1043→          <CardContent>
+  1044→            <div className="space-y-3 max-h-96 overflow-y-auto custom-scrollbar">
+  1045→              {stats.recentDocuments.map((doc, index) => (
+  1046→                <motion.div
+  1047→                  key={doc.id}
+  1048→                  initial={{ opacity: 0, y: 10 }}
+  1049→                  animate={{ opacity: 1, y: 0 }}
+  1050→                  transition={{ delay: index * 0.05 }}
+  1051→                  whileHover={{ scale: 1.01, backgroundColor: 'rgba(120,113,108,0.1)' }}
+  1052→                  className="flex items-start justify-between p-4 bg-muted/50 rounded-lg gap-3 hover:bg-muted/80 transition-colors cursor-pointer"
+  1053→                >
+  1054→                  <div className="flex items-start gap-3 min-w-0">
+  1055→                    <FileText className="h-5 w-5 text-muted-foreground shrink-0 mt-0.5" />
+  1056→                    <div className="min-w-0">
+  1057→                      <p className="text-sm font-medium truncate">{doc.originalName}</p>
+  1058→                      <p className="text-xs text-muted-foreground">
+  1059→                        {doc.sourceReference && `${doc.sourceReference} • `}
+  1060→                        {formatFileSize(doc.fileSize)}
+  1061→                        {doc.documentType && ` • ${doc.documentType}`}
+  1062→                      </p>
+  1063→                      {doc.summary && (
+  1064→                        <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{doc.summary}</p>
+  1065→                      )}
+  1066→                    </div>
+  1067→                  </div>
+  1068→                  <div className="shrink-0 flex items-center gap-2">
+  1069→                    {getStatusBadge(doc.processingStatus)}
+  1070→                    <Button
+  1071→                      variant="ghost"
+  1072→                      size="sm"
+  1073→                      className="h-7 gap-1"
+  1074→                      onClick={() => setActiveSection('documents')}
+  1075→                    >
+  1076→                      <Eye className="w-3 h-3" />
+  1077→                    </Button>
+  1078→                  </div>
+  1079→                </motion.div>
+  1080→              ))}
+  1081→            </div>
+  1082→          </CardContent>
+  1083→        </Card>
+  1084→      </motion.div>
+  1085→
+  1086→      {/* Custom scrollbar CSS */}
+  1087→      <style jsx global>{`
+  1088→        .custom-scrollbar::-webkit-scrollbar {
+  1089→          width: 6px;
+  1090→        }
+  1091→        .custom-scrollbar::-webkit-scrollbar-track {
+  1092→          background: #1c1917;
+  1093→          border-radius: 3px;
+  1094→        }
+  1095→        .custom-scrollbar::-webkit-scrollbar-thumb {
+  1096→          background: #57534e;
+  1097→          border-radius: 3px;
+  1098→        }
+  1099→        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  1100→          background: #78716c;
+  1101→        }
+  1102→      `}</style>
+  1103→    </div>
+  1104→  )
+  1105→}
+  1106→
