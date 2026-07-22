@@ -1,0 +1,511 @@
+     1→'use client'
+     2→
+     3→import { useQuery } from '@tanstack/react-query'
+     4→import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+     5→import { Badge } from '@/components/ui/badge'
+     6→import { Button } from '@/components/ui/button'
+     7→import { Progress } from '@/components/ui/progress'
+     8→import { Skeleton } from '@/components/ui/skeleton'
+     9→import { Separator } from '@/components/ui/separator'
+    10→import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from '@/components/ui/tooltip'
+    11→import { ChartContainer, ChartTooltip, ChartTooltipContent } from '@/components/ui/chart'
+    12→import { Pie, PieChart, Cell, Bar, BarChart, XAxis, YAxis } from 'recharts'
+    13→import { FileText, Users, BookOpen, AlertTriangle, Clock, CheckCircle, Zap, Shield, Scale, RefreshCw, XCircle, Gavel, Activity, MapPin, UploadCloud, FileSearch, Bookmark, Swords, History, Flame, CalendarClock, TrendingUp, FileUp, MessageCircle, ShieldCheck, Download } from 'lucide-react'
+    14→import { mockDashboardStats, mockCaseHealthScore, mockEvidenceTimeline, mockCaseBrief, mockBookmarks, mockCaseTimeline } from '@/lib/mock-data'
+    15→import { getDashboardStats, getCaseHealthScore, getEvidenceTimeline, getCaseBrief, getBookmarks, getCaseTimeline } from '@/lib/case-api'
+    16→import { useCaseStore } from '@/lib/case-store'
+    17→import { toast } from '@/hooks/use-toast'
+    18→import type { CaseHealthScore, EvidenceTimelineEvent, BookmarkData, CaseTimelineEvent, SectionId } from '@/lib/case-store'
+    19→
+    20→const BOOKMARK_BORDER: Record<string, string> = { red: 'border-l-red-700', amber: 'border-l-amber-600', emerald: 'border-l-emerald-700', stone: 'border-l-stone-500' }
+    21→const BOOKMARK_BADGE: Record<string, string> = { red: 'bg-red-700 text-white', amber: 'bg-amber-600 text-white', emerald: 'bg-emerald-700 text-white', stone: 'bg-stone-500 text-white' }
+    22→const TIMELINE_CAT_COLOR: Record<string, string> = { crime: 'bg-red-600', investigation: 'bg-amber-500', legal: 'bg-stone-500', defense: 'bg-emerald-600', evidence: 'bg-orange-500', hearing: 'bg-red-700' }
+    23→const GUILT_COLORS: Record<string, string> = { high: '#dc2626', moderate: '#ea580c', low: '#ca8a04', none: '#525252' }
+    24→const GUILT_LABEL: Record<string, string> = { high: 'Высокая', moderate: 'Средняя', low: 'Низкая', none: 'Нет' }
+    25→const DOC_COLORS = ['#dc2626', '#ea580c', '#ca8a04', '#78716c']
+    26→const guiltChartConfig = Object.fromEntries(Object.entries(GUILT_LABEL).map(([k, v]) => [v, { label: v, color: GUILT_COLORS[k] }]))
+    27→const docTypeChartConfig = { 'Обвинение': { label: 'Обвинение', color: '#dc2626' }, 'Показание': { label: 'Показание', color: '#ea580c' }, 'Протокол': { label: 'Протокол', color: '#ca8a04' }, 'Экспертиза': { label: 'Экспертиза', color: '#78716c' } }
+    28→
+    29→const STAT_ITEMS = [
+    30→  { key: 'totalDocuments', label: 'Документы', icon: FileText, gradient: 'from-red-900/20 to-stone-900/10', border: 'border-red-700' },
+    31→  { key: 'totalPersons', label: 'Участники', icon: Users, gradient: 'from-orange-900/20 to-stone-900/10', border: 'border-orange-600' },
+    32→  { key: 'totalEpisodes', label: 'Эпизоды', icon: BookOpen, gradient: 'from-amber-900/20 to-stone-900/10', border: 'border-amber-600' },
+    33→  { key: 'totalArticles', label: 'Статьи', icon: Scale, gradient: 'from-stone-800/20 to-stone-900/10', border: 'border-stone-600' },
+    34→] as const
+    35→
+    36→const STATUS_ICON: Record<string, React.ReactNode> = {
+    37→  completed: <CheckCircle className="w-3 h-3 text-emerald-600" />,
+    38→  processing: <Clock className="w-3 h-3 text-amber-500 animate-spin" />,
+    39→  pending: <Clock className="w-3 h-3 text-stone-400" />,
+    40→  failed: <XCircle className="w-3 h-3 text-red-600" />,
+    41→}
+    42→
+    43→// Health score ring component (SVG-based)
+    44→function HealthScoreRing({ score }: { score: number }) {
+    45→  const radius = 58
+    46→  const circumference = 2 * Math.PI * radius
+    47→  const offset = circumference - (score / 100) * circumference
+    48→  const color = score >= 70 ? '#059669' : score >= 50 ? '#d97706' : '#dc2626'
+    49→  return (
+    50→    <div className="flex items-center justify-center">
+    51→      <svg width="140" height="140" className="transform -rotate-90">
+    52→        <circle cx="70" cy="70" r={radius} stroke="#e5e7eb" strokeWidth="8" fill="none" className="dark:stroke-stone-700" />
+    53→        <circle cx="70" cy="70" r={radius} stroke={color} strokeWidth="8" fill="none" strokeDasharray={circumference} strokeDashoffset={offset} strokeLinecap="round" className="transition-all duration-700" />
+    54→      </svg>
+    55→      <div className="absolute flex flex-col items-center"><span className="text-2xl font-bold" style={{ color }}>{score}</span><span className="text-xs text-muted-foreground">из 100</span></div>
+    56→    </div>
+    57→  )
+    58→}
+    59→
+    60→// Factor breakdown with tooltip
+    61→function FactorRow({ factor }: { factor: { value: number; label: string; tooltip: string } }) {
+    62→  const color = factor.value >= 70 ? 'bg-emerald-700 text-white' : factor.value >= 50 ? 'bg-amber-600 text-white' : 'bg-red-700 text-white'
+    63→  const progressColor = factor.value >= 70 ? '[&>div]:bg-emerald-600' : factor.value >= 50 ? '[&>div]:bg-amber-500' : '[&>div]:bg-red-600'
+    64→  return (
+    65→    <TooltipProvider delayDuration={200}>
+    66→      <Tooltip>
+    67→        <TooltipTrigger asChild>
+    68→          <div className="flex items-center gap-2 cursor-help">
+    69→            <span className="text-xs font-medium min-w-[120px]">{factor.label}</span>
+    70→            <Progress value={factor.value} className={`h-2 flex-1 ${progressColor}`} />
+    71→            <Badge className={color}>{factor.value}%</Badge>
+    72→          </div>
+    73→        </TooltipTrigger>
+    74→        <TooltipContent side="right" className="max-w-[280px] text-xs"><p>{factor.tooltip}</p></TooltipContent>
+    75→      </Tooltip>
+    76→    </TooltipProvider>
+    77→  )
+    78→}
+    79→
+    80→// Evidence timeline event type config
+    81→const EVENT_TYPE_CONFIG: Record<string, { icon: React.ReactNode; dotColor: string }> = {
+    82→  document_upload: { icon: <UploadCloud className="w-3 h-3 text-amber-600" />, dotColor: 'bg-amber-500' },
+    83→  analysis_complete: { icon: <CheckCircle className="w-3 h-3 text-emerald-600" />, dotColor: 'bg-emerald-500' },
+    84→  compliance_check: { icon: <Scale className="w-3 h-3 text-orange-600" />, dotColor: 'bg-orange-500' },
+    85→  defense_update: { icon: <Shield className="w-3 h-3 text-blue-500" />, dotColor: 'bg-blue-500' },
+    86→  episode_found: { icon: <BookOpen className="w-3 h-3 text-red-600" />, dotColor: 'bg-red-500' },
+    87→}
+    88→
+    89→function EvidenceTimelineSection({ events }: { events: EvidenceTimelineEvent[] }) {
+    90→  return (
+    91→    <Card className="rounded-xl shadow-sm bg-gradient-to-br from-card via-card to-muted/20 border-t-2 border-t-amber-500 transition-shadow hover:shadow-md">
+    92→      <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2"><FileSearch className="w-4 h-4 text-amber-600" /> Хронология событий</CardTitle></CardHeader>
+    93→      <CardContent className="p-4">
+    94→        <div className="relative pl-6 space-y-3 max-h-80 overflow-y-auto scrollbar-thin">
+    95→          {events.map((event, i) => {
+    96→            const config = EVENT_TYPE_CONFIG[event.eventType] ?? { icon: <Clock className="w-3 h-3" />, dotColor: 'bg-stone-400' }
+    97→            return (
+    98→              <div key={event.id} className="relative group">
+    99→                <div className={`absolute -left-6 w-3 h-3 rounded-full ${config.dotColor} ring-2 ring-background transition-transform group-hover:scale-125`} />
+   100→                {i < events.length - 1 && <div className="absolute -left-[21px] top-3 w-0.5 h-full bg-stone-300 dark:bg-stone-600" />}
+   101→                <div className="flex items-start gap-2 text-sm">
+   102→                  <div className="flex items-center gap-1 shrink-0">{config.icon}</div>
+   103→                  <div className="flex-1 min-w-0">
+   104→                    <p className="font-medium text-xs">{event.description}</p>
+   105→                    <p className="text-xs text-muted-foreground">{new Date(event.date).toLocaleDateString('ru-RU', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</p>
+   106→                  </div>
+   107→                </div>
+   108→              </div>
+   109→            )
+   110→          })}
+   111→        </div>
+   112→      </CardContent>
+   113→    </Card>
+   114→  )
+   115→}
+   116→
+   117→// Case Strength Meter: prosecution vs defense opposing bars
+   118→function CaseStrengthMeter({ brief }: { brief: typeof mockCaseBrief }) {
+   119→  const prosecutionPct = brief.predictedOutcome.slice(0, 2).reduce((s, o) => s + o.probability, 0)
+   120→  const defensePct = Math.max(0, 100 - prosecutionPct)
+   121→  return (
+   122→    <Card className="rounded-xl shadow-sm border-l-4 border-amber-600 bg-gradient-to-br from-card via-card to-muted/20 transition-shadow hover:shadow-md">
+   123→      <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2"><Swords className="w-4 h-4 text-amber-600" /> Баланс сил дела</CardTitle></CardHeader>
+   124→      <CardContent className="p-4 space-y-3">
+   125→        <div>
+   126→          <div className="flex justify-between text-xs mb-1"><span className="font-semibold text-red-700 flex items-center gap-1"><Gavel className="w-3 h-3" />Обвинение</span><span className="font-bold text-red-700">{prosecutionPct}%</span></div>
+   127→          <div className="h-4 rounded-full bg-stone-200 dark:bg-stone-700 overflow-hidden"><div className="h-full bg-gradient-to-r from-red-800 to-red-600 transition-all duration-700" style={{ width: `${prosecutionPct}%` }} /></div>
+   128→        </div>
+   129→        <div>
+   130→          <div className="flex justify-between text-xs mb-1"><span className="font-semibold text-emerald-700 flex items-center gap-1"><Shield className="w-3 h-3" />Защита</span><span className="font-bold text-emerald-700">{defensePct}%</span></div>
+   131→          <div className="h-4 rounded-full bg-stone-200 dark:bg-stone-700 overflow-hidden"><div className="h-full bg-gradient-to-r from-emerald-800 to-emerald-600 transition-all duration-700" style={{ width: `${defensePct}%` }} /></div>
+   132→        </div>
+   133→        <Separator />
+   134→        {/* Scenario rows - one per line to avoid truncation */}
+   135→        <div className="space-y-1.5">
+   136→          {brief.predictedOutcome.map(o => (
+   137→            <div key={o.scenario} className="flex items-center justify-between gap-2 text-xs p-1.5 rounded-md bg-muted/40">
+   138→              <span className="flex-1 min-w-0 leading-tight">{o.scenario}</span>
+   139→              <Badge variant="outline" className="text-xs shrink-0 font-semibold">{o.probability}%</Badge>
+   140→            </div>
+   141→          ))}
+   142→        </div>
+   143→        <p className="text-xs text-muted-foreground">ИИ-прогноз исхода • Уверенность {brief.aiConfidence}%</p>
+   144→      </CardContent>
+   145→    </Card>
+   146→  )
+   147→}
+   148→
+   149→// Quick Bookmarks grid with color-coded left borders
+   150→function QuickBookmarks({ bookmarks, onNavigate }: { bookmarks: BookmarkData[]; onNavigate: () => void }) {
+   151→  return (
+   152→    <Card className="rounded-xl shadow-sm bg-gradient-to-br from-card via-card to-muted/20 border-t-2 border-t-amber-500 transition-shadow hover:shadow-md">
+   153→      <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2"><Bookmark className="w-4 h-4 text-amber-600" /> Быстрые закладки <Button size="sm" variant="ghost" className="ml-auto rounded-lg" onClick={onNavigate}>Все <RefreshCw className="w-3 h-3 ml-1" /></Button></CardTitle></CardHeader>
+   154→      <CardContent className="p-4">
+   155→        <div className="grid sm:grid-cols-2 gap-2 max-h-48 overflow-y-auto scrollbar-thin">
+   156→          {bookmarks.map(bm => (
+   157→            <div key={bm.id} className={`border-l-4 ${BOOKMARK_BORDER[bm.color]} bg-muted/40 rounded-r-lg p-2 transition-all duration-200 hover:bg-muted hover:translate-x-0.5`}>
+   158→              <div className="flex items-center gap-1.5">
+   159→                <Badge className={`${BOOKMARK_BADGE[bm.color]} text-xs capitalize`}>{bm.entityType}</Badge>
+   160→                <span className="text-xs font-medium truncate flex-1">{bm.entityName}</span>
+   161→              </div>
+   162→              <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{bm.note}</p>
+   163→            </div>
+   164→          ))}
+   165→        </div>
+   166→      </CardContent>
+   167→    </Card>
+   168→  )
+   169→}
+   170→
+   171→// Quick Actions Card - compact 2x2 grid of common actions with toast notifications
+   172→function QuickActionsCard({ onNavigate }: { onNavigate: (section: SectionId) => void }) {
+   173→  const actions = [
+   174→    {
+   175→      label: 'Загрузить документ',
+   176→      icon: FileUp,
+   177→      square: 'bg-red-700/15 text-red-700 dark:text-red-400',
+   178→      hover: 'hover:bg-red-700/20',
+   179→      onClick: () => {
+   180→        onNavigate('documents')
+   181→        toast({ title: 'Загрузка документа', description: 'Открыт раздел "Документы". Перетащите PDF для загрузки.' })
+   182→      },
+   183→    },
+   184→    {
+   185→      label: 'Спросить ИИ',
+   186→      icon: MessageCircle,
+   187→      square: 'bg-amber-600/15 text-amber-700 dark:text-amber-400',
+   188→      hover: 'hover:bg-amber-600/20',
+   189→      onClick: () => {
+   190→        onNavigate('qa')
+   191→        toast({ title: 'Вопрос ИИ', description: 'Открыт раздел "Вопросы ИИ-аналитику".' })
+   192→      },
+   193→    },
+   194→    {
+   195→      label: 'Проверить нормы',
+   196→      icon: ShieldCheck,
+   197→      square: 'bg-emerald-700/15 text-emerald-700 dark:text-emerald-400',
+   198→      hover: 'hover:bg-emerald-700/20',
+   199→      onClick: () => {
+   200→        onNavigate('legal-check')
+   201→        toast({ title: 'Правовая проверка', description: 'Открыт раздел правовой проверки.' })
+   202→      },
+   203→    },
+   204→    {
+   205→      label: 'Экспорт отчёта',
+   206→      icon: Download,
+   207→      square: 'bg-stone-600/15 text-stone-700 dark:text-stone-300',
+   208→      hover: 'hover:bg-stone-600/20',
+   209→      onClick: () => {
+   210→        toast({ title: 'Экспорт отчёта', description: 'Подготовка отчёта по делу № 2024-00145...' })
+   211→      },
+   212→    },
+   213→  ]
+   214→  return (
+   215→    <Card className="rounded-xl shadow-sm bg-gradient-to-br from-card via-card to-muted/20 border-t-2 border-t-amber-500 transition-shadow hover:shadow-md">
+   216→      <CardHeader className="pb-2">
+   217→        <CardTitle className="text-sm flex items-center gap-2">
+   218→          <Zap className="w-4 h-4 text-amber-600" /> Быстрые действия
+   219→          <Badge variant="outline" className="text-xs ml-auto">4 действия</Badge>
+   220→        </CardTitle>
+   221→      </CardHeader>
+   222→      <CardContent className="p-4">
+   223→        <div className="grid grid-cols-2 gap-3">
+   224→          {actions.map(({ label, icon: Icon, square, hover, onClick }) => (
+   225→            <button
+   226→              key={label}
+   227→              type="button"
+   228→              onClick={onClick}
+   229→              className={`group flex items-center gap-3 p-3 rounded-xl border border-stone-200/60 dark:border-stone-800 bg-background/60 text-left transition-all duration-200 ${hover} hover:shadow-sm hover:-translate-y-0.5 focus:outline-none focus:ring-2 focus:ring-amber-500/40 focus-visible:ring-2 focus-visible:ring-amber-500/40`}
+   230→            >
+   231→              <span className={`flex items-center justify-center w-9 h-9 rounded-lg shrink-0 transition-transform duration-200 group-hover:scale-110 ${square}`}>
+   232→                <Icon className="w-4 h-4" />
+   233→              </span>
+   234→              <span className="text-xs font-medium leading-tight">{label}</span>
+   235→            </button>
+   236→          ))}
+   237→        </div>
+   238→      </CardContent>
+   239→    </Card>
+   240→  )
+   241→}
+   242→
+   243→// Mini Timeline Preview - compact horizontal timeline of last 5 events
+   244→function MiniTimelinePreview({ events, onNavigate }: { events: CaseTimelineEvent[]; onNavigate: () => void }) {
+   245→  const last5 = [...events].slice(-5)
+   246→  return (
+   247→    <Card className="rounded-xl shadow-sm bg-gradient-to-br from-card via-card to-muted/20 transition-shadow hover:shadow-md">
+   248→      <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2"><History className="w-4 h-4 text-amber-600" /> Мини-хронология дела <Button size="sm" variant="ghost" className="ml-auto rounded-lg" onClick={onNavigate}>Полная <RefreshCw className="w-3 h-3 ml-1" /></Button></CardTitle></CardHeader>
+   249→      <CardContent className="p-4">
+   250→        <div
+   251→          className="flex items-stretch gap-2 overflow-x-auto pb-2 [scrollbar-width:thin] [scrollbar-color:theme(colors.stone.400)_transparent] [&::-webkit-scrollbar]:h-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-stone-400/60"
+   252→          aria-label="Мини-хронология дела (горизонтальная прокрутка)"
+   253→        >
+   254→          {last5.map((ev, i) => (
+   255→            <div key={ev.id} className="flex items-stretch shrink-0">
+   256→              <div className="flex flex-col items-center text-center min-w-[200px] max-w-[220px] p-2 rounded-lg bg-muted/30 transition-colors hover:bg-muted/60">
+   257→                <div className={`w-3 h-3 rounded-full ${TIMELINE_CAT_COLOR[ev.category] ?? 'bg-stone-400'} ring-2 ring-background shrink-0`} />
+   258→                <p className="text-xs font-medium mt-1.5 leading-tight line-clamp-3">{ev.title}</p>
+   259→                <p className="text-xs text-muted-foreground mt-1 shrink-0">{new Date(ev.date).toLocaleDateString('ru-RU', { day: '2-digit', month: 'short' })}</p>
+   260→              </div>
+   261→              {i < last5.length - 1 && <div className="self-center mx-0.5 h-0.5 w-5 shrink-0 bg-stone-300 dark:bg-stone-600" />}
+   262→            </div>
+   263→          ))}
+   264→        </div>
+   265→        {last5.length >= 4 && (
+   266→          <p className="text-[10px] text-muted-foreground mt-1 text-right flex items-center justify-end gap-1">
+   267→            <RefreshCw className="w-2.5 h-2.5" /> Прокрутите для просмотра всех событий
+   268→          </p>
+   269→        )}
+   270→      </CardContent>
+   271→    </Card>
+   272→  )
+   273→}
+   274→
+   275→export function CaseDashboard() {
+   276→  const { setActiveSection } = useCaseStore()
+   277→  const { data, isLoading } = useQuery({
+   278→    queryKey: ['dashboard'],
+   279→    queryFn: getDashboardStats,
+   280→    retry: 1,
+   281→  })
+   282→  const { data: healthData } = useQuery({
+   283→    queryKey: ['health-score'],
+   284→    queryFn: getCaseHealthScore,
+   285→    retry: 1,
+   286→  })
+   287→  const { data: timelineData } = useQuery({
+   288→    queryKey: ['evidence-timeline'],
+   289→    queryFn: getEvidenceTimeline,
+   290→    retry: 1,
+   291→  })
+   292→  const { data: briefData } = useQuery({ queryKey: ['case-brief'], queryFn: getCaseBrief, retry: 1 })
+   293→  const { data: bookmarksData } = useQuery({ queryKey: ['bookmarks'], queryFn: getBookmarks, retry: 1 })
+   294→  const { data: caseTimelineData } = useQuery({ queryKey: ['case-timeline'], queryFn: getCaseTimeline, retry: 1 })
+   295→  const stats = data ?? mockDashboardStats
+   296→  const healthScore = healthData ?? mockCaseHealthScore
+   297→  const timelineEvents = timelineData ?? mockEvidenceTimeline
+   298→  const brief = briefData ?? mockCaseBrief
+   299→  const bookmarks = bookmarksData ?? mockBookmarks
+   300→  const caseTimeline = caseTimelineData ?? mockCaseTimeline
+   301→
+   302→  if (isLoading) return (
+   303→    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+   304→      {STAT_ITEMS.map((_, i) => <Skeleton key={i} className="h-24" />)}
+   305→    </div>
+   306→  )
+   307→
+   308→  // Convert byGuiltLevel Record to chart data
+   309→  const guiltChartData = Object.entries(stats.guiltAssessments.byGuiltLevel).map(([level, count]) => ({
+   310→    level: GUILT_LABEL[level] ?? level,
+   311→    count,
+   312→    fill: GUILT_COLORS[level] ?? '#525252',
+   313→  }))
+   314→
+   315→  // Convert documents.byType Record to chart data
+   316→  const docTypeChartData = Object.entries(stats.documents.byType).map(([type, count]) => ({
+   317→    type,
+   318→    count,
+   319→  }))
+   320→
+   321→  // Calculate compliance score
+   322→  const compTotal = stats.complianceChecks.byStatus
+   323→  const compCompliant = compTotal.compliant ?? 0
+   324→  const compAll = Object.values(compTotal).reduce((a, b) => a + b, 0)
+   325→  const complianceScore = compAll > 0 ? Math.round((compCompliant / compAll) * 100) : 0
+   326→
+   327→  return (
+   328→    <div className="space-y-6">
+   329→      {/* Case Banner with ТЯЖКОЕ corner ribbon */}
+   330→      <Card className="bg-gradient-to-r from-red-900/30 to-stone-900/20 border-l-4 border-red-700 rounded-xl shadow-sm relative overflow-hidden transition-shadow hover:shadow-md">
+   331→        <div className="absolute top-0 right-0 z-10 bg-gradient-to-r from-red-800 to-red-700 text-white text-xs font-bold px-6 py-1 shadow-md transform translate-x-3"><Flame className="w-3 h-3 inline mr-1" />ТЯЖКОЕ</div>
+   332→        <CardContent className="p-6">
+   333→          <div className="flex items-center gap-4">
+   334→            <div className="flex items-center justify-center w-12 h-12 rounded-xl bg-red-700/20"><Gavel className="w-6 h-6 text-red-600" /></div>
+   335→            <div className="flex-1 min-w-0">
+   336→              <h2 className="text-lg font-bold">Дело № 2024-00145</h2>
+   337→              <p className="text-sm text-muted-foreground">Уголовное дело в отношении Колесниченко Д.А. — ст. 159 ч.3, 160 ч.2 УК РФ</p>
+   338→            </div>
+   339→            <div className="flex items-center gap-2">
+   340→              <Badge className="bg-red-700 text-white">Тяжкое</Badge>
+   341→              <Badge variant="outline" className="text-xs">{stats.summary.totalDocuments} документов</Badge>
+   342→            </div>
+   343→          </div>
+   344→        </CardContent>
+   345→      </Card>
+   346→
+   347→      {/* Quick Actions - compact 2x2 grid of common actions */}
+   348→      <QuickActionsCard onNavigate={(section) => setActiveSection(section)} />
+   349→
+   350→      {/* Case Strength Meter + Mini Timeline Preview */}
+   351→      <div className="grid lg:grid-cols-2 gap-4">
+   352→        <CaseStrengthMeter brief={brief} />
+   353→        <MiniTimelinePreview events={caseTimeline} onNavigate={() => setActiveSection('timeline')} />
+   354→      </div>
+   355→
+   356→      {/* Case velocity / Next hearing card - new feature */}
+   357→      <Card className="rounded-xl shadow-sm border-l-4 border-emerald-700 bg-gradient-to-r from-emerald-900/10 to-transparent transition-shadow hover:shadow-md hover:-translate-y-0.5">
+   358→        <CardContent className="p-4">
+   359→          <div className="flex items-center gap-3">
+   360→            <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-emerald-700/15">
+   361→              <CalendarClock className="w-5 h-5 text-emerald-700" />
+   362→            </div>
+   363→            <div className="flex-1 min-w-0">
+   364→              <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">Следующее заседание</p>
+   365→              <p className="text-sm font-bold mt-0.5">15 августа 2024, 10:00 — Предварительное слушание</p>
+   366→              <p className="text-xs text-muted-foreground mt-0.5">Председатель: судья Петров А.В. • Зал №305</p>
+   367→            </div>
+   368→            <div className="text-right shrink-0">
+   369→              <p className="text-3xl font-bold text-emerald-700">23</p>
+   370→              <p className="text-xs text-muted-foreground">дня до заседания</p>
+   371→            </div>
+   372→          </div>
+   373→          <Separator className="my-3" />
+   374→          <div className="grid grid-cols-3 gap-2 text-xs">
+   375→            <div className="p-2 rounded-md bg-muted/40">
+   376→              <p className="font-medium text-muted-foreground">Прошло с возбуждения</p>
+   377→              <p className="text-sm font-bold mt-0.5">156 дней</p>
+   378→            </div>
+   379→            <div className="p-2 rounded-md bg-muted/40">
+   380→              <p className="font-medium text-muted-foreground">Осталось по сроку (ст.162)</p>
+   381→              <p className="text-sm font-bold mt-0.5">~29 дней</p>
+   382→            </div>
+   383→            <div className="p-2 rounded-md bg-muted/40">
+   384→              <p className="font-medium text-muted-foreground">Темп дела</p>
+   385→              <p className="text-sm font-bold mt-0.5 flex items-center gap-1">
+   386→                <TrendingUp className="w-3 h-3 text-amber-600" />
+   387→                Средний
+   388→              </p>
+   389→            </div>
+   390→          </div>
+   391→        </CardContent>
+   392→      </Card>
+   393→
+   394→      {/* "Дело в цифрах" summary row */}
+   395→      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+   396→        {STAT_ITEMS.map(({ key, label, icon: Icon, gradient, border }) => {
+   397→          const topBorder = key === 'totalDocuments' ? 'border-t-2 border-t-blue-500' : key === 'totalPersons' ? 'border-t-2 border-t-emerald-500' : key === 'totalEpisodes' ? 'border-t-2 border-t-amber-500' : 'border-t-2 border-t-stone-400'
+   398→          return (
+   399→          <Card key={key} className={`border-l-4 ${border} ${topBorder} bg-gradient-to-br ${gradient} rounded-xl shadow-sm transition-all duration-200 hover:shadow-md hover:-translate-y-0.5`}>
+   400→            <CardContent className="p-4">
+   401→              <div className="flex items-center gap-3">
+   402→                <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-background/50"><Icon className="w-5 h-5 text-muted-foreground" /></div>
+   403→                <div><p className="text-2xl font-bold">{stats.summary[key]}</p><p className="text-xs text-muted-foreground">{label}</p></div>
+   404→              </div>
+   405→            </CardContent>
+   406→          </Card>
+   407→          )
+   408→        })}
+   409→      </div>
+   410→
+   411→      {/* Health Score Widget - now full width */}
+   412→      <Card className="rounded-xl shadow-sm bg-gradient-to-br from-card via-card to-muted/20 border-t-2 border-t-amber-500 transition-shadow hover:shadow-md">
+   413→        <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2"><Activity className="w-4 h-4 text-amber-600" /> Здоровье дела <Badge variant="outline" className="text-xs ml-auto">{healthScore.score}/100</Badge></CardTitle></CardHeader>
+   414→        <CardContent className="p-4">
+   415→          <div className="flex items-start gap-4">
+   416→            <div className="relative shrink-0"><HealthScoreRing score={healthScore.score} /></div>
+   417→            <div className="flex-1 space-y-2 pt-1">
+   418→              <FactorRow factor={healthScore.factors.documentProcessing} />
+   419→              <FactorRow factor={healthScore.factors.complianceRate} />
+   420→              <FactorRow factor={healthScore.factors.evidenceStrength} />
+   421→              <FactorRow factor={healthScore.factors.defenseCoverage} />
+   422→            </div>
+   423→          </div>
+   424→          <Separator className="mt-3" />
+   425→          <div className="flex flex-wrap gap-2 text-xs mt-2">
+   426→            <Badge variant="outline"><MapPin className="w-3 h-3 mr-1" />{stats.summary.totalLocations} мест</Badge>
+   427→            <Badge variant="outline"><AlertTriangle className="w-3 h-3 mr-1" />{stats.summary.totalCrossReferences} ссылок</Badge>
+   428→            <Badge variant="outline"><Shield className="w-3 h-3 mr-1" />{stats.defenseLines.total} стратегий</Badge>
+   429→            <Badge variant="outline"><CheckCircle className="w-3 h-3 mr-1 text-emerald-600" />Соответствие {complianceScore}%</Badge>
+   430→          </div>
+   431→        </CardContent>
+   432→      </Card>
+   433→
+   434→      {/* Charts */}
+   435→      <div className="grid md:grid-cols-2 gap-4">
+   436→        <Card className="rounded-xl shadow-sm bg-gradient-to-br from-card via-card to-muted/20 border-t-2 border-t-emerald-500 transition-shadow hover:shadow-md">
+   437→          <CardHeader className="pb-2"><CardTitle className="text-sm">Виновность участников</CardTitle></CardHeader>
+   438→          <CardContent className="p-2">
+   439→            <ChartContainer config={guiltChartConfig} className="h-52 w-full">
+   440→              <PieChart>
+   441→                <Pie data={guiltChartData} dataKey="count" nameKey="level" cx="50%" cy="50%" outerRadius={80} label={({ level, count }) => `${level}: ${count}`}>
+   442→                  {guiltChartData.map((d, i) => <Cell key={i} fill={d.fill} />)}
+   443→                </Pie>
+   444→                <ChartTooltip content={<ChartTooltipContent />} />
+   445→              </PieChart>
+   446→            </ChartContainer>
+   447→          </CardContent>
+   448→        </Card>
+   449→        <Card className="rounded-xl shadow-sm bg-gradient-to-br from-card via-card to-muted/20 border-t-2 border-t-blue-500 transition-shadow hover:shadow-md">
+   450→          <CardHeader className="pb-2"><CardTitle className="text-sm">Типы документов</CardTitle></CardHeader>
+   451→          <CardContent className="p-2">
+   452→            <ChartContainer config={docTypeChartConfig} className="h-52 w-full">
+   453→              <BarChart data={docTypeChartData} layout="vertical">
+   454→                <XAxis type="number" hide />
+   455→                <YAxis type="category" dataKey="type" width={80} tick={{ fontSize: 12 }} />
+   456→                <Bar dataKey="count" radius={4}>
+   457→                  {docTypeChartData.map((_, i) => <Cell key={i} fill={DOC_COLORS[i % DOC_COLORS.length]} />)}
+   458→                </Bar>
+   459→                <ChartTooltip content={<ChartTooltipContent />} />
+   460→              </BarChart>
+   461→            </ChartContainer>
+   462→          </CardContent>
+   463→        </Card>
+   464→      </div>
+   465→
+   466→      {/* Evidence Timeline */}
+   467→      <EvidenceTimelineSection events={timelineEvents} />
+   468→
+   469→      {/* Processing Queue */}
+   470→      {stats.processingQueue.inProgress.length > 0 && (
+   471→        <Card className="rounded-xl shadow-sm bg-gradient-to-br from-card via-card to-muted/20 border-t-2 border-t-amber-500 transition-shadow hover:shadow-md">
+   472→          <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2"><Clock className="w-4 h-4" />Очередь обработки<Badge className="bg-amber-600 text-white">{stats.processingQueue.byStatus.queued ?? 0} в очереди</Badge></CardTitle></CardHeader>
+   473→          <CardContent className="p-4">
+   474→            <div className="space-y-2 max-h-40 overflow-y-auto">
+   475→              {stats.processingQueue.inProgress.map((q) => (
+   476→                <div key={q.id} className="flex items-center gap-2 text-sm p-2 rounded-lg bg-muted/50 transition-colors hover:bg-muted">
+   477→                  <Clock className="w-3 h-3 text-amber-500 animate-spin" /><span className="truncate flex-1">{q.originalName}</span><Badge className="bg-amber-600 text-white text-xs">обработка</Badge>
+   478→                </div>
+   479→              ))}
+   480→            </div>
+   481→          </CardContent>
+   482→        </Card>
+   483→      )}
+   484→
+   485→      {/* Recent Documents */}
+   486→      <Card className="rounded-xl shadow-sm bg-gradient-to-br from-card via-card to-muted/20 border-t-2 border-t-blue-500 transition-shadow hover:shadow-md">
+   487→        <CardHeader className="pb-2">
+   488→          <CardTitle className="text-sm flex items-center gap-2">
+   489→            <FileText className="w-4 h-4" />Последние документы
+   490→            <Button size="sm" variant="ghost" className="ml-auto rounded-lg" onClick={() => setActiveSection('documents')}>Все документы <RefreshCw className="w-3 h-3 ml-1" /></Button>
+   491→          </CardTitle>
+   492→        </CardHeader>
+   493→        <CardContent className="p-4">
+   494→          <div className="space-y-2 max-h-48 overflow-y-auto">
+   495→            {stats.documents.recent.map((doc) => (
+   496→              <div key={doc.id} className="flex items-center gap-2 text-sm p-2 rounded-lg bg-muted/50 transition-colors hover:bg-muted">
+   497→                {STATUS_ICON[doc.processingStatus]}<span className="truncate flex-1">{doc.originalName}</span>
+   498→                <Badge className={doc.processingStatus === 'completed' ? 'bg-emerald-700 text-white' : doc.processingStatus === 'processing' ? 'bg-amber-600 text-white' : 'bg-stone-500 text-white'}>{doc.processingStatus}</Badge>
+   499→              </div>
+   500→            ))}
+   501→          </div>
+   502→          <Separator className="mt-3" /><p className="text-xs text-muted-foreground mt-2">Данные из {stats.documents.total} загруженных документов</p>
+   503→        </CardContent>
+   504→      </Card>
+   505→
+   506→      {/* Quick Bookmarks */}
+   507→      <QuickBookmarks bookmarks={bookmarks} onNavigate={() => setActiveSection('search')} />
+   508→    </div>
+   509→  )
+   510→}
+   511→

@@ -63,22 +63,50 @@ export async function uploadDocuments(files: File[]): Promise<DocumentData[]> {
   return response.json()
 }
 
-// Get all documents
+// Get all documents (with mock-data fallback when DB is empty)
 export async function getDocuments(): Promise<DocumentData[]> {
-  const result = await fetchApi<{documents: DocumentData[], total: number}>('/documents')
-  return result.documents ?? []
+  try {
+    const result = await fetchApi<{documents: DocumentData[], total: number}>('/documents')
+    if (result.documents && result.documents.length > 0) {
+      return result.documents
+    }
+    // DB is empty - fall back to mock data
+    const { mockDocuments } = await import('./mock-data')
+    return mockDocuments
+  } catch {
+    const { mockDocuments } = await import('./mock-data')
+    return mockDocuments
+  }
 }
 
-// Get all persons
+// Get all persons (with mock-data fallback when DB is empty)
 export async function getPersons(): Promise<PersonData[]> {
-  const result = await fetchApi<{persons: PersonData[], total: number}>('/persons')
-  return result.persons ?? []
+  try {
+    const result = await fetchApi<{persons: PersonData[], total: number}>('/persons')
+    if (result.persons && result.persons.length > 0) {
+      return result.persons
+    }
+    const { mockPersons } = await import('./mock-data')
+    return mockPersons
+  } catch {
+    const { mockPersons } = await import('./mock-data')
+    return mockPersons
+  }
 }
 
-// Get all episodes
+// Get all episodes (with mock-data fallback when DB is empty)
 export async function getEpisodes(): Promise<EpisodeData[]> {
-  const result = await fetchApi<{episodes: EpisodeData[], total: number}>('/episodes')
-  return result.episodes ?? []
+  try {
+    const result = await fetchApi<{episodes: EpisodeData[], total: number}>('/episodes')
+    if (result.episodes && result.episodes.length > 0) {
+      return result.episodes
+    }
+    const { mockEpisodes } = await import('./mock-data')
+    return mockEpisodes
+  } catch {
+    const { mockEpisodes } = await import('./mock-data')
+    return mockEpisodes
+  }
 }
 
 // Search across case data

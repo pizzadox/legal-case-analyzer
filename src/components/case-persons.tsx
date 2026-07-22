@@ -11,7 +11,7 @@ import { Separator } from '@/components/ui/separator'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from '@/components/ui/chart'
 import { Bar, BarChart, XAxis, YAxis, Cell } from 'recharts'
-import { Users, Shield, Star, ChevronDown, ChevronUp, AlertTriangle, Gavel, Download, FileText, Link2, MessageSquare, Target, ArrowRight, MapPin, Cake, CheckCircle, XCircle, GitCompare, Plus, X } from 'lucide-react'
+import { Users, Shield, Star, ChevronDown, ChevronUp, AlertTriangle, Gavel, Download, FileText, Link2, MessageSquare, Target, ArrowRight, MapPin, Cake, CheckCircle, XCircle, GitCompare, Plus, X, RefreshCw } from 'lucide-react'
 import { mockPersons, mockPersonRelationships, mockWitnessStatements } from '@/lib/mock-data'
 import { getPersons, getPersonRelationships, getWitnessStatements } from '@/lib/case-api'
 import type { PersonData, PersonRelationship, WitnessStatementData } from '@/lib/case-store'
@@ -444,6 +444,22 @@ export function CasePersons() {
         ))}
       </div>
 
+      {/* Empty state for filtered persons (no results) */}
+      {filtered.length === 0 && persons.length > 0 && (
+        <Card className="rounded-xl shadow-sm border-t-2 border-t-emerald-500 bg-gradient-to-br from-card via-card to-emerald-500/5">
+          <CardContent className="p-8 text-center">
+            <div className="flex items-center justify-center w-20 h-20 rounded-full bg-emerald-500/10 mx-auto mb-4 ring-4 ring-emerald-500/5">
+              <Users className="w-10 h-10 text-emerald-600" />
+            </div>
+            <p className="text-base font-semibold">Участники не найдены</p>
+            <p className="text-sm text-muted-foreground mt-1 max-w-md mx-auto">Попробуйте изменить фильтр по ролям или сбросить его, чтобы увидеть всех участников дела.</p>
+            <Button size="sm" variant="outline" className="mt-4 rounded-xl" onClick={() => setRoleFilter('all')}>
+              <RefreshCw className="w-3 h-3 mr-1" />Сбросить фильтр
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Witness Statements */}
       <WitnessStatementsSection statements={statements} />
 
@@ -556,10 +572,13 @@ function ComparisonView({ persons, compareIds, setCompareIds }: {
       </CardHeader>
       <CardContent className="p-4 space-y-3">
         {selected.length === 0 ? (
-          <div className="p-6 text-center rounded-lg bg-muted/30 border border-dashed">
-            <GitCompare className="w-8 h-8 mx-auto text-muted-foreground" />
-            <p className="text-sm text-muted-foreground mt-2">Выберите до 3 участников для сравнения</p>
-            <p className="text-xs text-muted-foreground mt-1">Сравнение по 7 ключевым параметрам</p>
+          <div className="p-8 text-center rounded-xl bg-gradient-to-br from-muted/30 to-muted/10 border border-dashed border-purple-300/50 dark:border-purple-700/40">
+            <div className="flex items-center justify-center w-20 h-20 rounded-full bg-purple-500/10 mx-auto mb-3 ring-4 ring-purple-500/5">
+              <GitCompare className="w-10 h-10 text-purple-600" />
+            </div>
+            <p className="text-sm font-semibold">Выберите участников для сравнения</p>
+            <p className="text-xs text-muted-foreground mt-1 max-w-sm mx-auto">Сравнение по 7 ключевым параметрам: роль, статус, виновность, стратегия защиты и др.</p>
+            <p className="text-[10px] text-muted-foreground mt-2">Можно выбрать до 3 участников одновременно</p>
           </div>
         ) : (
           <>

@@ -154,6 +154,15 @@ export function CaseQa() {
           </CardHeader>
           <CardContent className="p-4">
             <div ref={scrollRef} className="space-y-4 max-h-[500px] overflow-y-auto [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-stone-300">
+              {messages.length === 0 && !askMutation.isPending && (
+                <div className="text-center py-10">
+                  <div className="flex items-center justify-center w-20 h-20 rounded-full bg-amber-500/10 mx-auto mb-4 ring-4 ring-amber-500/5">
+                    <MessageSquare className="w-10 h-10 text-amber-600" />
+                  </div>
+                  <p className="text-base font-semibold">Начните диалог с ИИ-аналитиком</p>
+                  <p className="text-sm text-muted-foreground mt-1 max-w-md mx-auto">Задайте первый вопрос по материалам дела — выберите подсказку справа или введите свой вопрос в поле ниже.</p>
+                </div>
+              )}
               {messages.map(msg => {
                 const confidence = msg.answer ? aiConfidenceFor(msg.id) : 0
                 return (

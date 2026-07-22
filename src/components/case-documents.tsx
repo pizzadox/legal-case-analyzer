@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -8,14 +8,85 @@ import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet'
+import { Textarea } from '@/components/ui/textarea'
+import { Avatar, AvatarFallback } from '@/components/ui/avatar'
+import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
 import { toast } from 'sonner'
+import { toast as shadcnToast } from '@/hooks/use-toast'
 import {
-  FileText, Upload, RefreshCw, Eye, CheckCircle, Clock, AlertTriangle, Loader2, Zap, XCircle, Trash2, Scale, BookOpen, Gavel, GitCompare, Download, Link2, ShieldCheck, ShieldAlert, ShieldX, BrainCircuit, Globe, TrendingDown
+  FileText, Upload, RefreshCw, Eye, CheckCircle, Clock, AlertTriangle, Loader2, Zap, XCircle, Trash2, Scale, BookOpen, Gavel, GitCompare, Download, Link2, ShieldCheck, ShieldAlert, ShieldX, BrainCircuit, Globe, TrendingDown, FileSearch, MessageSquare, Plus, Calendar, User
 } from 'lucide-react'
 import { mockDocuments, mockEvidenceChain } from '@/lib/mock-data'
 import * as caseApi from '@/lib/case-api'
 import type { DocumentData, EvidenceChainData } from '@/lib/case-store'
+
+interface Annotation {
+  id: string
+  text: string
+  author: string
+  timestamp: string
+}
+
+// Pre-populated mock annotations for the first document (doc1)
+const mockAnnotationsForDoc1: Annotation[] = [
+  { id: 'an1', text: 'Обратить внимание на страницу 15 — противоречие в показаниях', author: 'Адвокат Петров А.В.', timestamp: '2024-05-22T10:00:00Z' },
+  { id: 'an2', text: 'Сверить даты с протоколом обыска', author: 'Адвокат Петров А.В.', timestamp: '2024-05-22T10:15:00Z' },
+]
+
+// Format ISO timestamp in Russian style: dd.MM.yyyy HH:mm
+function formatRussianDateTime(iso: string): string {
+  try {
+    const d = new Date(iso)
+    if (isNaN(d.getTime())) return iso
+    const dd = String(d.getDate()).padStart(2, '0')
+    const mm = String(d.getMonth() + 1).padStart(2, '0')
+    const yyyy = d.getFullYear()
+    const hh = String(d.getHours()).padStart(2, '0')
+    const min = String(d.getMinutes()).padStart(2, '0')
+    return `${dd}.${mm}.${yyyy} ${hh}:${min}`
+  } catch {
+    return iso
+  }
+}
+
+// localStorage helpers for per-document annotations
+const ANNOTATIONS_PREFIX = 'case-doc-annotations-'
+
+function loadAllAnnotations(): Record<string, Annotation[]> {
+  if (typeof window === 'undefined') return {}
+  const loaded: Record<string, Annotation[]> = {}
+  try {
+    for (let i = 0; i < window.localStorage.length; i++) {
+      const key = window.localStorage.key(i)
+      if (key && key.startsWith(ANNOTATIONS_PREFIX)) {
+        const docId = key.replace(ANNOTATIONS_PREFIX, '')
+        const stored = window.localStorage.getItem(key)
+        if (stored) {
+          try {
+            const parsed = JSON.parse(stored)
+            if (Array.isArray(parsed)) loaded[docId] = parsed
+          } catch {
+            /* ignore malformed entries */
+          }
+        }
+      }
+    }
+  } catch {
+    /* localStorage unavailable */
+  }
+  return loaded
+}
+
+function saveAnnotationsForDoc(docId: string, anns: Annotation[]) {
+  if (typeof window === 'undefined') return
+  try {
+    window.localStorage.setItem(`${ANNOTATIONS_PREFIX}${docId}`, JSON.stringify(anns))
+  } catch {
+    /* ignore quota errors */
+  }
+}
 
 function fmtSize(b: number) {
   if (b < 1024) return b + ' Б'
@@ -182,6 +253,10 @@ export function CaseDocuments() {
   const [compareDocs, setCompareDocs] = useState<[DocumentData, DocumentData] | null>(null)
   const [selectedForCompare, setSelectedForCompare] = useState<string[]>([])
   const [quickFilter, setQuickFilter] = useState<string>('all')
+  // Annotations state: keyed by document id. Pre-seeded with mock data for the
+  // first document once documents have loaded; persisted to localStorage per doc.
+  const [annotations, setAnnotations] = useState<Record<string, Annotation[]>>({})
+  const [newAnnotation, setNewAnnotation] = useState('')
   const fileRef = useRef<HTMLInputElement>(null)
 
   const { data, isLoading, refetch } = useQuery({
@@ -193,6 +268,36 @@ export function CaseDocuments() {
   const documents = data ?? mockDocuments
   const evidenceChain = evidenceChainData ?? mockEvidenceChain
   const filteredDocs = quickFilter === 'all' ? documents : documents.filter(d => d.documentType === quickFilter)
+
+  // Load persisted annotations from localStorage on mount.
+  // (setState here is intentional: hydrating client state from an external store.
+  //  Cascading renders are bounded — one extra render then quiescent.)
+  useEffect(() => {
+    const loaded = loadAllAnnotations()
+    if (Object.keys(loaded).length > 0) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setAnnotations(prev => ({ ...prev, ...loaded }))
+    }
+  }, [])
+
+  // Seed mock annotations for the first document once documents have loaded,
+  // but only if there is no persisted entry for that document already.
+  useEffect(() => {
+    if (documents.length === 0) return
+    const firstDoc = documents[0]
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setAnnotations(prev => {
+      if (prev[firstDoc.id]) return prev
+      return { ...prev, [firstDoc.id]: mockAnnotationsForDoc1 }
+    })
+  }, [documents])
+
+  // Persist per-document annotations to localStorage whenever they change
+  useEffect(() => {
+    for (const [docId, anns] of Object.entries(annotations)) {
+      saveAnnotationsForDoc(docId, anns)
+    }
+  }, [annotations])
 
   const handleUpload = async (files: FileList | null) => {
     if (!files?.length) return
@@ -243,6 +348,36 @@ export function CaseDocuments() {
     } else {
       toast.error('Выберите 2 документа для сравнения')
     }
+  }
+
+  const handleAddAnnotation = (docId: string) => {
+    const text = newAnnotation.trim()
+    if (!text) return
+    const ann: Annotation = {
+      id: `an-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      text,
+      author: 'Адвокат Петров А.В.',
+      timestamp: new Date().toISOString(),
+    }
+    setAnnotations(prev => ({
+      ...prev,
+      [docId]: [...(prev[docId] ?? []), ann],
+    }))
+    setNewAnnotation('')
+    shadcnToast({ title: 'Комментарий добавлен', description: 'Заметка сохранена и будет доступна после перезагрузки.' })
+  }
+
+  const handleDeleteAnnotation = (docId: string, annotationId: string) => {
+    setAnnotations(prev => ({
+      ...prev,
+      [docId]: (prev[docId] ?? []).filter(a => a.id !== annotationId),
+    }))
+    shadcnToast({ title: 'Комментарий удалён' })
+  }
+
+  const handleOpenDoc = (doc: DocumentData) => {
+    setSelectedDoc(doc)
+    setNewAnnotation('')
   }
 
   if (isLoading) return <div className="grid grid-cols-2 gap-4">{[1, 2, 3, 4].map(i => <Skeleton key={i} className="h-32" />)}</div>
@@ -299,13 +434,43 @@ export function CaseDocuments() {
 
       {/* Document List */}
       <div className="grid sm:grid-cols-2 gap-4">
-        {filteredDocs.map(doc => (
-          <Card key={doc.id} className={`rounded-xl shadow-sm transition-shadow hover:shadow-md ${compareMode && selectedForCompare.includes(doc.id) ? 'border-2 border-amber-500 ring-1 ring-amber-500/30' : ''}`}>
+        {filteredDocs.length === 0 && documents.length > 0 && (
+          <Card className="sm:col-span-2 rounded-xl shadow-sm border-t-2 border-t-amber-500 bg-gradient-to-br from-card via-card to-amber-500/5">
+            <CardContent className="p-8 text-center">
+              <div className="flex items-center justify-center w-16 h-16 rounded-full bg-amber-500/10 mx-auto mb-3 ring-4 ring-amber-500/5">
+                <FileSearch className="w-8 h-8 text-amber-600" />
+              </div>
+              <p className="text-sm font-semibold">Документы не найдены</p>
+              <p className="text-xs text-muted-foreground mt-1">Попробуйте сбросить фильтр или изменить запрос</p>
+              <Button size="sm" variant="outline" className="mt-3 rounded-xl" onClick={() => setQuickFilter('all')}>
+                <RefreshCw className="w-3 h-3 mr-1" />Сбросить фильтр
+              </Button>
+            </CardContent>
+          </Card>
+        )}
+        {filteredDocs.map(doc => {
+          const docAnnotationCount = annotations[doc.id]?.length ?? 0
+          return (
+          <Card
+            key={doc.id}
+            onClick={() => compareMode ? handleCompareSelect(doc.id) : handleOpenDoc(doc)}
+            className={`rounded-xl shadow-sm transition-colors cursor-pointer hover:bg-muted/50 hover:shadow-md ${compareMode && selectedForCompare.includes(doc.id) ? 'border-2 border-amber-500 ring-1 ring-amber-500/30' : ''}`}
+          >
             <CardContent className="p-4">
               <div className="flex items-start gap-3">
                 <div className="flex items-center justify-center w-9 h-9 rounded-xl bg-muted/50">{TYPE_ICON[doc.documentType ?? ''] ?? <BookOpen className="w-4 h-4 text-muted-foreground" />}</div>
                 <div className="flex-1 min-w-0">
-                  <p className="font-medium text-sm truncate">{doc.originalName}</p>
+                  <div className="flex items-start justify-between gap-2">
+                    <p className="font-medium text-sm truncate">{doc.originalName}</p>
+                    <Badge
+                      variant="outline"
+                      className={`text-xs shrink-0 ${docAnnotationCount > 0 ? 'border-amber-500/40 text-amber-700 bg-amber-500/10' : 'text-muted-foreground'}`}
+                      title={docAnnotationCount > 0 ? `${docAnnotationCount} комментарий(ев)` : 'Нет комментариев'}
+                    >
+                      <MessageSquare className="w-2.5 h-2.5 mr-1" />
+                      {docAnnotationCount}
+                    </Badge>
+                  </div>
                   <p className="text-xs text-muted-foreground">{fmtSize(doc.fileSize)} • {new Date(doc.uploadedAt).toLocaleDateString('ru')}</p>
                   <div className="flex items-center gap-1 mt-2">
                     {STATUS[doc.processingStatus]?.icon}
@@ -316,7 +481,7 @@ export function CaseDocuments() {
                 </div>
               </div>
               <Separator className="mt-3" />
-              <div className="flex gap-1 mt-3">
+              <div className="flex gap-1 mt-3" onClick={(e) => e.stopPropagation()}>
                 {compareMode ? (
                   <Button size="sm" variant={selectedForCompare.includes(doc.id) ? 'default' : 'outline'} className="rounded-xl"
                     onClick={() => handleCompareSelect(doc.id)}>
@@ -326,7 +491,7 @@ export function CaseDocuments() {
                 ) : (
                   <>
                     {doc.processingStatus === 'completed' && (
-                      <Button size="sm" variant="outline" className="rounded-lg" onClick={() => setSelectedDoc(doc)}><Eye className="w-3 h-3 mr-1" />Просмотр</Button>
+                      <Button size="sm" variant="outline" className="rounded-lg" onClick={() => handleOpenDoc(doc)}><Eye className="w-3 h-3 mr-1" />Просмотр</Button>
                     )}
                     {doc.processingStatus === 'pending' && (
                       <Button size="sm" className="rounded-lg bg-gradient-to-r from-red-700 to-red-800 text-white" onClick={() => handleAnalyze(doc.id)} disabled={analyzingId === doc.id}>
@@ -342,15 +507,21 @@ export function CaseDocuments() {
               </div>
             </CardContent>
           </Card>
-        ))}
+          )
+        })}
       </div>
 
       {documents.length === 0 && (
-        <Card className="rounded-xl shadow-sm">
-          <CardContent className="p-6 text-center">
-            <FileText className="w-12 h-12 mx-auto text-muted-foreground" />
-            <p className="mt-2 text-sm font-medium">Нет документов</p>
-            <p className="text-xs text-muted-foreground">Загрузите PDF-файлы для начала работы</p>
+        <Card className="rounded-xl shadow-sm border-t-2 border-t-blue-500 bg-gradient-to-br from-card via-card to-blue-500/5">
+          <CardContent className="p-8 text-center">
+            <div className="flex items-center justify-center w-20 h-20 rounded-full bg-blue-500/10 mx-auto mb-4 ring-4 ring-blue-500/5">
+              <FileText className="w-10 h-10 text-blue-500" />
+            </div>
+            <p className="mt-2 text-base font-semibold">Пока нет документов</p>
+            <p className="text-sm text-muted-foreground mt-1 max-w-md mx-auto">Загрузите PDF-файлы уголовного дела — обвинительное заключение, протоколы, показания — для запуска AI-анализа и проверки.</p>
+            <Button size="sm" className="mt-4 rounded-xl bg-gradient-to-r from-red-700 to-red-800 text-white shadow-sm" onClick={() => fileRef.current?.click()}>
+              <Upload className="w-4 h-4 mr-1" />Загрузить документ
+            </Button>
           </CardContent>
         </Card>
       )}
@@ -413,26 +584,203 @@ export function CaseDocuments() {
       <Separator />
       <p className="text-xs text-muted-foreground">Показано {filteredDocs.length} из {documents.length} документов из базы данных</p>
 
-      {/* Document Preview Dialog */}
-      {selectedDoc && (
-        <Dialog open={true} onOpenChange={() => setSelectedDoc(null)}>
-          <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto rounded-xl">
-            <DialogHeader><DialogTitle className="text-sm">{selectedDoc.originalName}</DialogTitle></DialogHeader>
-            <div className="space-y-3 text-sm">
-              <div className="grid grid-cols-2 gap-2">
-                <div><span className="text-muted-foreground">Тип:</span> {selectedDoc.documentType ?? '—'}</div>
-                <div><span className="text-muted-foreground">Дата:</span> {selectedDoc.documentDate ?? '—'}</div>
-                <div><span className="text-muted-foreground">Источник:</span> {selectedDoc.sourceReference ?? '—'}</div>
-                <div><span className="text-muted-foreground">Статус:</span> {selectedDoc.processingStatus}</div>
-              </div>
-              {selectedDoc.summary && <div className="p-3 rounded-lg bg-muted"><p className="font-medium mb-1">Краткое содержание:</p>{selectedDoc.summary}</div>}
-              {selectedDoc.extractedText && (
-                <div className="p-3 rounded-lg bg-muted max-h-64 overflow-y-auto"><p className="font-medium mb-1">Текст документа:</p><p className="text-xs whitespace-pre-wrap">{selectedDoc.extractedText}</p></div>
+      {/* Document Annotations Side Panel */}
+      <Sheet
+        open={!!selectedDoc}
+        onOpenChange={(open) => { if (!open) { setSelectedDoc(null); setNewAnnotation('') } }}
+      >
+        <SheetContent side="right" className="w-full sm:max-w-xl p-0 gap-0 flex flex-col">
+          <SheetHeader className="p-4 border-b shrink-0 space-y-1">
+            <SheetTitle className="text-base flex items-start gap-2 pr-8">
+              <FileText className="w-4 h-4 mt-0.5 shrink-0 text-amber-600" />
+              <span className="break-words leading-tight">{selectedDoc?.originalName}</span>
+            </SheetTitle>
+            <SheetDescription className="text-xs flex items-center gap-2 flex-wrap">
+              <span>{selectedDoc?.fileName}</span>
+              {selectedDoc && <span>• {fmtSize(selectedDoc.fileSize)}</span>}
+              {selectedDoc && (
+                <Badge className={STATUS[selectedDoc.processingStatus]?.badge ?? 'bg-stone-500 text-white'}>
+                  {STATUS[selectedDoc.processingStatus]?.label ?? selectedDoc.processingStatus}
+                </Badge>
               )}
-            </div>
-          </DialogContent>
-        </Dialog>
-      )}
+            </SheetDescription>
+          </SheetHeader>
+
+          <div className="flex-1 overflow-y-auto p-4 space-y-4">
+            {/* Metadata section */}
+            <Card className="rounded-xl shadow-sm">
+              <CardHeader className="pb-2"><CardTitle className="text-sm">Метаданные документа</CardTitle></CardHeader>
+              <CardContent className="space-y-2 text-xs">
+                {selectedDoc?.documentType && (
+                  <div className="flex items-center gap-2">
+                    <FileText className="w-3 h-3 text-muted-foreground shrink-0" />
+                    <span className="text-muted-foreground w-24">Тип:</span>
+                    <Badge className={TYPE_BADGE[selectedDoc.documentType] ?? 'bg-stone-500 text-white'}>{selectedDoc.documentType}</Badge>
+                  </div>
+                )}
+                <div className="flex items-center gap-2">
+                  <Calendar className="w-3 h-3 text-muted-foreground shrink-0" />
+                  <span className="text-muted-foreground w-24">Дата документа:</span>
+                  <span className="font-medium">{selectedDoc?.documentDate ?? '—'}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <BookOpen className="w-3 h-3 text-muted-foreground shrink-0" />
+                  <span className="text-muted-foreground w-24">Источник:</span>
+                  <span className="font-medium">{selectedDoc?.sourceReference ?? '—'}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <FileText className="w-3 h-3 text-muted-foreground shrink-0" />
+                  <span className="text-muted-foreground w-24">Размер файла:</span>
+                  <span className="font-medium">{selectedDoc && fmtSize(selectedDoc.fileSize)}</span>
+                </div>
+                {selectedDoc?.uploadedAt && (
+                  <div className="flex items-center gap-2">
+                    <Calendar className="w-3 h-3 text-muted-foreground shrink-0" />
+                    <span className="text-muted-foreground w-24">Загружен:</span>
+                    <span className="font-medium">{formatRussianDateTime(selectedDoc.uploadedAt)}</span>
+                  </div>
+                )}
+                {selectedDoc?.summary && (
+                  <div className="pt-2 border-t mt-2">
+                    <p className="text-muted-foreground mb-1">Краткое содержание:</p>
+                    <p>{selectedDoc.summary}</p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Extracted text */}
+            {selectedDoc?.extractedText && (
+              <Card className="rounded-xl shadow-sm">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm flex items-center gap-2">
+                    <FileText className="w-4 h-4 text-amber-600" /> Извлечённый текст
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <ScrollArea className="max-h-48 w-full rounded-lg border bg-muted/30 p-3">
+                    <p className="text-xs whitespace-pre-wrap leading-relaxed">{selectedDoc.extractedText}</p>
+                  </ScrollArea>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Annotations / Comments */}
+            <Card className="rounded-xl shadow-sm border-t-2 border-t-amber-500">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm flex items-center gap-2">
+                  <MessageSquare className="w-4 h-4 text-amber-600" /> Комментарии и заметки
+                  <Badge variant="outline" className="text-xs ml-auto">
+                    {selectedDoc ? (annotations[selectedDoc.id]?.length ?? 0) : 0}
+                  </Badge>
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {selectedDoc && (annotations[selectedDoc.id]?.length ?? 0) === 0 ? (
+                  <div className="text-center py-6 px-2">
+                    <div className="flex items-center justify-center w-12 h-12 rounded-full bg-amber-500/10 mx-auto mb-2 ring-4 ring-amber-500/5">
+                      <MessageSquare className="w-6 h-6 text-amber-600/70" />
+                    </div>
+                    <p className="text-xs text-muted-foreground">Пока нет комментариев. Добавьте первый.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {selectedDoc && (annotations[selectedDoc.id] ?? []).map(an => (
+                      <div key={an.id} className="border-l-4 border-l-amber-500 bg-muted/30 rounded-r-lg p-2.5">
+                        <div className="flex items-start gap-2">
+                          <Avatar className="w-7 h-7 shrink-0">
+                            <AvatarFallback className="text-[10px] font-bold bg-amber-100 text-amber-800">АП</AvatarFallback>
+                          </Avatar>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center justify-between gap-2">
+                              <p className="text-xs font-semibold flex items-center gap-1 truncate">
+                                <User className="w-2.5 h-2.5 text-muted-foreground shrink-0" />
+                                {an.author}
+                              </p>
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteAnnotation(selectedDoc.id, an.id)}
+                                className="text-muted-foreground hover:text-red-700 transition-colors p-1 -m-1 rounded hover:bg-red-500/10"
+                                aria-label="Удалить комментарий"
+                              >
+                                <Trash2 className="w-3 h-3" />
+                              </button>
+                            </div>
+                            <p className="text-xs mt-1 break-words">{an.text}</p>
+                            <p className="text-[10px] text-muted-foreground mt-1.5 flex items-center gap-1">
+                              <Calendar className="w-2.5 h-2.5" />
+                              {formatRussianDateTime(an.timestamp)}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Add annotation form */}
+                <div className="space-y-2 pt-3 border-t">
+                  <Textarea
+                    value={newAnnotation}
+                    onChange={(e) => setNewAnnotation(e.target.value)}
+                    placeholder="Введите ваш комментарий или заметку..."
+                    className="min-h-[80px] text-sm resize-none"
+                    maxLength={1000}
+                  />
+                  <Button
+                    size="sm"
+                    className="w-full rounded-xl bg-gradient-to-r from-amber-600 to-amber-700 text-white hover:from-amber-700 hover:to-amber-800"
+                    disabled={!newAnnotation.trim()}
+                    onClick={() => selectedDoc && handleAddAnnotation(selectedDoc.id)}
+                  >
+                    <Plus className="w-3 h-3 mr-1" /> Добавить комментарий
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Actions */}
+            <Card className="rounded-xl shadow-sm">
+              <CardHeader className="pb-2"><CardTitle className="text-sm">Действия</CardTitle></CardHeader>
+              <CardContent className="flex flex-wrap gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="rounded-xl"
+                  onClick={() => shadcnToast({ title: 'Экспорт', description: 'Подготовка экспорта документа...' })}
+                >
+                  <Download className="w-3 h-3 mr-1" /> Экспорт
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="rounded-xl"
+                  onClick={() => {
+                    shadcnToast({ title: 'Переобработка', description: 'Запущена повторная обработка документа.' })
+                    if (selectedDoc) handleAnalyze(selectedDoc.id)
+                  }}
+                >
+                  <RefreshCw className="w-3 h-3 mr-1" /> Переобработать
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="rounded-xl text-red-700 hover:bg-red-500/10 hover:text-red-800 border-red-300"
+                  onClick={() => {
+                    if (selectedDoc) {
+                      handleDelete(selectedDoc.id)
+                      setSelectedDoc(null)
+                      setNewAnnotation('')
+                    }
+                  }}
+                >
+                  <Trash2 className="w-3 h-3 mr-1" /> Удалить
+                </Button>
+              </CardContent>
+            </Card>
+          </div>
+        </SheetContent>
+      </Sheet>
 
       {/* Document Comparison Dialog */}
       {compareDocs && (<DocumentCompareDialog doc1={compareDocs[0]} doc2={compareDocs[1]} onClose={() => setCompareDocs(null)} />)}

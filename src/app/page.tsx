@@ -71,11 +71,21 @@ import {
   Heart,
   Sparkles,
   ArrowRight,
+  Settings,
+  Type,
+  Gauge,
+  Sparkle,
+  RotateCcw,
+  Save,
+  RefreshCw,
 } from 'lucide-react'
 import { useTheme } from 'next-themes'
 import { toast } from 'sonner'
 import type { SectionId, NotificationData } from '@/lib/case-store'
 import { mockNotifications } from '@/lib/mock-data'
+import { Switch } from '@/components/ui/switch'
+import { Label } from '@/components/ui/label'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 
 import { CaseDashboard } from '@/components/case-dashboard'
 import { CaseDocuments } from '@/components/case-documents'
@@ -243,6 +253,11 @@ function KeyboardShortcutsHelp({ open, onClose }: { open: boolean; onClose: () =
             <span className="text-xs text-muted-foreground ml-auto">Быстрый поиск и действия</span>
           </div>
           <div className="flex items-center gap-2 p-2 rounded-lg bg-muted/50">
+            <kbd className="px-2 py-1 rounded bg-muted text-xs font-mono border">Ctrl+,</kbd>
+            <span className="text-sm">Настройки системы</span>
+            <span className="text-xs text-muted-foreground ml-auto">Тема, шрифт, поведение</span>
+          </div>
+          <div className="flex items-center gap-2 p-2 rounded-lg bg-muted/50">
             <kbd className="px-2 py-1 rounded bg-muted text-xs font-mono border">?</kbd>
             <span className="text-sm">Показать эту справку</span>
           </div>
@@ -370,9 +385,10 @@ function CaseHealthBadge() {
   )
 }
 
-function AppSidebar({ activeSection, setActiveSection }: {
+function AppSidebar({ activeSection, setActiveSection, preferences }: {
   activeSection: SectionId
   setActiveSection: (section: SectionId) => void
+  preferences: UserPreferences
 }) {
   return (
     <Sidebar collapsible="icon">
@@ -416,7 +432,7 @@ function AppSidebar({ activeSection, setActiveSection }: {
       <SidebarSeparator />
       <SidebarFooter>
         <div className="flex flex-col gap-2 px-2 pb-1">
-          <CaseHealthBadge />
+          {preferences.showHealthBadge && <CaseHealthBadge />}
           <div className="flex items-center gap-2 px-1">
             <ThemeToggle />
             <span className="group-data-[collapsible=icon]:hidden text-xs text-muted-foreground">Тема</span>
@@ -428,12 +444,14 @@ function AppSidebar({ activeSection, setActiveSection }: {
   )
 }
 
-function TopHeader({ activeSection, notifications, setActiveSection, onHelpClick, onCommandClick }: {
+function TopHeader({ activeSection, notifications, setActiveSection, onHelpClick, onCommandClick, onSettingsClick, preferences }: {
   activeSection: SectionId
   notifications: NotificationData[]
   setActiveSection: (section: SectionId) => void
   onHelpClick: () => void
   onCommandClick: () => void
+  onSettingsClick: () => void
+  preferences: UserPreferences
 }) {
   const { toggleSidebar } = useSidebar()
   const activeItem = NAV_ITEMS.find(item => item.id === activeSection)
@@ -452,18 +470,23 @@ function TopHeader({ activeSection, notifications, setActiveSection, onHelpClick
         <kbd className="hidden lg:inline-flex px-1.5 py-0.5 rounded bg-muted text-xs font-mono border text-muted-foreground">Ctrl+{activeItem?.shortcut}</kbd>
       </div>
       <div className="ml-auto flex items-center gap-2">
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={onCommandClick}
-          className="h-8 gap-2 px-2.5 text-xs text-muted-foreground hidden sm:inline-flex"
-        >
-          <CommandIcon className="h-3.5 w-3.5" />
-          <span className="hidden md:inline">Поиск</span>
-          <kbd className="px-1 py-0.5 rounded bg-muted text-[10px] font-mono border">⌘K</kbd>
-        </Button>
+        {preferences.showCommandHint && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={onCommandClick}
+            className="h-8 gap-2 px-2.5 text-xs text-muted-foreground hidden sm:inline-flex"
+          >
+            <CommandIcon className="h-3.5 w-3.5" />
+            <span className="hidden md:inline">Поиск</span>
+            <kbd className="px-1 py-0.5 rounded bg-muted text-[10px] font-mono border">⌘K</kbd>
+          </Button>
+        )}
         <NotificationCenter notifications={notifications} setActiveSection={setActiveSection} />
-        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={onHelpClick}>
+        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={onSettingsClick} title="Настройки (Ctrl+,)">
+          <Settings className="h-4 w-4" />
+        </Button>
+        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={onHelpClick} title="Справка (?)">
           <HelpCircle className="h-4 w-4" />
         </Button>
         <Separator orientation="vertical" className="h-4" />
@@ -512,11 +535,333 @@ function AppFooter() {
   )
 }
 
+// ===== User Preferences Types =====
+interface UserPreferences {
+  density: 'comfortable' | 'compact'
+  fontSize: 'sm' | 'md' | 'lg'
+  animations: boolean
+  showQuickActions: boolean
+  showHealthBadge: boolean
+  showCommandHint: boolean
+  autoRefresh: boolean
+  defaultSection: SectionId
+}
+
+const DEFAULT_PREFERENCES: UserPreferences = {
+  density: 'comfortable',
+  fontSize: 'md',
+  animations: true,
+  showQuickActions: true,
+  showHealthBadge: true,
+  showCommandHint: true,
+  autoRefresh: false,
+  defaultSection: 'dashboard',
+}
+
+function loadPreferences(): UserPreferences {
+  if (typeof window === 'undefined') return DEFAULT_PREFERENCES
+  try {
+    const raw = localStorage.getItem('case-user-preferences')
+    if (!raw) return DEFAULT_PREFERENCES
+    const parsed = JSON.parse(raw)
+    return { ...DEFAULT_PREFERENCES, ...parsed }
+  } catch {
+    return DEFAULT_PREFERENCES
+  }
+}
+
+function savePreferences(prefs: UserPreferences) {
+  if (typeof window === 'undefined') return
+  localStorage.setItem('case-user-preferences', JSON.stringify(prefs))
+}
+
+function applyPreferencesToBody(prefs: UserPreferences) {
+  if (typeof document === 'undefined') return
+  const body = document.body
+  // Density
+  body.classList.toggle('compact', prefs.density === 'compact')
+  // Font size
+  body.classList.remove('text-size-sm', 'text-size-md', 'text-size-lg')
+  body.classList.add(`text-size-${prefs.fontSize}`)
+  // Animations
+  body.classList.toggle('no-animations', !prefs.animations)
+}
+
+function SettingsDialog({
+  open,
+  onClose,
+  preferences,
+  setPreferences,
+}: {
+  open: boolean
+  onClose: () => void
+  preferences: UserPreferences
+  setPreferences: (p: UserPreferences) => void
+}) {
+  const { theme, setTheme } = useTheme()
+
+  const update = <K extends keyof UserPreferences>(key: K, value: UserPreferences[K]) => {
+    const next = { ...preferences, [key]: value }
+    setPreferences(next)
+    savePreferences(next)
+    applyPreferencesToBody(next)
+  }
+
+  const handleReset = () => {
+    setPreferences(DEFAULT_PREFERENCES)
+    savePreferences(DEFAULT_PREFERENCES)
+    applyPreferencesToBody(DEFAULT_PREFERENCES)
+    toast.success('Настройки сброшены к значениям по умолчанию')
+  }
+
+  const handleSave = () => {
+    savePreferences(preferences)
+    toast.success('Настройки сохранены')
+    onClose()
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onClose}>
+      <DialogContent className="max-w-2xl rounded-xl">
+        <DialogHeader>
+          <DialogTitle className="text-base flex items-center gap-2">
+            <Settings className="w-4 h-4" /> Настройки системы
+          </DialogTitle>
+        </DialogHeader>
+        <Tabs defaultValue="appearance" className="w-full">
+          <TabsList className="grid w-full grid-cols-3">
+            <TabsTrigger value="appearance" className="text-xs gap-1"><Sparkle className="w-3 h-3" /> Внешний вид</TabsTrigger>
+            <TabsTrigger value="layout" className="text-xs gap-1"><Gauge className="w-3 h-3" /> Макет</TabsTrigger>
+            <TabsTrigger value="behavior" className="text-xs gap-1"><Zap className="w-3 h-3" /> Поведение</TabsTrigger>
+          </TabsList>
+
+          {/* Appearance Tab */}
+          <TabsContent value="appearance" className="space-y-4 mt-4">
+            <div className="space-y-3">
+              <Label className="text-sm font-semibold">Тема оформления</Label>
+              <div className="grid grid-cols-3 gap-3">
+                {([
+                  { id: 'light', label: 'Светлая', icon: <Sun className="w-4 h-4" /> },
+                  { id: 'dark', label: 'Тёмная', icon: <Moon className="w-4 h-4" /> },
+                  { id: 'system', label: 'Системная', icon: <Settings className="w-4 h-4" /> },
+                ] as const).map(opt => (
+                  <button
+                    key={opt.id}
+                    onClick={() => { setTheme(opt.id); toast.success(`Тема: ${opt.label}`) }}
+                    className={`flex flex-col items-center gap-2 p-3 rounded-xl border-2 transition-all ${
+                      theme === opt.id
+                        ? 'border-red-700 bg-red-50 dark:bg-red-950/30'
+                        : 'border-border hover:border-muted-foreground/40 bg-muted/30'
+                    }`}
+                  >
+                    <div className={`theme-preview ${opt.id === 'dark' ? 'theme-preview-dark' : 'theme-preview-light'} w-full h-12 rounded-md`} />
+                    {opt.icon}
+                    <span className="text-xs font-medium">{opt.label}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <Separator />
+
+            <div className="space-y-3">
+              <Label className="text-sm font-semibold flex items-center gap-2">
+                <Type className="w-4 h-4" /> Размер шрифта
+              </Label>
+              <div className="grid grid-cols-3 gap-2">
+                {([
+                  { id: 'sm', label: 'Малый', sample: 'text-sm' },
+                  { id: 'md', label: 'Средний', sample: 'text-base' },
+                  { id: 'lg', label: 'Крупный', sample: 'text-lg' },
+                ] as const).map(opt => (
+                  <button
+                    key={opt.id}
+                    onClick={() => update('fontSize', opt.id)}
+                    className={`p-3 rounded-lg border-2 transition-all text-center ${
+                      preferences.fontSize === opt.id
+                        ? 'border-red-700 bg-red-50 dark:bg-red-950/30'
+                        : 'border-border hover:border-muted-foreground/40'
+                    }`}
+                  >
+                    <div className={`${opt.sample} font-medium`}>Аа</div>
+                    <div className="text-xs text-muted-foreground mt-1">{opt.label}</div>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <Separator />
+
+            <div className="flex items-center justify-between p-3 rounded-lg bg-muted/30">
+              <div className="flex items-center gap-2">
+                <Sparkle className="w-4 h-4 text-purple-600" />
+                <div>
+                  <Label className="text-sm font-medium cursor-pointer">Анимации интерфейса</Label>
+                  <p className="text-xs text-muted-foreground">Плавные переходы и эффекты</p>
+                </div>
+              </div>
+              <Switch
+                checked={preferences.animations}
+                onCheckedChange={(v) => update('animations', v)}
+              />
+            </div>
+          </TabsContent>
+
+          {/* Layout Tab */}
+          <TabsContent value="layout" className="space-y-4 mt-4">
+            <div className="space-y-3">
+              <Label className="text-sm font-semibold flex items-center gap-2">
+                <Gauge className="w-4 h-4" /> Плотность интерфейса
+              </Label>
+              <div className="grid grid-cols-2 gap-3">
+                {([
+                  { id: 'comfortable', label: 'Комфортная', desc: 'Больше воздуха между элементами' },
+                  { id: 'compact', label: 'Компактная', desc: 'Больше информации на экране' },
+                ] as const).map(opt => (
+                  <button
+                    key={opt.id}
+                    onClick={() => update('density', opt.id)}
+                    className={`p-4 rounded-xl border-2 text-left transition-all ${
+                      preferences.density === opt.id
+                        ? 'border-red-700 bg-red-50 dark:bg-red-950/30'
+                        : 'border-border hover:border-muted-foreground/40'
+                    }`}
+                  >
+                    <div className="text-sm font-semibold">{opt.label}</div>
+                    <div className="text-xs text-muted-foreground mt-1">{opt.desc}</div>
+                    <div className="mt-2 space-y-1">
+                      <div className={`h-1.5 rounded bg-muted-foreground/30 ${opt.id === 'compact' ? 'w-3/4' : 'w-full'}`} />
+                      <div className={`h-1.5 rounded bg-muted-foreground/20 ${opt.id === 'compact' ? 'w-1/2' : 'w-3/4'}`} />
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <Separator />
+
+            <div className="space-y-2">
+              <Label className="text-sm font-semibold">Видимые элементы</Label>
+              {[
+                { key: 'showQuickActions' as const, label: 'Быстрые действия на главной', desc: 'Виджет с 4 кнопками' },
+                { key: 'showHealthBadge' as const, label: 'Индекс здоровья дела', desc: 'В нижней части боковой панели' },
+                { key: 'showCommandHint' as const, label: 'Подсказка ⌘K в шапке', desc: 'Кнопка быстрого поиска' },
+              ].map(item => (
+                <div key={item.key} className="flex items-center justify-between p-3 rounded-lg bg-muted/30">
+                  <div>
+                    <Label className="text-sm font-medium cursor-pointer">{item.label}</Label>
+                    <p className="text-xs text-muted-foreground">{item.desc}</p>
+                  </div>
+                  <Switch
+                    checked={preferences[item.key]}
+                    onCheckedChange={(v) => update(item.key, v)}
+                  />
+                </div>
+              ))}
+            </div>
+          </TabsContent>
+
+          {/* Behavior Tab */}
+          <TabsContent value="behavior" className="space-y-4 mt-4">
+            <div className="flex items-center justify-between p-3 rounded-lg bg-muted/30">
+              <div className="flex items-center gap-2">
+                <RefreshCw className="w-4 h-4 text-emerald-600" />
+                <div>
+                  <Label className="text-sm font-medium cursor-pointer">Автообновление данных</Label>
+                  <p className="text-xs text-muted-foreground">Обновлять статистику каждые 30 секунд</p>
+                </div>
+              </div>
+              <Switch
+                checked={preferences.autoRefresh}
+                onCheckedChange={(v) => update('autoRefresh', v)}
+              />
+            </div>
+
+            <Separator />
+
+            <div className="space-y-3">
+              <Label className="text-sm font-semibold">Раздел по умолчанию</Label>
+              <p className="text-xs text-muted-foreground">Какой раздел открывать при запуске</p>
+              <div className="grid grid-cols-3 gap-2 max-h-48 overflow-y-auto">
+                {NAV_ITEMS.map(item => (
+                  <button
+                    key={item.id}
+                    onClick={() => update('defaultSection', item.id)}
+                    className={`flex items-center gap-2 p-2 rounded-lg border text-xs transition-all ${
+                      preferences.defaultSection === item.id
+                        ? 'border-red-700 bg-red-50 dark:bg-red-950/30 text-red-700 dark:text-red-300'
+                        : 'border-border hover:bg-muted/50'
+                    }`}
+                  >
+                    {item.icon}
+                    <span className="truncate">{item.label}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <Separator />
+
+            <div className="p-3 rounded-lg bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900">
+              <div className="flex items-start gap-2">
+                <AlertTriangle className="w-4 h-4 text-amber-600 mt-0.5 shrink-0" />
+                <div className="text-xs text-amber-800 dark:text-amber-200">
+                  <p className="font-semibold mb-1">Настройки хранятся локально</p>
+                  <p>Ваши предпочтения сохраняются в браузере (localStorage) и не синхронизируются между устройствами.</p>
+                </div>
+              </div>
+            </div>
+          </TabsContent>
+        </Tabs>
+
+        <Separator />
+
+        <div className="flex items-center justify-between">
+          <Button variant="ghost" size="sm" onClick={handleReset} className="text-xs gap-1">
+            <RotateCcw className="w-3 h-3" /> Сбросить
+          </Button>
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" onClick={onClose}>Отмена</Button>
+            <Button size="sm" onClick={handleSave} className="gap-1">
+              <Save className="w-3 h-3" /> Сохранить
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 export default function Home() {
-  const [activeSection, setActiveSection] = useState<SectionId>('dashboard')
+  // Lazy-load preferences from localStorage on first render (avoids setState-in-effect)
+  const [preferences, setPreferences] = useState<UserPreferences>(() => {
+    if (typeof window === 'undefined') return DEFAULT_PREFERENCES
+    const loaded = loadPreferences()
+    // Apply to body immediately on first client render
+    if (typeof document !== 'undefined') {
+      applyPreferencesToBody(loaded)
+    }
+    return loaded
+  })
+  const [activeSection, setActiveSection] = useState<SectionId>(() => {
+    if (typeof window === 'undefined') return 'dashboard'
+    const loaded = loadPreferences()
+    return loaded.defaultSection ?? 'dashboard'
+  })
   const [helpOpen, setHelpOpen] = useState(false)
   const [commandOpen, setCommandOpen] = useState(false)
+  const [settingsOpen, setSettingsOpen] = useState(false)
   const notifications = mockNotifications
+
+  // Auto-refresh handler
+  useEffect(() => {
+    if (!preferences.autoRefresh) return
+    const interval = setInterval(() => {
+      // Trigger a refetch by dispatching a custom event
+      window.dispatchEvent(new CustomEvent('case-auto-refresh'))
+    }, 30000) // 30 seconds
+    return () => clearInterval(interval)
+  }, [preferences.autoRefresh])
 
   // Keyboard shortcuts handler
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
@@ -524,6 +869,12 @@ export default function Home() {
     if (e.ctrlKey && (e.key === 'k' || e.key === 'K' || e.key === 'л' || e.key === 'Л')) {
       e.preventDefault()
       setCommandOpen(prev => !prev)
+      return
+    }
+    // Ctrl+, (comma) opens settings
+    if (e.ctrlKey && (e.key === ',' || e.key === 'б' || e.key === 'Б')) {
+      e.preventDefault()
+      setSettingsOpen(true)
       return
     }
     // Ctrl+1-8 for section navigation
@@ -567,8 +918,9 @@ export default function Home() {
     if (e.key === 'Escape') {
       if (helpOpen) setHelpOpen(false)
       if (commandOpen) setCommandOpen(false)
+      if (settingsOpen) setSettingsOpen(false)
     }
-  }, [helpOpen, commandOpen])
+  }, [helpOpen, commandOpen, settingsOpen])
 
   useEffect(() => {
     window.addEventListener('keydown', handleKeyDown)
@@ -577,7 +929,7 @@ export default function Home() {
 
   return (
     <SidebarProvider>
-      <AppSidebar activeSection={activeSection} setActiveSection={setActiveSection} />
+      <AppSidebar activeSection={activeSection} setActiveSection={setActiveSection} preferences={preferences} />
       <SidebarInset>
         <TopHeader
           activeSection={activeSection}
@@ -585,6 +937,8 @@ export default function Home() {
           setActiveSection={setActiveSection}
           onHelpClick={() => setHelpOpen(true)}
           onCommandClick={() => setCommandOpen(true)}
+          onSettingsClick={() => setSettingsOpen(true)}
+          preferences={preferences}
         />
         <div className="flex flex-1 flex-col min-h-0">
           <main className="flex-1 overflow-y-auto p-4 md:p-6">
@@ -598,6 +952,12 @@ export default function Home() {
         open={commandOpen}
         onOpenChange={setCommandOpen}
         setActiveSection={setActiveSection}
+      />
+      <SettingsDialog
+        open={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+        preferences={preferences}
+        setPreferences={setPreferences}
       />
     </SidebarProvider>
   )

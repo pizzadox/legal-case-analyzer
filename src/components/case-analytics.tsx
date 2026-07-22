@@ -93,7 +93,7 @@ export function CaseAnalytics() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <Card className="bg-gradient-to-r from-purple-900/20 via-red-900/15 to-stone-900/10 rounded-xl shadow-sm border-l-4 border-purple-600">
+      <Card className="bg-gradient-to-r from-purple-900/20 via-red-900/15 to-stone-900/10 rounded-xl shadow-sm border-l-4 border-purple-600 border-t-2 border-t-purple-500 transition-shadow hover:shadow-md">
         <CardContent className="p-4">
           <div className="flex items-center gap-3">
             <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-purple-600/20">
@@ -112,7 +112,7 @@ export function CaseAnalytics() {
       {/* Top row: Complexity + Outcome Prediction */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* Case Complexity Card */}
-        <Card className="rounded-xl shadow-sm">
+        <Card className="rounded-xl shadow-sm bg-gradient-to-br from-card via-card to-muted/20 border-t-2 border-t-purple-500 transition-all duration-200 hover:shadow-md hover:-translate-y-0.5">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm flex items-center gap-2">
               <Layers className="w-4 h-4 text-purple-600" /> Сложность дела
@@ -174,7 +174,7 @@ export function CaseAnalytics() {
         </Card>
 
         {/* Outcome Prediction Card */}
-        <Card className="rounded-xl shadow-sm">
+        <Card className="rounded-xl shadow-sm bg-gradient-to-br from-card via-card to-muted/20 border-t-2 border-t-red-500 transition-all duration-200 hover:shadow-md hover:-translate-y-0.5">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm flex items-center gap-2">
               <Target className="w-4 h-4 text-red-700" /> Прогноз исхода дела
@@ -205,7 +205,7 @@ export function CaseAnalytics() {
       </div>
 
       {/* Processing Trend - Area Chart */}
-      <Card className="rounded-xl shadow-sm">
+      <Card className="rounded-xl shadow-sm bg-gradient-to-br from-card via-card to-muted/20 border-t-2 border-t-emerald-500 transition-all duration-200 hover:shadow-md hover:-translate-y-0.5">
         <CardHeader className="pb-2">
           <CardTitle className="text-sm flex items-center gap-2">
             <Activity className="w-4 h-4 text-emerald-600" /> Тренд обработки документов
@@ -239,7 +239,7 @@ export function CaseAnalytics() {
       {/* Mid row: Episode Matrix + Article Charges */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* Episode Severity × Status Matrix */}
-        <Card className="rounded-xl shadow-sm">
+        <Card className="rounded-xl shadow-sm bg-gradient-to-br from-card via-card to-muted/20 border-t-2 border-t-amber-500 transition-all duration-200 hover:shadow-md hover:-translate-y-0.5">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm flex items-center gap-2">
               <BarChart3 className="w-4 h-4 text-amber-600" /> Матрица: тяжесть × статус
@@ -266,7 +266,7 @@ export function CaseAnalytics() {
         </Card>
 
         {/* Article Charges Donut */}
-        <Card className="rounded-xl shadow-sm">
+        <Card className="rounded-xl shadow-sm bg-gradient-to-br from-card via-card to-muted/20 border-t-2 border-t-blue-500 transition-all duration-200 hover:shadow-md hover:-translate-y-0.5">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm flex items-center gap-2">
               <Award className="w-4 h-4 text-red-700" /> Распределение обвинений
@@ -306,7 +306,7 @@ export function CaseAnalytics() {
       </div>
 
       {/* Person Involvement Radar */}
-      <Card className="rounded-xl shadow-sm">
+      <Card className="rounded-xl shadow-sm bg-gradient-to-br from-card via-card to-muted/20 border-t-2 border-t-emerald-500 transition-all duration-200 hover:shadow-md hover:-translate-y-0.5">
         <CardHeader className="pb-2">
           <CardTitle className="text-sm flex items-center gap-2">
             <Sparkles className="w-4 h-4 text-purple-600" /> Вовлечённость участников
@@ -334,7 +334,7 @@ export function CaseAnalytics() {
       </Card>
 
       {/* Workload by Month - Composed Chart */}
-      <Card className="rounded-xl shadow-sm">
+      <Card className="rounded-xl shadow-sm bg-gradient-to-br from-card via-card to-muted/20 border-t-2 border-t-amber-500 transition-all duration-200 hover:shadow-md hover:-translate-y-0.5">
         <CardHeader className="pb-2">
           <CardTitle className="text-sm flex items-center gap-2">
             <Clock className="w-4 h-4 text-amber-600" /> Рабочая нагрузка по месяцам
@@ -361,7 +361,7 @@ export function CaseAnalytics() {
       </Card>
 
       {/* AI Insights - the showcase card */}
-      <Card className="rounded-xl shadow-sm border-l-4 border-purple-600">
+      <Card className="rounded-xl shadow-sm border-l-4 border-purple-600 bg-gradient-to-br from-card via-card to-purple-500/5 border-t-2 border-t-purple-500 transition-all duration-200 hover:shadow-md hover:-translate-y-0.5">
         <CardHeader className="pb-2">
           <CardTitle className="text-sm flex items-center gap-2">
             <Brain className="w-4 h-4 text-purple-600" /> AI-инсайты по делу

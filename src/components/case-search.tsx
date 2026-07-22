@@ -317,17 +317,24 @@ export function CaseSearch() {
 
       {/* Empty state with illustration */}
       {!query.trim() && !searchMutation.data && totalCount === 0 && (
-        <Card className="rounded-xl shadow-sm">
-          <CardContent className="p-8 text-center">
-            <SearchX className="w-16 h-16 mx-auto text-muted-foreground" />
-            <p className="mt-3 text-sm font-medium">Начните поиск по материалам дела</p>
-            <p className="text-xs text-muted-foreground">Введите запрос или выберите предложенный вариант</p>
+        <Card className="rounded-xl shadow-sm border-t-2 border-t-amber-500 bg-gradient-to-br from-card via-card to-amber-500/5">
+          <CardContent className="p-10 text-center">
+            <div className="flex items-center justify-center w-20 h-20 rounded-full bg-amber-500/10 mx-auto mb-4 ring-4 ring-amber-500/5">
+              <SearchX className="w-10 h-10 text-amber-600" />
+            </div>
+            <p className="mt-2 text-base font-semibold">Начните поиск по материалам дела</p>
+            <p className="text-sm text-muted-foreground mt-1 max-w-md mx-auto">Введите запрос или выберите предложенный вариант, чтобы найти документы, участников, эпизоды и перекрёстные ссылки.</p>
+            <div className="flex flex-wrap gap-2 justify-center mt-4">
+              {['Колесниченко', 'ст. 159 УК РФ', 'процессуальные нарушения', 'хищение'].map(s => (
+                <Button key={s} size="sm" variant="outline" className="rounded-xl" onClick={() => executeSearch(s, filterType)}>{s}</Button>
+              ))}
+            </div>
           </CardContent>
         </Card>
       )}
 
-      {/* Suggested searches */}
-      {!query.trim() && !searchMutation.data && (
+      {/* Suggested searches when results exist */}
+      {!query.trim() && !searchMutation.data && totalCount > 0 && (
         <div className="flex flex-wrap gap-2">
           {['Колесниченко', 'ст. 159 УК РФ', 'процессуальные нарушения', 'хищение'].map(s => (
             <Button key={s} size="sm" variant="outline" className="rounded-xl" onClick={() => executeSearch(s, filterType)}>{s}</Button>
@@ -403,7 +410,13 @@ export function CaseSearch() {
 
         <TabsContent value="documents" className="space-y-2">
           {results.documents.length === 0 ? (
-            <Card className="rounded-xl"><CardContent className="p-4 text-center text-sm text-muted-foreground">Нет документов по запросу</CardContent></Card>
+            <Card className="rounded-xl shadow-sm border-t-2 border-t-blue-500 bg-gradient-to-br from-card via-card to-blue-500/5">
+              <CardContent className="p-6 text-center">
+                <FileText className="w-12 h-12 mx-auto text-blue-500/60" />
+                <p className="mt-2 text-sm font-semibold">Документы не найдены</p>
+                <p className="text-xs text-muted-foreground mt-1">Попробуйте изменить запрос или сбросить фильтр</p>
+              </CardContent>
+            </Card>
           ) : results.documents.map(d => (
             <Card key={d.id} className="rounded-xl shadow-sm transition-shadow hover:shadow-md">
               <CardContent className="p-3"><div className="flex items-center gap-2"><FileText className="w-4 h-4 text-muted-foreground" /><p className="text-sm font-medium truncate">{d.originalName}</p></div>{d.summary && <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{d.summary}</p>}</CardContent>
@@ -413,7 +426,13 @@ export function CaseSearch() {
 
         <TabsContent value="persons" className="space-y-2">
           {results.persons.length === 0 ? (
-            <Card className="rounded-xl"><CardContent className="p-4 text-center text-sm text-muted-foreground">Нет участников по запросу</CardContent></Card>
+            <Card className="rounded-xl shadow-sm border-t-2 border-t-emerald-500 bg-gradient-to-br from-card via-card to-emerald-500/5">
+              <CardContent className="p-6 text-center">
+                <Users className="w-12 h-12 mx-auto text-emerald-500/60" />
+                <p className="mt-2 text-sm font-semibold">Участники не найдены</p>
+                <p className="text-xs text-muted-foreground mt-1">Попробуйте изменить запрос или сбросить фильтр</p>
+              </CardContent>
+            </Card>
           ) : results.persons.map(p => (
             <Card key={p.id} className="rounded-xl shadow-sm transition-shadow hover:shadow-md">
               <CardContent className="p-3"><div className="flex items-center gap-2"><Users className="w-4 h-4 text-muted-foreground" /><p className="text-sm font-medium">{p.fullName}</p><Badge variant="outline">{p.role ?? '—'}</Badge></div>{p.description && <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{p.description}</p>}</CardContent>
@@ -423,7 +442,13 @@ export function CaseSearch() {
 
         <TabsContent value="episodes" className="space-y-2">
           {results.episodes.length === 0 ? (
-            <Card className="rounded-xl"><CardContent className="p-4 text-center text-sm text-muted-foreground">Нет эпизодов по запросу</CardContent></Card>
+            <Card className="rounded-xl shadow-sm border-t-2 border-t-amber-500 bg-gradient-to-br from-card via-card to-amber-500/5">
+              <CardContent className="p-6 text-center">
+                <BookOpen className="w-12 h-12 mx-auto text-amber-500/60" />
+                <p className="mt-2 text-sm font-semibold">Эпизоды не найдены</p>
+                <p className="text-xs text-muted-foreground mt-1">Попробуйте изменить запрос или сбросить фильтр</p>
+              </CardContent>
+            </Card>
           ) : results.episodes.map(e => (
             <Card key={e.id} className="rounded-xl shadow-sm transition-shadow hover:shadow-md">
               <CardContent className="p-3"><div className="flex items-center gap-2"><BookOpen className="w-4 h-4 text-muted-foreground" /><p className="text-sm font-medium truncate">{e.title}</p><Badge variant="outline">{e.severity ?? '—'}</Badge></div><p className="text-xs text-muted-foreground mt-1 line-clamp-2">{e.description}</p></CardContent>
@@ -433,7 +458,13 @@ export function CaseSearch() {
 
         <TabsContent value="references" className="space-y-2">
           {results.crossReferences.length === 0 ? (
-            <Card className="rounded-xl"><CardContent className="p-4 text-center text-sm text-muted-foreground">Нет перекрёстных ссылок по запросу</CardContent></Card>
+            <Card className="rounded-xl shadow-sm border-t-2 border-t-stone-500 bg-gradient-to-br from-card via-card to-stone-500/5">
+              <CardContent className="p-6 text-center">
+                <Link2 className="w-12 h-12 mx-auto text-stone-500/60" />
+                <p className="mt-2 text-sm font-semibold">Перекрёстные ссылки не найдены</p>
+                <p className="text-xs text-muted-foreground mt-1">Попробуйте изменить запрос или сбросить фильтр</p>
+              </CardContent>
+            </Card>
           ) : results.crossReferences.map(cr => (
             <Card key={cr.id} className="rounded-xl shadow-sm transition-shadow hover:shadow-md">
               <CardContent className="p-3"><div className="flex items-center gap-2"><Link2 className="w-4 h-4 text-muted-foreground" /><p className="text-sm truncate">{cr.referenceText}</p></div><p className="text-xs text-muted-foreground mt-1">{cr.sourceDocument.originalName} → {cr.targetDocument.originalName}</p></CardContent>

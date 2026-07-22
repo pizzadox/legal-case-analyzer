@@ -9,7 +9,7 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/
 import { Skeleton } from '@/components/ui/skeleton'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import {
-  BookOpen, MapPin, Users, Scale, Clock, CheckCircle, AlertTriangle, XCircle, Calendar, FileText, Link2, Download, Gavel
+  BookOpen, MapPin, Users, Scale, Clock, CheckCircle, AlertTriangle, XCircle, Calendar, FileText, Link2, Download, Gavel, RefreshCw
 } from 'lucide-react'
 import { mockEpisodes } from '@/lib/mock-data'
 import { getEpisodes } from '@/lib/case-api'
@@ -193,6 +193,22 @@ export function CaseEpisodes() {
           <FileText className="w-3 h-3" />Export PDF
         </Button>
       </div>
+
+      {/* Empty state for filtered episodes */}
+      {filtered.length === 0 && episodes.length > 0 && (
+        <Card className="rounded-xl shadow-sm border-t-2 border-t-amber-500 bg-gradient-to-br from-card via-card to-amber-500/5">
+          <CardContent className="p-8 text-center">
+            <div className="flex items-center justify-center w-20 h-20 rounded-full bg-amber-500/10 mx-auto mb-4 ring-4 ring-amber-500/5">
+              <BookOpen className="w-10 h-10 text-amber-600" />
+            </div>
+            <p className="text-base font-semibold">Эпизоды не найдены</p>
+            <p className="text-sm text-muted-foreground mt-1 max-w-md mx-auto">Попробуйте изменить фильтр по тяжести или сбросить его, чтобы увидеть все эпизоды дела.</p>
+            <Button size="sm" variant="outline" className="mt-4 rounded-xl" onClick={() => setSeverityFilter('all')}>
+              <RefreshCw className="w-3 h-3 mr-1" />Сбросить фильтр
+            </Button>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Timeline */}
       <Card className="rounded-xl shadow-sm border-stone-200/50">
