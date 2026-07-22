@@ -51,6 +51,9 @@ import {
   XCircle,
   Clock,
   Zap,
+  CalendarClock,
+  TrendingUp,
+  FileBarChart,
 } from 'lucide-react'
 import { useTheme } from 'next-themes'
 import { toast } from 'sonner'
@@ -65,6 +68,9 @@ import { CaseSearch } from '@/components/case-search'
 import { CaseQa } from '@/components/case-qa'
 import { CaseDefense } from '@/components/case-defense'
 import { CaseLegalCheck } from '@/components/case-legal-check'
+import { CaseTimeline } from '@/components/case-timeline'
+import { CaseRisk } from '@/components/case-risk'
+import { CaseBrief } from '@/components/case-brief'
 
 const NAV_ITEMS: {
   id: SectionId
@@ -81,6 +87,9 @@ const NAV_ITEMS: {
   { id: 'qa', label: 'Вопросы ИИ', icon: <MessageSquare className="h-4 w-4" />, description: 'ИИ-аналитик по делу', shortcut: '6' },
   { id: 'defense', label: 'Линия защиты', icon: <Shield className="h-4 w-4" />, description: 'Стратегии защиты', shortcut: '7' },
   { id: 'legal-check', label: 'Правовая проверка', icon: <Scale className="h-4 w-4" />, description: 'Проверка по нормам РФ', shortcut: '8' },
+  { id: 'timeline', label: 'Хронология', icon: <CalendarClock className="h-4 w-4" />, description: 'Полная хронология дела', shortcut: '9' },
+  { id: 'risk', label: 'Оценка рисков', icon: <TrendingUp className="h-4 w-4" />, description: 'Матрица рисков и наказания', shortcut: '0' },
+  { id: 'brief', label: 'Краткое изложение', icon: <FileBarChart className="h-4 w-4" />, description: 'Итоговое резюме дела', shortcut: 'B' },
 ]
 
 const NOTIF_TYPE_ICON: Record<string, React.ReactNode> = {
@@ -324,6 +333,9 @@ function MainContent({ activeSection }: { activeSection: SectionId }) {
       case 'qa': return CaseQa
       case 'defense': return CaseDefense
       case 'legal-check': return CaseLegalCheck
+      case 'timeline': return CaseTimeline
+      case 'risk': return CaseRisk
+      case 'brief': return CaseBrief
       default: return CaseDashboard
     }
   })()
@@ -356,6 +368,21 @@ export default function Home() {
       if (num >= 1 && num <= 8) {
         e.preventDefault()
         setActiveSection(NAV_ITEMS[num - 1].id)
+      }
+      // Ctrl+9 for timeline
+      if (e.key === '9') {
+        e.preventDefault()
+        setActiveSection('timeline')
+      }
+      // Ctrl+0 for risk
+      if (e.key === '0') {
+        e.preventDefault()
+        setActiveSection('risk')
+      }
+      // Ctrl+B for brief
+      if (e.key === 'b' || e.key === 'B' || e.key === 'и' || e.key === 'И') {
+        e.preventDefault()
+        setActiveSection('brief')
       }
     }
     // ? for help

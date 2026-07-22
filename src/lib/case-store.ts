@@ -10,6 +10,9 @@ export type SectionId =
   | 'qa'
   | 'defense'
   | 'legal-check'
+  | 'timeline'
+  | 'risk'
+  | 'brief'
 
 export interface DocumentData {
   id: string
@@ -203,6 +206,134 @@ export interface CrossRefNode {
   documentName: string
   documentType: string | null
   linkedDocuments: { id: string; name: string; type: string | null; refType: string | null }[]
+}
+
+// === NEW: Case Brief / Executive Summary ===
+export interface CaseBriefData {
+  caseNumber: string
+  caseTitle: string
+  summary: string
+  keyDefendants: { name: string; role: string; articles: string[]; guiltLevel: string }[]
+  keyEpisodes: { title: string; date: string; severity: string; status: string }[]
+  keyEvidence: { description: string; source: string; strength: 'strong' | 'moderate' | 'weak' }[]
+  keyViolations: { description: string; legalBasis: string; severity: 'critical' | 'major' | 'minor' }[]
+  defenseSummary: string
+  prosecutionSummary: string
+  predictedOutcome: {
+    scenario: string
+    probability: number
+    description: string
+  }[]
+  generatedAt: string
+  aiConfidence: number
+}
+
+// === NEW: Risk Assessment Matrix ===
+export interface RiskAssessmentData {
+  overallRisk: number // 0-100
+  riskLevel: 'low' | 'moderate' | 'high' | 'critical'
+  factors: {
+    evidenceRisk: { score: number; label: string; description: string }
+    proceduralRisk: { score: number; label: string; description: string }
+    defenseRisk: { score: number; label: string; description: string }
+    complianceRisk: { score: number; label: string; description: string }
+    timelineRisk: { score: number; label: string; description: string }
+  }
+  matrix: {
+    likelihood: number // 0-100
+    impact: number // 0-100
+    category: string
+  }[]
+  mitigationStrategies: { strategy: string; riskReduction: number; priority: 'high' | 'medium' | 'low' }[]
+}
+
+// === NEW: Sentencing Calculator ===
+export interface SentencingData {
+  articleCode: string
+  description: string
+  punishmentMin: number // years
+  punishmentMax: number // years
+  baseSentence: number // years (midpoint)
+  mitigatingFactors: { factor: string; reduction: number; applies: boolean }[]
+  aggravatingFactors: { factor: string; increase: number; applies: boolean }[]
+  estimatedSentence: number // years
+  estimatedFine: number // RUB
+  additionalSanctions: string[]
+  precedentCases: { caseNumber: string; sentence: number; description: string }[]
+}
+
+// === NEW: Evidence Chain of Custody ===
+export interface EvidenceChainData {
+  evidenceId: string
+  evidenceName: string
+  evidenceType: string
+  collectedAt: string
+  collectedBy: string
+  location: string
+  chainSteps: {
+    id: string
+    timestamp: string
+    action: string
+    actor: string
+    notes: string
+    status: 'intact' | 'transferred' | 'analyzed' | 'questioned'
+  }[]
+  integrityScore: number // 0-100
+  admissibility: 'admissible' | 'questionable' | 'inadmissible'
+  challenges: { description: string; severity: 'low' | 'medium' | 'high' }[]
+}
+
+// === NEW: Audit Log Entry ===
+export interface AuditLogEntry {
+  id: string
+  timestamp: string
+  action: string
+  category: 'upload' | 'analysis' | 'edit' | 'delete' | 'search' | 'export' | 'login' | 'system'
+  actor: string
+  details: string
+  entityId?: string
+  entityType?: string
+  severity: 'info' | 'warning' | 'critical'
+}
+
+// === NEW: Case Timeline Event (overall chronology) ===
+export interface CaseTimelineEvent {
+  id: string
+  date: string
+  endDate?: string
+  title: string
+  description: string
+  category: 'crime' | 'investigation' | 'legal' | 'defense' | 'evidence' | 'hearing'
+  importance: 'critical' | 'high' | 'medium' | 'low'
+  relatedPersons?: string[]
+  relatedDocuments?: string[]
+  relatedEpisodes?: string[]
+  status: 'completed' | 'ongoing' | 'planned' | 'cancelled'
+}
+
+// === NEW: Bookmark / Favorite ===
+export interface BookmarkData {
+  id: string
+  entityType: 'document' | 'person' | 'episode' | 'article' | 'search'
+  entityId: string
+  entityName: string
+  note: string
+  color: 'red' | 'amber' | 'emerald' | 'stone'
+  createdAt: string
+}
+
+// === NEW: Witness Statement Tracker ===
+export interface WitnessStatementData {
+  id: string
+  witnessId: string
+  witnessName: string
+  statementDate: string
+  statementType: 'initial' | 'follow-up' | 'clarification' | 'contradiction'
+  summary: string
+  keyPoints: string[]
+  contradictions: { withStatementId: string; description: string }[]
+  reliability: 'high' | 'moderate' | 'low'
+  verifiedBy: string[]
 }
 
 // Structured search results matching the API response

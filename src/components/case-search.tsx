@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { useQuery, useMutation } from '@tanstack/react-query'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -11,10 +11,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Separator } from '@/components/ui/separator'
 import { toast } from 'sonner'
-import { Search, FileText, Users, BookOpen, Link2, Loader2, SearchX, Network, Download } from 'lucide-react'
-import { mockSearchResults, mockDocuments, mockPersons, mockEpisodes, mockCrossRefNodes } from '@/lib/mock-data'
+import { Search, FileText, Users, BookOpen, Link2, Loader2, SearchX, Network, Download, Bookmark, Clock, BarChart3, Scale } from 'lucide-react'
+import { mockSearchResults, mockDocuments, mockPersons, mockEpisodes, mockCrossRefNodes, mockBookmarks } from '@/lib/mock-data'
 import * as caseApi from '@/lib/case-api'
-import type { SearchResultData, CrossRefNode } from '@/lib/case-store'
+import type { SearchResultData, CrossRefNode, BookmarkData } from '@/lib/case-store'
 
 const RESULT_ICON: Record<string, React.ReactNode> = {
   documents: <FileText className="w-3 h-3" />,
@@ -42,6 +42,37 @@ const LINK_TYPE_COLOR: Record<string, string> = {
   подтверждение: 'border-blue-600 text-blue-700',
   цитата: 'border-amber-600 text-amber-700',
   упоминание: 'border-stone-500 text-stone-600',
+}
+
+const BOOKMARK_STYLE: Record<string, { bg: string; border: string; icon: React.ReactNode }> = {
+  red: { bg: 'bg-red-50 dark:bg-red-950/30', border: 'border-l-red-700', icon: <FileText className="w-3.5 h-3.5 text-red-700" /> },
+  amber: { bg: 'bg-amber-50 dark:bg-amber-950/30', border: 'border-l-amber-600', icon: <FileText className="w-3.5 h-3.5 text-amber-700" /> },
+  emerald: { bg: 'bg-emerald-50 dark:bg-emerald-950/30', border: 'border-l-emerald-700', icon: <FileText className="w-3.5 h-3.5 text-emerald-700" /> },
+  stone: { bg: 'bg-stone-50 dark:bg-stone-900/30', border: 'border-l-stone-600', icon: <FileText className="w-3.5 h-3.5 text-stone-700" /> },
+}
+
+const ENTITY_ICON: Record<string, React.ReactNode> = {
+  document: <FileText className="w-3.5 h-3.5" />,
+  person: <Users className="w-3.5 h-3.5" />,
+  episode: <BookOpen className="w-3.5 h-3.5" />,
+  article: <Scale className="w-3.5 h-3.5" />,
+  search: <Search className="w-3.5 h-3.5" />,
+}
+
+const FILTER_LABEL: Record<string, string> = {
+  all: 'Все',
+  documents: 'Документы',
+  persons: 'Участники',
+  episodes: 'Эпизоды',
+  articles: 'Статьи',
+  'cross-references': 'Ссылки',
+}
+
+interface HistoryEntry { query: string; filterType: string; timestamp: string }
+function formatRussianDateTime(iso: string): string {
+  try {
+    return new Intl.DateTimeFormat('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }).format(new Date(iso))
+  } catch { return iso }
 }
 
 // Export helper
@@ -105,12 +136,45 @@ function CrossRefGraph({ nodes }: { nodes: CrossRefNode[] }) {
   )
 }
 
+// Bookmarks Panel
+function BookmarksPanel({ bookmarks }: { bookmarks: BookmarkData[] }) {
+  if (bookmarks.length === 0) return null
+  return (
+    <Card className="rounded-xl shadow-sm">
+      <CardHeader className="pb-2">
+        <CardTitle className="text-sm flex items-center gap-2">
+          <Bookmark className="w-4 h-4 text-amber-600" /> Сохранённые закладки
+          <Badge className="bg-stone-600 text-white">{bookmarks.length}</Badge>
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="p-4">
+        <div className="flex flex-wrap gap-2">
+          {bookmarks.map(bm => {
+            const style = BOOKMARK_STYLE[bm.color] ?? BOOKMARK_STYLE.stone
+            return (
+              <button
+                key={bm.id}
+                onClick={() => toast.info(`Переход к: ${bm.entityName}`)}
+                className={`flex items-center gap-2 px-3 py-2 rounded-lg border border-l-4 ${style.bg} ${style.border} text-left transition-all hover:scale-[1.02] hover:shadow-sm max-w-xs`}
+              >
+                {ENTITY_ICON[bm.entityType] ?? <FileText className="w-3.5 h-3.5" />}
+                <span className="text-xs font-medium truncate">{bm.entityName}</span>
+              </button>
+            )
+          })}
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
 export function CaseSearch() {
   const [query, setQuery] = useState('')
   const [filterType, setFilterType] = useState('all')
+  const [searchHistory, setSearchHistory] = useState<HistoryEntry[]>([])
 
   const searchMutation = useMutation({
-    mutationFn: () => caseApi.search({ query, filterType }),
+    mutationFn: (vars: { query: string; filterType: string }) => caseApi.search(vars),
     onError: () => toast.error('Ошибка поиска'),
   })
 
@@ -119,17 +183,41 @@ export function CaseSearch() {
     queryFn: caseApi.getCrossRefGraph,
     retry: 1,
   })
+  const { data: bookmarksData } = useQuery({
+    queryKey: ['bookmarks'],
+    queryFn: caseApi.getBookmarks,
+    retry: 1,
+  })
   const crossRefNodes = graphData ?? mockCrossRefNodes
+  const bookmarks = bookmarksData ?? mockBookmarks
 
-  // Default to structured mock results
   const emptyResults: SearchResultData = { documents: [], persons: [], episodes: [], crossReferences: [] }
   const results = searchMutation.data ?? mockSearchResults
   const isSearching = searchMutation.isPending
 
-  const handleSearch = () => {
-    if (!query.trim()) return
-    searchMutation.mutate()
+  const executeSearch = (q: string, ft: string) => {
+    if (!q.trim()) return
+    setQuery(q)
+    setFilterType(ft)
+    searchMutation.mutate({ query: q, filterType: ft })
+    setSearchHistory(prev => {
+      const entry: HistoryEntry = { query: q, filterType: ft, timestamp: new Date().toISOString() }
+      const filtered = prev.filter(h => !(h.query === q && h.filterType === ft))
+      return [entry, ...filtered].slice(0, 5)
+    })
   }
+
+  const handleSearch = () => executeSearch(query, filterType)
+
+  // Search statistics
+  const stats = useMemo(() => {
+    const total = searchHistory.length
+    const filterCounts: Record<string, number> = {}
+    searchHistory.forEach(h => { filterCounts[h.filterType] = (filterCounts[h.filterType] ?? 0) + 1 })
+    const mostCommon = Object.entries(filterCounts).sort((a, b) => b[1] - a[1])[0]?.[0] ?? null
+    const lastSearch = searchHistory[0]?.timestamp ?? null
+    return { total, mostCommon, lastSearch }
+  }, [searchHistory])
 
   const categories = [
     { key: 'all', label: 'Все', icon: <Search className="w-3 h-3" /> },
@@ -175,8 +263,54 @@ export function CaseSearch() {
               {isSearching ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
             </Button>
           </div>
+          {/* Search History */}
+          {searchHistory.length > 0 && (
+            <div className="mt-3 flex items-center gap-2 flex-wrap">
+              <Clock className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+              <span className="text-xs text-muted-foreground shrink-0">Недавние:</span>
+              {searchHistory.map((h, i) => (
+                <button
+                  key={i}
+                  onClick={() => executeSearch(h.query, h.filterType)}
+                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-stone-300 dark:border-stone-700 bg-stone-50 dark:bg-stone-900/50 text-xs hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors"
+                >
+                  <span className="font-medium truncate max-w-[12rem]">{h.query}</span>
+                  <Badge variant="outline" className="text-xs px-1.5 py-0 h-4">{FILTER_LABEL[h.filterType] ?? h.filterType}</Badge>
+                </button>
+              ))}
+            </div>
+          )}
         </CardContent>
       </Card>
+
+      {/* Search Statistics */}
+      {stats.total > 0 && (
+        <Card className="rounded-xl shadow-sm bg-gradient-to-r from-amber-900/10 to-stone-900/5">
+          <CardContent className="p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <BarChart3 className="w-4 h-4 text-amber-600" />
+              <p className="font-semibold text-sm">Статистика поиска</p>
+            </div>
+            <div className="grid grid-cols-3 gap-3">
+              <div className="text-center p-2 rounded-lg bg-muted/50">
+                <p className="text-xl font-bold text-amber-700">{stats.total}</p>
+                <p className="text-xs text-muted-foreground">Всего запросов</p>
+              </div>
+              <div className="text-center p-2 rounded-lg bg-muted/50">
+                <p className="text-sm font-bold text-amber-700 mt-1">{stats.mostCommon ? FILTER_LABEL[stats.mostCommon] ?? stats.mostCommon : '—'}</p>
+                <p className="text-xs text-muted-foreground">Частый фильтр</p>
+              </div>
+              <div className="text-center p-2 rounded-lg bg-muted/50">
+                <p className="text-xs font-bold text-amber-700 mt-1.5">{stats.lastSearch ? formatRussianDateTime(stats.lastSearch) : '—'}</p>
+                <p className="text-xs text-muted-foreground">Последний поиск</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Bookmarks Panel */}
+      <BookmarksPanel bookmarks={bookmarks} />
 
       {/* Cross-Reference Graph */}
       <CrossRefGraph nodes={crossRefNodes} />
@@ -196,7 +330,7 @@ export function CaseSearch() {
       {!query.trim() && !searchMutation.data && (
         <div className="flex flex-wrap gap-2">
           {['Колесниченко', 'ст. 159 УК РФ', 'процессуальные нарушения', 'хищение'].map(s => (
-            <Button key={s} size="sm" variant="outline" className="rounded-xl" onClick={() => { setQuery(s); handleSearch() }}>{s}</Button>
+            <Button key={s} size="sm" variant="outline" className="rounded-xl" onClick={() => executeSearch(s, filterType)}>{s}</Button>
           ))}
         </div>
       )}

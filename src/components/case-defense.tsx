@@ -10,8 +10,8 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/
 import { Skeleton } from '@/components/ui/skeleton'
 import { Separator } from '@/components/ui/separator'
 import { toast } from 'sonner'
-import { Shield, Scale, Loader2, Star, Zap, CheckCircle, AlertTriangle, Swords, Trophy, BrainCircuit, Download, FileText } from 'lucide-react'
-import { mockDefenseLines, mockPersons, mockDefenseImprovements } from '@/lib/mock-data'
+import { Shield, Scale, Loader2, Star, Zap, CheckCircle, AlertTriangle, Swords, Trophy, BrainCircuit, Download, FileText, UserCheck, Target, PieChart } from 'lucide-react'
+import { mockDefenseLines, mockPersons, mockDefenseImprovements, mockEpisodes, mockRiskAssessment } from '@/lib/mock-data'
 import * as caseApi from '@/lib/case-api'
 import type { DefenseLineData, DefenseImprovementData } from '@/lib/case-store'
 
@@ -19,6 +19,12 @@ const STRENGTH: Record<string, { badge: string; pct: number; color: string; labe
   strong: { badge: 'bg-emerald-700 text-white', pct: 80, color: '#059669', label: 'Сильная' },
   moderate: { badge: 'bg-amber-600 text-white', pct: 50, color: '#d97706', label: 'Средняя' },
   weak: { badge: 'bg-red-700 text-white', pct: 20, color: '#dc2626', label: 'Слабая' },
+}
+
+const PROB: Record<string, { pct: number; label: string }> = {
+  high: { pct: 80, label: 'Высокая' },
+  moderate: { pct: 50, label: 'Средняя' },
+  low: { pct: 20, label: 'Низкая' },
 }
 
 const TYPE_LABEL: Record<string, string> = {
@@ -37,15 +43,39 @@ const DIFFICULTY: Record<string, { badge: string; label: string }> = {
   hard: { badge: 'bg-red-700 text-white', label: 'Трудно' },
 }
 
+// Witness support: lines with these strategy types have witness corroboration
+const WITNESS_SUPPORTED = new Set(['alibi', 'lack_of_evidence'])
+
+// Defense Coverage Donut (SVG)
+function CoverageDonut({ covered, total }: { covered: number; total: number }) {
+  const R = 38, C = 2 * Math.PI * R
+  const pct = total > 0 ? Math.round((covered / total) * 100) : 0
+  const dash = (pct / 100) * C
+  return (
+    <svg width={120} height={120} viewBox="0 0 120 120" className="shrink-0">
+      <circle cx={60} cy={60} r={R} fill="none" stroke="#e7e5e4" strokeWidth={14} />
+      <circle cx={60} cy={60} r={R} fill="none" stroke="#78716c" strokeWidth={14}
+        strokeDasharray={`${C - dash} ${dash}`} transform="rotate(-90 60 60)" style={{ transition: 'stroke-dasharray 700ms ease' }} />
+      <circle cx={60} cy={60} r={R} fill="none" stroke="#059669" strokeWidth={14}
+        strokeDasharray={`${dash} ${C}`} transform="rotate(-90 60 60)" style={{ transition: 'stroke-dasharray 700ms ease' }} />
+      <text x={60} y={56} textAnchor="middle" fontSize={20} fontWeight="bold" className="fill-stone-800 dark:fill-stone-100">{pct}%</text>
+      <text x={60} y={72} textAnchor="middle" fontSize={8} className="fill-stone-500">покрыто</text>
+    </svg>
+  )
+}
+
 export function CaseDefense() {
   const [showImprovements, setShowImprovements] = useState(false)
   const { data: personsData, isLoading: personsLoading } = useQuery({ queryKey: ['persons'], queryFn: caseApi.getPersons, retry: 1 })
   const { data: defenseData, isLoading: defenseLoading } = useQuery({ queryKey: ['defense'], queryFn: () => caseApi.getDefenseLines('p1'), retry: 1 })
   const { data: improvementsData } = useQuery({ queryKey: ['defense-improvements'], queryFn: () => caseApi.getDefenseImprovements('p1'), retry: 1 })
+  const { data: riskData } = useQuery({ queryKey: ['risk-assessment'], queryFn: caseApi.getRiskAssessment, retry: 1 })
 
   const persons = personsData ?? mockPersons
   const defenseLines = defenseData ?? mockDefenseLines
   const improvements = improvementsData ?? mockDefenseImprovements
+  const riskAssessment = riskData ?? mockRiskAssessment
+  const episodes = mockEpisodes
   const kolesnichenko = persons.find(p => p.isKolesnichenko)
 
   const analyzeMutation = useMutation({
@@ -56,11 +86,11 @@ export function CaseDefense() {
 
   const aiAnalysisMutation = useMutation({
     mutationFn: () => caseApi.requestDefenseAnalysis(kolesnichenko?.id ?? 'p1'),
-    onSuccess: (data) => { toast.success('ИИ-анализ выполнен'); setShowImprovements(true) },
+    onSuccess: () => { toast.success('ИИ-анализ выполнен'); setShowImprovements(true) },
     onError: () => toast.error('Ошибка ИИ-анализа. Попробуйте позже.'),
   })
 
-  // Calculate defense strength score and ranking (before early return)
+  // Calculate defense strength score and ranking
   const rankedLines = useMemo(() => {
     const scored = defenseLines.map(dl => ({
       ...dl,
@@ -71,6 +101,33 @@ export function CaseDefense() {
 
   const recommended = rankedLines[0]
   const overallStrength = rankedLines.length > 0 ? Math.round(rankedLines.reduce((sum, dl) => sum + dl.score, 0) / rankedLines.length) : 0
+
+  // Risk-adjusted priority: strength_value × riskReduction / 100
+  const riskAdjusted = useMemo(() => {
+    const mitigations = riskAssessment?.mitigationStrategies ?? []
+    return defenseLines.map((dl, i) => {
+      const sVal = STRENGTH[dl.strength ?? 'weak'].pct
+      const riskReduction = mitigations[i % mitigations.length]?.riskReduction ?? 10
+      const priorityScore = Math.round((sVal * riskReduction) / 100 * 10) / 10
+      return { ...dl, sVal, riskReduction, priorityScore }
+    }).sort((a, b) => b.priorityScore - a.priorityScore)
+  }, [defenseLines, riskAssessment])
+
+  // Defense coverage: count episodes covered by any defense line
+  const coverage = useMemo(() => {
+    const covered = episodes.filter(ep =>
+      defenseLines.some(dl =>
+        dl.description.includes(`эпизод${ep.episodeNumber}`) ||
+        dl.description.includes(`эпизода ${ep.episodeNumber}`) ||
+        dl.description.includes(`эпизоду ${ep.episodeNumber}`) ||
+        dl.title.includes(`эпизода ${ep.episodeNumber}`)
+      )
+    ).length
+    return { covered, total: episodes.length, uncovered: episodes.length - covered }
+  }, [episodes, defenseLines])
+
+  // Witness corroboration count
+  const witnessSupportedCount = defenseLines.filter(dl => WITNESS_SUPPORTED.has(dl.strategyType)).length
 
   if (personsLoading || defenseLoading) return <div className="space-y-4">{[1, 2, 3].map(i => <Skeleton key={i} className="h-24" />)}</div>
 
@@ -90,7 +147,6 @@ export function CaseDefense() {
             <Badge className="bg-stone-600 text-white">{defenseLines.length} стратегий</Badge>
           </div>
           <Separator className="mt-3" />
-          {/* Overall Defense Strength Score */}
           <div className="mt-3 flex items-center gap-3">
             <div className="flex items-center gap-2">
               <Trophy className="w-4 h-4 text-emerald-700" />
@@ -132,6 +188,114 @@ export function CaseDefense() {
         </Card>
       )}
 
+      {/* Defense Strength Visualization + Coverage Donut */}
+      <div className="grid lg:grid-cols-[2fr_1fr] gap-4">
+        <Card className="rounded-xl shadow-sm">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm flex items-center gap-2">
+              <Swords className="w-4 h-4 text-emerald-700" /> Сила и вероятность стратегий
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-4 space-y-3">
+            {defenseLines.map(dl => {
+              const sPct = STRENGTH[dl.strength ?? 'weak'].pct
+              const pPct = PROB[dl.probability ?? 'low'].pct
+              const hasWitness = WITNESS_SUPPORTED.has(dl.strategyType)
+              return (
+                <div key={dl.id} className="space-y-1">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-xs font-medium truncate flex items-center gap-1">
+                      {hasWitness && <UserCheck className="w-3.5 h-3.5 text-emerald-700 shrink-0" />}
+                      <span className="truncate">{dl.title}</span>
+                    </span>
+                    <Badge className={STRENGTH[dl.strength ?? 'weak'].badge}>{STRENGTH[dl.strength ?? 'weak'].label}</Badge>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-muted-foreground w-14 shrink-0">Сила:</span>
+                    <div className="flex-1 h-2.5 bg-muted rounded-full overflow-hidden">
+                      <div className="h-full bg-emerald-600 rounded-full transition-all duration-500" style={{ width: `${sPct}%` }} />
+                    </div>
+                    <span className="text-xs w-8 text-right">{sPct}%</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-muted-foreground w-14 shrink-0">Вероятн.:</span>
+                    <div className="flex-1 h-2.5 bg-muted rounded-full overflow-hidden">
+                      <div className="h-full bg-amber-500 rounded-full transition-all duration-500" style={{ width: `${pPct}%` }} />
+                    </div>
+                    <span className="text-xs w-8 text-right">{pPct}%</span>
+                  </div>
+                </div>
+              )
+            })}
+            <Separator />
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <span className="inline-block w-3 h-2.5 bg-emerald-600 rounded-sm" /> Сила стратегии
+              <span className="inline-block w-3 h-2.5 bg-amber-500 rounded-sm ml-2" /> Вероятность успеха
+              <span className="ml-2 flex items-center gap-1"><UserCheck className="w-3 h-3 text-emerald-700" /> Свидетельская поддержка ({witnessSupportedCount})</span>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="rounded-xl shadow-sm">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm flex items-center gap-2">
+              <PieChart className="w-4 h-4 text-amber-600" /> Покрытие эпизодов
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-4 flex flex-col items-center gap-3">
+            <CoverageDonut covered={coverage.covered} total={coverage.total} />
+            <div className="w-full space-y-1.5">
+              <div className="flex items-center justify-between text-xs">
+                <span className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 bg-emerald-600 rounded-sm" />Покрыто</span>
+                <Badge className="bg-emerald-700 text-white">{coverage.covered} эп.</Badge>
+              </div>
+              <div className="flex items-center justify-between text-xs">
+                <span className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 bg-stone-500 rounded-sm" />Не покрыто</span>
+                <Badge className="bg-stone-600 text-white">{coverage.uncovered} эп.</Badge>
+              </div>
+              <Separator />
+              <p className="text-xs text-muted-foreground text-center">Всего эпизодов: {coverage.total}</p>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Risk-Adjusted Priority */}
+      <Card className="rounded-xl shadow-sm">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm flex items-center gap-2">
+            <Target className="w-4 h-4 text-red-700" /> Приоритет с учётом снижения риска
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="p-4">
+          <div className="space-y-2">
+            {riskAdjusted.map((dl, idx) => {
+              const priorityBadge = dl.priorityScore >= 10 ? 'bg-red-700 text-white' : dl.priorityScore >= 5 ? 'bg-amber-600 text-white' : 'bg-stone-500 text-white'
+              const priorityLabel = dl.priorityScore >= 10 ? 'Высокий' : dl.priorityScore >= 5 ? 'Средний' : 'Низкий'
+              return (
+                <div key={dl.id} className="flex items-center gap-3 p-2 rounded-lg bg-muted/40 transition-colors hover:bg-muted/70">
+                  <Badge variant="outline" className="text-xs shrink-0">#{idx + 1}</Badge>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-medium truncate">{dl.title}</p>
+                    <div className="flex items-center gap-2 mt-0.5 text-xs text-muted-foreground">
+                      <span>Сила: {dl.sVal}%</span>
+                      <span>•</span>
+                      <span>Снижение риска: {dl.riskReduction}%</span>
+                    </div>
+                  </div>
+                  <div className="flex flex-col items-end gap-1 shrink-0">
+                    <Badge className={priorityBadge}>{priorityLabel}</Badge>
+                    <span className="text-xs font-bold text-stone-700 dark:text-stone-200">{dl.priorityScore}</span>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+          <Separator className="my-3" />
+          <p className="text-xs text-muted-foreground">Формула: сила стратегии × снижение риска / 100</p>
+        </CardContent>
+      </Card>
+
       {/* AI Suggested Defense Improvements */}
       <Card className="rounded-xl shadow-sm">
         <CardHeader className="pb-2">
@@ -166,39 +330,50 @@ export function CaseDefense() {
 
       {/* Strategy Accordion */}
       <Accordion type="multiple" className="space-y-2">
-        {rankedLines.map((dl, idx) => (
-          <AccordionItem key={dl.id} value={dl.id} className="border rounded-xl px-4 shadow-sm">
-            <AccordionTrigger className="py-3 text-sm hover:no-underline">
-              <div className="flex items-center gap-2 flex-1">
-                <Badge variant="outline" className="text-xs">{idx + 1}</Badge>
-                <span className="text-xs font-medium">{TYPE_LABEL[dl.strategyType] ?? dl.strategyType}</span>
-                <span className="truncate">{dl.title}</span>
-                <Badge className={STRENGTH[dl.strength ?? 'weak'].badge}>{STRENGTH[dl.strength ?? 'weak'].label}</Badge>
-                <Badge variant="outline">{dl.probability}</Badge>
-              </div>
-            </AccordionTrigger>
-            <AccordionContent className="space-y-3 text-sm">
-              <p className="text-muted-foreground">{dl.description}</p>
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-medium">Сила:</span>
-                <Progress value={STRENGTH[dl.strength ?? 'weak'].pct} className="h-1.5 flex-1" />
-                <span className="text-xs">{STRENGTH[dl.strength ?? 'weak'].pct}%</span>
-              </div>
-              {dl.evidence && (
-                <div className="p-2 rounded-lg bg-muted">
-                  <p className="font-medium text-xs flex items-center gap-1"><CheckCircle className="w-3 h-3" />Доказательства:</p>
-                  <p className="text-xs">{dl.evidence}</p>
+        {rankedLines.map((dl, idx) => {
+          const hasWitness = WITNESS_SUPPORTED.has(dl.strategyType)
+          return (
+            <AccordionItem key={dl.id} value={dl.id} className="border rounded-xl px-4 shadow-sm">
+              <AccordionTrigger className="py-3 text-sm hover:no-underline">
+                <div className="flex items-center gap-2 flex-1">
+                  <Badge variant="outline" className="text-xs">{idx + 1}</Badge>
+                  {hasWitness && <UserCheck className="w-3.5 h-3.5 text-emerald-700 shrink-0" />}
+                  <span className="text-xs font-medium">{TYPE_LABEL[dl.strategyType] ?? dl.strategyType}</span>
+                  <span className="truncate">{dl.title}</span>
+                  <Badge className={STRENGTH[dl.strength ?? 'weak'].badge}>{STRENGTH[dl.strength ?? 'weak'].label}</Badge>
+                  <Badge variant="outline">{dl.probability}</Badge>
                 </div>
-              )}
-              {dl.articleReferences && (
-                <div className="p-2 rounded-lg bg-muted">
-                  <p className="font-medium text-xs flex items-center gap-1"><Scale className="w-3 h-3" />Правовая основа:</p>
-                  <p className="text-xs">{dl.articleReferences}</p>
+              </AccordionTrigger>
+              <AccordionContent className="space-y-3 text-sm">
+                <p className="text-muted-foreground">{dl.description}</p>
+                {hasWitness && (
+                  <div className="p-2 rounded-lg bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-900">
+                    <p className="text-xs font-medium flex items-center gap-1 text-emerald-700 dark:text-emerald-400">
+                      <UserCheck className="w-3 h-3" /> Поддерживается свидетельскими показаниями
+                    </p>
+                  </div>
+                )}
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-medium">Сила:</span>
+                  <Progress value={STRENGTH[dl.strength ?? 'weak'].pct} className="h-1.5 flex-1" />
+                  <span className="text-xs">{STRENGTH[dl.strength ?? 'weak'].pct}%</span>
                 </div>
-              )}
-            </AccordionContent>
-          </AccordionItem>
-        ))}
+                {dl.evidence && (
+                  <div className="p-2 rounded-lg bg-muted">
+                    <p className="font-medium text-xs flex items-center gap-1"><CheckCircle className="w-3 h-3" />Доказательства:</p>
+                    <p className="text-xs">{dl.evidence}</p>
+                  </div>
+                )}
+                {dl.articleReferences && (
+                  <div className="p-2 rounded-lg bg-muted">
+                    <p className="font-medium text-xs flex items-center gap-1"><Scale className="w-3 h-3" />Правовая основа:</p>
+                    <p className="text-xs">{dl.articleReferences}</p>
+                  </div>
+                )}
+              </AccordionContent>
+            </AccordionItem>
+          )
+        })}
       </Accordion>
 
       <Separator />

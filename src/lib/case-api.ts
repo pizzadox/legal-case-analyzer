@@ -14,6 +14,14 @@ import {
   DefenseImprovementData,
   NotificationData,
   CrossRefNode,
+  CaseBriefData,
+  RiskAssessmentData,
+  SentencingData,
+  EvidenceChainData,
+  AuditLogEntry,
+  CaseTimelineEvent,
+  BookmarkData,
+  WitnessStatementData,
 } from './case-store'
 
 const API_BASE = '/api/case'
@@ -273,4 +281,87 @@ export async function requestDefenseAnalysis(personId: string): Promise<DefenseI
     method: 'POST',
     body: JSON.stringify({ personId, requestAnalysis: true }),
   })
+}
+
+// === NEW: Get Case Brief (Executive Summary) ===
+export async function getCaseBrief(): Promise<CaseBriefData> {
+  try {
+    return await fetchApi<CaseBriefData>('/brief')
+  } catch {
+    const { mockCaseBrief } = await import('./mock-data')
+    return mockCaseBrief
+  }
+}
+
+// === NEW: Get Risk Assessment ===
+export async function getRiskAssessment(): Promise<RiskAssessmentData> {
+  try {
+    return await fetchApi<RiskAssessmentData>('/risk-assessment')
+  } catch {
+    const { mockRiskAssessment } = await import('./mock-data')
+    return mockRiskAssessment
+  }
+}
+
+// === NEW: Get Sentencing Calculator ===
+export async function getSentencing(articleCode?: string): Promise<SentencingData[]> {
+  try {
+    return await fetchApi<SentencingData[]>('/sentencing', {
+      method: 'POST',
+      body: JSON.stringify({ articleCode }),
+    })
+  } catch {
+    const { mockSentencing } = await import('./mock-data')
+    return mockSentencing
+  }
+}
+
+// === NEW: Get Evidence Chain of Custody ===
+export async function getEvidenceChain(): Promise<EvidenceChainData[]> {
+  try {
+    return await fetchApi<EvidenceChainData[]>('/evidence-chain')
+  } catch {
+    const { mockEvidenceChain } = await import('./mock-data')
+    return mockEvidenceChain
+  }
+}
+
+// === NEW: Get Audit Log ===
+export async function getAuditLog(limit: number = 50): Promise<AuditLogEntry[]> {
+  try {
+    return await fetchApi<AuditLogEntry[]>(`/audit-log?limit=${limit}`)
+  } catch {
+    const { mockAuditLog } = await import('./mock-data')
+    return mockAuditLog.slice(0, limit)
+  }
+}
+
+// === NEW: Get Case Timeline (overall chronology) ===
+export async function getCaseTimeline(): Promise<CaseTimelineEvent[]> {
+  try {
+    return await fetchApi<CaseTimelineEvent[]>('/case-timeline')
+  } catch {
+    const { mockCaseTimeline } = await import('./mock-data')
+    return mockCaseTimeline
+  }
+}
+
+// === NEW: Get Bookmarks ===
+export async function getBookmarks(): Promise<BookmarkData[]> {
+  try {
+    return await fetchApi<BookmarkData[]>('/bookmarks')
+  } catch {
+    const { mockBookmarks } = await import('./mock-data')
+    return mockBookmarks
+  }
+}
+
+// === NEW: Get Witness Statements ===
+export async function getWitnessStatements(): Promise<WitnessStatementData[]> {
+  try {
+    return await fetchApi<WitnessStatementData[]>('/witness-statements')
+  } catch {
+    const { mockWitnessStatements } = await import('./mock-data')
+    return mockWitnessStatements
+  }
 }
