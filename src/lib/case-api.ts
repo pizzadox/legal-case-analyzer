@@ -23,6 +23,7 @@ import {
   BookmarkData,
   WitnessStatementData,
   AnalyticsData,
+  CriminalCaseData,
 } from './case-store'
 
 const API_BASE = '/api/case'
@@ -412,4 +413,50 @@ export async function getAnalytics(): Promise<AnalyticsData> {
     const { mockAnalytics } = await import('./mock-data')
     return mockAnalytics
   }
+}
+
+// === Criminal Case Management ===
+
+// Get all criminal cases
+export async function getCases(): Promise<CriminalCaseData[]> {
+  try {
+    const result = await fetchApi<{ cases: CriminalCaseData[] }>('/cases')
+    return result.cases
+  } catch {
+    return []
+  }
+}
+
+// Create a new criminal case
+export async function createCase(params: {
+  caseNumber: string
+  caseTitle: string
+  defendantName?: string | null
+  articles?: string | null
+}): Promise<CriminalCaseData> {
+  return fetchApi<CriminalCaseData>('/cases', {
+    method: 'POST',
+    body: JSON.stringify(params),
+  })
+}
+
+// Delete a criminal case
+export async function deleteCase(caseId: string): Promise<{ success: boolean }> {
+  return fetchApi<{ success: boolean }>(`/cases/${caseId}`, {
+    method: 'DELETE',
+  })
+}
+
+// Update a criminal case
+export async function updateCase(caseId: string, params: {
+  caseNumber?: string
+  caseTitle?: string
+  defendantName?: string | null
+  articles?: string | null
+  status?: string
+}): Promise<CriminalCaseData> {
+  return fetchApi<CriminalCaseData>(`/cases/${caseId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(params),
+  })
 }

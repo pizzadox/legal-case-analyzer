@@ -382,6 +382,20 @@ export interface AnalyticsData {
   workloadByMonth: { month: string; documents: number; actions: number; hearings: number }[]
 }
 
+export interface CriminalCaseData {
+  id: string
+  caseNumber: string
+  caseTitle: string
+  defendantName: string | null
+  articles: string | null
+  status: string
+  createdAt: string
+  updatedAt: string
+  documentCount?: number
+  personCount?: number
+  episodeCount?: number
+}
+
 // Structured search results matching the API response
 export interface SearchResultData {
   documents: DocumentData[]

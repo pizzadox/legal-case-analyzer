@@ -9,6 +9,23 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// Criminal Case model - represents a single criminal case
+model CriminalCase {
+  id                String   @id @default(cuid())
+  caseNumber        String   // Official case number (e.g. "№ 2024-00145")
+  caseTitle         String   // Short title/description
+  defendantName     String?  // Main defendant name
+  articles          String?  // Articles of law (e.g. "ст. 159 ч.3 УК РФ")
+  status            String   @default("active") // active, closed, archived, suspended
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  // Relations
+  documents         Document[]
+  persons           Person[]
+  episodes          Episode[]
+}
+
 // Core document model - stores uploaded PDF documents
 model Document {
   id                String   @id @default(cuid())
@@ -26,8 +43,10 @@ model Document {
   processingError   String?
   uploadedAt        DateTime @default(now())
   processedAt       DateTime?
-  
+  caseId            String?  // Link to CriminalCase
+
   // Relations
+  case              CriminalCase? @relation(fields: [caseId], references: [id])
   persons           PersonDocument[]
   episodes          EpisodeDocument[]
   locations         DocumentLocation[]
@@ -54,8 +73,10 @@ model Person {
   // Kolesnichenko-specific fields
   isKolesnichenko   Boolean  @default(false)
   defenseStrategy   String?  // Defense strategy description
-  
+  caseId            String?  // Link to CriminalCase
+
   // Relations
+  case              CriminalCase? @relation(fields: [caseId], references: [id])
   documents         PersonDocument[]
   episodes          PersonEpisode[]
   articles          PersonArticle[]
@@ -106,8 +127,10 @@ model Episode {
   episodeNumber     String?  // Episode number in case structure
   severity          String?  // Severity classification
   status            String?  // Status: расследуется, доказано, не доказано, сомнительно
-  
+  caseId            String?  // Link to CriminalCase
+
   // Relations
+  case              CriminalCase? @relation(fields: [caseId], references: [id])
   documents         EpisodeDocument[]
   persons           PersonEpisode[]
   locations         EpisodeLocation[]

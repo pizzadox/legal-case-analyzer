@@ -1,19 +1,22 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Sidebar, SidebarContent, SidebarFooter, SidebarGroup, SidebarGroupContent, SidebarGroupLabel, SidebarHeader, SidebarInset, SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarProvider, SidebarRail, SidebarSeparator, SidebarTrigger, useSidebar } from '@/components/ui/sidebar'
 import { Separator } from '@/components/ui/separator'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuLabel, DropdownMenuSeparator } from '@/components/ui/dropdown-menu'
 import { CommandDialog, CommandInput, CommandList, CommandEmpty, CommandGroup, CommandItem, CommandSeparator, CommandShortcut } from '@/components/ui/command'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { LayoutDashboard, FileText, Users, BookOpen, Search, MessageSquare, Shield, Scale, Sun, Moon, PanelLeft, Bell, HelpCircle, CheckCircle, AlertTriangle, XCircle, Clock, Zap, CalendarClock, TrendingUp, BarChart3, Command as CommandIcon, Activity, ArrowRight, Settings, Gauge, RefreshCw, Swords, Gavel, Link2, Eye } from 'lucide-react'
+import { LayoutDashboard, FileText, Users, BookOpen, Search, MessageSquare, Shield, Scale, Sun, Moon, PanelLeft, Bell, HelpCircle, CheckCircle, AlertTriangle, XCircle, Clock, Zap, CalendarClock, TrendingUp, BarChart3, Command as CommandIcon, Activity, ArrowRight, Settings, Gauge, RefreshCw, Swords, Gavel, Link2, Eye, Plus, FolderOpen, Check } from 'lucide-react'
 import { useTheme } from 'next-themes'
 import { toast } from 'sonner'
-import type { SectionId, NotificationData } from '@/lib/case-store'
+import type { SectionId, NotificationData, CriminalCaseData } from '@/lib/case-store'
+import * as caseApi from '@/lib/case-api'
+import { Input } from '@/components/ui/input'
 import { mockNotifications } from '@/lib/mock-data'
 
 import { CaseDashboard } from '@/components/case-dashboard'
@@ -68,6 +71,78 @@ export default function CasePage() {
   const [notifications] = useState<NotificationData[]>(mockNotifications)
   const unreadCount = notifications.filter(n => !n.isRead).length
 
+  // Case switching state
+  const [activeCaseId, setActiveCaseId] = useState<string>(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('activeCaseId') || ''
+    }
+    return ''
+  })
+  const [newCaseDialogOpen, setNewCaseDialogOpen] = useState(false)
+  const [newCaseForm, setNewCaseForm] = useState({ caseNumber: '', caseTitle: '', defendantName: '', articles: '' })
+  const [isCreatingCase, setIsCreatingCase] = useState(false)
+  const queryClient = useQueryClient()
+
+  // Fetch all criminal cases
+  const { data: cases = [], isLoading: isLoadingCases } = useQuery<CriminalCaseData[]>({
+    queryKey: ['criminal-cases'],
+    queryFn: () => caseApi.getCases(),
+  })
+
+  // Compute the currently active case
+  const activeCase = useMemo<CriminalCaseData | null>(() => {
+    if (!cases.length) return null
+    if (activeCaseId) {
+      const found = cases.find(c => c.id === activeCaseId)
+      if (found) return found
+    }
+    // Default to the first case if no active case set or not found
+    return cases[0]
+  }, [cases, activeCaseId])
+
+  // Persist active case to localStorage when it changes
+  useEffect(() => {
+    if (activeCase && activeCase.id !== activeCaseId) {
+      setActiveCaseId(activeCase.id)
+      localStorage.setItem('activeCaseId', activeCase.id)
+    } else if (activeCase) {
+      localStorage.setItem('activeCaseId', activeCase.id)
+    }
+  }, [activeCase, activeCaseId])
+
+  const handleSelectCase = (caseId: string) => {
+    setActiveCaseId(caseId)
+    localStorage.setItem('activeCaseId', caseId)
+    const selectedCase = cases.find(c => c.id === caseId)
+    toast.success(`Дело переключено: ${selectedCase?.caseNumber || caseId}`)
+  }
+
+  const handleCreateCase = async () => {
+    if (!newCaseForm.caseNumber || !newCaseForm.caseTitle) {
+      toast.error('Номер и название дела обязательны')
+      return
+    }
+    setIsCreatingCase(true)
+    try {
+      const created = await caseApi.createCase({
+        caseNumber: newCaseForm.caseNumber,
+        caseTitle: newCaseForm.caseTitle,
+        defendantName: newCaseForm.defendantName || null,
+        articles: newCaseForm.articles || null,
+      })
+      await queryClient.invalidateQueries({ queryKey: ['criminal-cases'] })
+      setActiveCaseId(created.id)
+      localStorage.setItem('activeCaseId', created.id)
+      setNewCaseDialogOpen(false)
+      setNewCaseForm({ caseNumber: '', caseTitle: '', defendantName: '', articles: '' })
+      toast.success(`Дело ${created.caseNumber} создано`)
+    } catch (err) {
+      toast.error('Ошибка создания дела')
+    } finally {
+      setIsCreatingCase(false)
+    }
+  }
+
   useEffect(() => { const down = (e: KeyboardEvent) => { if (e.key === 'k' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); setCommandOpen(true) } }; document.addEventListener('keydown', down); return () => document.removeEventListener('keydown', down) }, [])
   const runCommand = useCallback((id: SectionId) => { setActiveSection(id); setCommandOpen(false) }, [])
 
@@ -102,7 +177,7 @@ export default function CasePage() {
             <SidebarMenuItem>
               <SidebarMenuButton size="lg" className="hover:bg-sidebar-accent">
                 <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground"><Scale className="size-4" /></div>
-                <div className="grid flex-1 text-left text-sm leading-tight"><span className="truncate font-semibold">Уголовное дело</span><span className="truncate text-xs text-muted-foreground">№ 2024-00145</span></div>
+                <div className="grid flex-1 text-left text-sm leading-tight"><span className="truncate font-semibold">{activeCase ? activeCase.caseTitle : 'Уголовное дело'}</span><span className="truncate text-xs text-muted-foreground">{activeCase ? activeCase.caseNumber : '№ ...'}</span></div>
               </SidebarMenuButton>
             </SidebarMenuItem>
           </SidebarMenu>
@@ -126,6 +201,40 @@ export default function CasePage() {
           <SidebarTrigger className="-ml-1" />
           <Separator orientation="vertical" className="mr-2 h-4" />
           <div className="flex items-center gap-1.5 flex-1"><Badge variant="outline" className="text-xs font-medium">{NAV_ITEMS.find(n => n.id === activeSection)?.label ?? 'Главная'}</Badge><div className="flex items-center gap-1 text-xs text-muted-foreground"><Activity className="w-3 h-3 text-emerald-600" />Онлайн</div></div>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="sm" className="gap-1.5 h-8 text-xs font-medium">
+                <FolderOpen className="h-3.5 w-3.5" />
+                {activeCase ? activeCase.caseNumber : 'Выбрать дело'}
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="w-64">
+              <DropdownMenuLabel>Переключение дела</DropdownMenuLabel>
+              {isLoadingCases && <DropdownMenuItem disabled className="text-xs text-muted-foreground">Загрузка...</DropdownMenuItem>}
+              {!isLoadingCases && cases.length === 0 && <DropdownMenuItem disabled className="text-xs text-muted-foreground">Нет доступных дел</DropdownMenuItem>}
+              {cases.map(c => (
+                <DropdownMenuItem key={c.id} onClick={() => handleSelectCase(c.id)} className="flex items-center gap-2">
+                  <Check className={`h-3.5 w-3.5 ${activeCase?.id === c.id ? 'text-emerald-600 opacity-100' : 'opacity-0'}`} />
+                  <div className="flex-1 min-w-0">
+                    <div className="truncate text-sm font-medium">{c.caseNumber}</div>
+                    <div className="truncate text-xs text-muted-foreground">{c.caseTitle}</div>
+                  </div>
+                  {(c.documentCount != null || c.personCount != null || c.episodeCount != null) && (
+                    <div className="flex items-center gap-1 text-[10px] text-muted-foreground shrink-0">
+                      {c.documentCount != null && <span>{c.documentCount} док.</span>}
+                      {c.personCount != null && <span>{c.personCount} уч.</span>}
+                      {c.episodeCount != null && <span>{c.episodeCount} эп.</span>}
+                    </div>
+                  )}
+                </DropdownMenuItem>
+              ))}
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={() => setNewCaseDialogOpen(true)} className="text-xs">
+                <Plus className="mr-2 h-3.5 w-3.5" />
+                Новое дело
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
           <div className="flex items-center gap-2">
             <Popover><PopoverTrigger asChild><Button variant="ghost" size="icon" className="relative"><Bell className="h-4 w-4" />{unreadCount > 0 && <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-red-700 text-[10px] font-bold text-white">{unreadCount}</span>}</Button></PopoverTrigger><PopoverContent align="end" className="w-80 p-0"><div className="p-3 flex items-center justify-between border-b"><h4 className="font-semibold text-sm">Уведомления</h4><Button variant="ghost" size="sm" className="text-xs h-7">Прочитать все</Button></div><ScrollArea className="h-[300px]"><div className="p-2 space-y-1">{notifications.slice(0, 5).map(n => { const cfg = NOTIF_SEV[n.type] ?? NOTIF_SEV.system; const Ic = cfg.icon; return <div key={n.id} className={`p-2.5 rounded-lg ${n.isRead ? 'bg-muted/30' : 'bg-muted/60'} hover:bg-muted transition-colors`}><div className="flex items-start gap-2"><div className={`flex items-center justify-center w-6 h-6 rounded shrink-0 ${cfg.bg}`}><Ic className={`w-3 h-3 ${cfg.color}`} /></div><div className="flex-1 min-w-0"><p className="text-xs font-semibold leading-tight">{n.title}</p><p className="text-[10px] text-muted-foreground mt-0.5">{n.description}</p></div></div></div> })}</div></ScrollArea></PopoverContent></Popover>
             <Button variant="ghost" size="icon" onClick={() => setCommandOpen(true)} className="hidden sm:flex"><CommandIcon className="h-4 w-4" /><span className="ml-1 text-xs text-muted-foreground">⌘K</span></Button>
@@ -138,10 +247,40 @@ export default function CasePage() {
 
         <footer className="border-t bg-muted/30 px-4 py-3 mt-auto">
           <div className="flex items-center justify-between gap-3 text-xs text-stone-500 dark:text-stone-400">
-            <span className="truncate">Система Управления Уголовным Делом • Дело № 2024-00145 • Колесниченко Д.А.</span>
+            <span className="truncate">Система Управления Уголовным Делом • {activeCase ? `Дело ${activeCase.caseNumber}` : 'Дело № ...'} • {activeCase?.defendantName || '...'}</span>
             <span className="shrink-0 font-medium text-stone-600 dark:text-stone-300">ИИ-аналитик v2.0</span>
           </div>
         </footer>
+
+        <Dialog open={newCaseDialogOpen} onOpenChange={setNewCaseDialogOpen}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>Новое уголовное дело</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4 py-2">
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Номер дела</label>
+                <Input placeholder="№ 2024-XXXXX" value={newCaseForm.caseNumber} onChange={e => setNewCaseForm(f => ({ ...f, caseNumber: e.target.value }))} />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Название дела</label>
+                <Input placeholder="Уголовное дело по обвинению..." value={newCaseForm.caseTitle} onChange={e => setNewCaseForm(f => ({ ...f, caseTitle: e.target.value }))} />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Подсудимый</label>
+                <Input placeholder="Фамилия И.О." value={newCaseForm.defendantName} onChange={e => setNewCaseForm(f => ({ ...f, defendantName: e.target.value }))} />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Статьи УК</label>
+                <Input placeholder="ст. 159 ч.3, ст. 160 ч.2 УК РФ" value={newCaseForm.articles} onChange={e => setNewCaseForm(f => ({ ...f, articles: e.target.value }))} />
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="outline" onClick={() => setNewCaseDialogOpen(false)}>Отмена</Button>
+              <Button onClick={handleCreateCase} disabled={isCreatingCase || !newCaseForm.caseNumber || !newCaseForm.caseTitle}>{isCreatingCase ? 'Создание...' : 'Создать дело'}</Button>
+            </div>
+          </DialogContent>
+        </Dialog>
 
         <CommandDialog open={commandOpen} onOpenChange={setCommandOpen}>
           <CommandInput placeholder="Введите команду или раздел..." />
