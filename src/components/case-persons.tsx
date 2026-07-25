@@ -333,14 +333,14 @@ function PersonRelationshipGraph() {
 
 // ─── Main Component ───
 
-export function CasePersons() {
+export function CasePersons({ caseId }: { caseId: string }) {
   const [roleFilter, setRoleFilter] = useState('all')
   const [selectedRoles, setSelectedRoles] = useState<string[]>([])
   const [searchQuery, setSearchQuery] = useState('')
   const [expandedId, setExpandedId] = useState<string|null>(null)
   const [compareIds, setCompareIds] = useState<string[]>([])
 
-  const { data: persons = [], isLoading } = useQuery({ queryKey: ['persons'], queryFn: getPersons })
+  const { data: persons = [], isLoading } = useQuery({ queryKey: ['persons', caseId], queryFn: () => getPersons(caseId) })
   const { data: relationships = [] } = useQuery({ queryKey: ['personRelationships'], queryFn: getPersonRelationships })
   const { data: statements = [] } = useQuery({ queryKey: ['witnessStatements'], queryFn: getWitnessStatements })
 

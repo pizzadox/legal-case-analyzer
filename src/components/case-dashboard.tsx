@@ -233,9 +233,9 @@ function MiniTimeline({ events, onNavigate }: { events: CaseTimelineEvent[]; onN
   </Card>)
 }
 
-export function CaseDashboard() {
+export function CaseDashboard({ caseId }: { caseId: string }) {
   const { setActiveSection } = useCaseStore()
-  const { data, isLoading } = useQuery({ queryKey: ['dashboard'], queryFn: getDashboardStats, retry: 1 })
+  const { data, isLoading } = useQuery({ queryKey: ['dashboard', caseId], queryFn: () => getDashboardStats(caseId), retry: 1 })
   const { data: healthData } = useQuery({ queryKey: ['health-score'], queryFn: getCaseHealthScore, retry: 1 })
   const { data: tlData } = useQuery({ queryKey: ['evidence-timeline'], queryFn: getEvidenceTimeline, retry: 1 })
   const { data: briefData } = useQuery({ queryKey: ['case-brief'], queryFn: getCaseBrief, retry: 1 })

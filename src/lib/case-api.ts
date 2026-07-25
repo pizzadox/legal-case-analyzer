@@ -46,10 +46,11 @@ async function fetchApi<T>(endpoint: string, options?: RequestInit): Promise<T> 
   return response.json()
 }
 
-// Upload documents (multi-file)
-export async function uploadDocuments(files: File[]): Promise<DocumentData[]> {
+// Upload documents (multi-file) for a specific case
+export async function uploadDocuments(files: File[], caseId?: string): Promise<DocumentData[]> {
   const formData = new FormData()
   files.forEach((file) => formData.append('files', file))
+  if (caseId) formData.append('caseId', caseId)
 
   const response = await fetch(`${API_BASE}/upload`, {
     method: 'POST',
@@ -64,49 +65,36 @@ export async function uploadDocuments(files: File[]): Promise<DocumentData[]> {
   return response.json()
 }
 
-// Get all documents (with mock-data fallback when DB is empty)
-export async function getDocuments(): Promise<DocumentData[]> {
+// Get all documents for a specific case (no mock-data fallback)
+export async function getDocuments(caseId?: string): Promise<DocumentData[]> {
+  const query = caseId ? `?caseId=${caseId}` : ''
   try {
-    const result = await fetchApi<{documents: DocumentData[], total: number}>('/documents')
-    if (result.documents && result.documents.length > 0) {
-      return result.documents
-    }
-    // DB is empty - fall back to mock data
-    const { mockDocuments } = await import('./mock-data')
-    return mockDocuments
+    const result = await fetchApi<{documents: DocumentData[], total: number}>(`/documents${query}`)
+    return result.documents ?? []
   } catch {
-    const { mockDocuments } = await import('./mock-data')
-    return mockDocuments
+    return []
   }
 }
 
-// Get all persons (with mock-data fallback when DB is empty)
-export async function getPersons(): Promise<PersonData[]> {
+// Get all persons for a specific case (no mock-data fallback)
+export async function getPersons(caseId?: string): Promise<PersonData[]> {
+  const query = caseId ? `?caseId=${caseId}` : ''
   try {
-    const result = await fetchApi<{persons: PersonData[], total: number}>('/persons')
-    if (result.persons && result.persons.length > 0) {
-      return result.persons
-    }
-    const { mockPersons } = await import('./mock-data')
-    return mockPersons
+    const result = await fetchApi<{persons: PersonData[], total: number}>(`/persons${query}`)
+    return result.persons ?? []
   } catch {
-    const { mockPersons } = await import('./mock-data')
-    return mockPersons
+    return []
   }
 }
 
-// Get all episodes (with mock-data fallback when DB is empty)
-export async function getEpisodes(): Promise<EpisodeData[]> {
+// Get all episodes for a specific case (no mock-data fallback)
+export async function getEpisodes(caseId?: string): Promise<EpisodeData[]> {
+  const query = caseId ? `?caseId=${caseId}` : ''
   try {
-    const result = await fetchApi<{episodes: EpisodeData[], total: number}>('/episodes')
-    if (result.episodes && result.episodes.length > 0) {
-      return result.episodes
-    }
-    const { mockEpisodes } = await import('./mock-data')
-    return mockEpisodes
+    const result = await fetchApi<{episodes: EpisodeData[], total: number}>(`/episodes${query}`)
+    return result.episodes ?? []
   } catch {
-    const { mockEpisodes } = await import('./mock-data')
-    return mockEpisodes
+    return []
   }
 }
 
@@ -151,9 +139,10 @@ export async function checkCompliance(documentId?: string, articleId?: string): 
   })
 }
 
-// Get dashboard statistics
-export async function getDashboardStats(): Promise<DashboardStats> {
-  return fetchApi<DashboardStats>('/dashboard')
+// Get dashboard statistics for a specific case
+export async function getDashboardStats(caseId?: string): Promise<DashboardStats> {
+  const query = caseId ? `?caseId=${caseId}` : ''
+  return fetchApi<DashboardStats>(`/dashboard${query}`)
 }
 
 // Get processing queue
@@ -173,7 +162,7 @@ export async function reprocessDocument(id: string): Promise<DocumentData> {
   })
 }
 
-// Delete a document
+// Delete a document (works for real DB documents only)
 export async function deleteDocument(id: string): Promise<{ success: boolean }> {
   return fetchApi<{ success: boolean }>(`/documents/${id}`, {
     method: 'DELETE',

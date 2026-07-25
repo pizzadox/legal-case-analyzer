@@ -18,7 +18,6 @@ import { toast as shadcnToast } from '@/hooks/use-toast'
 import {
   FileText, Upload, RefreshCw, Eye, CheckCircle, Clock, AlertTriangle, Loader2, Zap, XCircle, Trash2, Scale, BookOpen, Gavel, GitCompare, Download, Link2, ShieldCheck, ShieldAlert, ShieldX, BrainCircuit, Globe, TrendingDown, FileSearch, MessageSquare, Plus, Calendar, User, Search, X
 } from 'lucide-react'
-import { mockDocuments, mockEvidenceChain } from '@/lib/mock-data'
 import * as caseApi from '@/lib/case-api'
 import type { DocumentData, EvidenceChainData } from '@/lib/case-store'
 
@@ -28,12 +27,6 @@ interface Annotation {
   author: string
   timestamp: string
 }
-
-// Pre-populated mock annotations for the first document (doc1)
-const mockAnnotationsForDoc1: Annotation[] = [
-  { id: 'an1', text: 'Обратить внимание на страницу 15 — противоречие в показаниях', author: 'Адвокат Петров А.В.', timestamp: '2024-05-22T10:00:00Z' },
-  { id: 'an2', text: 'Сверить даты с протоколом обыска', author: 'Адвокат Петров А.В.', timestamp: '2024-05-22T10:15:00Z' },
-]
 
 // Format ISO timestamp in Russian style: dd.MM.yyyy HH:mm
 function formatRussianDateTime(iso: string): string {
@@ -244,7 +237,7 @@ function DocumentCompareDialog({ doc1, doc2, onClose }: { doc1: DocumentData; do
   )
 }
 
-export function CaseDocuments() {
+export function CaseDocuments({ caseId }: { caseId: string }) {
   const [isUploading, setIsUploading] = useState(false)
   const [isDragOver, setIsDragOver] = useState(false)
   const [selectedDoc, setSelectedDoc] = useState<DocumentData | null>(null)
@@ -253,8 +246,7 @@ export function CaseDocuments() {
   const [compareDocs, setCompareDocs] = useState<[DocumentData, DocumentData] | null>(null)
   const [selectedForCompare, setSelectedForCompare] = useState<string[]>([])
   const [quickFilter, setQuickFilter] = useState<string>('all')
-  // Annotations state: keyed by document id. Pre-seeded with mock data for the
-  // first document once documents have loaded; persisted to localStorage per doc.
+  // Annotations state: keyed by document id.
   const [annotations, setAnnotations] = useState<Record<string, Annotation[]>>({})
   const [newAnnotation, setNewAnnotation] = useState('')
   const [docSearch, setDocSearch] = useState('')
@@ -262,18 +254,16 @@ export function CaseDocuments() {
   const fileRef = useRef<HTMLInputElement>(null)
 
   const { data, isLoading, refetch } = useQuery({
-    queryKey: ['documents'],
-    queryFn: caseApi.getDocuments,
+    queryKey: ['documents', caseId],
+    queryFn: () => caseApi.getDocuments(caseId),
     retry: 1,
   })
   const { data: evidenceChainData } = useQuery({ queryKey: ['evidence-chain'], queryFn: caseApi.getEvidenceChain, retry: 1 })
-  const documents = data ?? mockDocuments
-  const evidenceChain = evidenceChainData ?? mockEvidenceChain
+  const documents = data ?? []
+  const evidenceChain = evidenceChainData ?? []
   const filteredDocs = quickFilter === 'all' ? documents : documents.filter(d => d.documentType === quickFilter)
 
   // Load persisted annotations from localStorage on mount.
-  // (setState here is intentional: hydrating client state from an external store.
-  //  Cascading renders are bounded — one extra render then quiescent.)
   useEffect(() => {
     const loaded = loadAllAnnotations()
     if (Object.keys(loaded).length > 0) {
@@ -281,18 +271,6 @@ export function CaseDocuments() {
       setAnnotations(prev => ({ ...prev, ...loaded }))
     }
   }, [])
-
-  // Seed mock annotations for the first document once documents have loaded,
-  // but only if there is no persisted entry for that document already.
-  useEffect(() => {
-    if (documents.length === 0) return
-    const firstDoc = documents[0]
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setAnnotations(prev => {
-      if (prev[firstDoc.id]) return prev
-      return { ...prev, [firstDoc.id]: mockAnnotationsForDoc1 }
-    })
-  }, [documents])
 
   // Persist per-document annotations to localStorage whenever they change
   useEffect(() => {
@@ -305,7 +283,7 @@ export function CaseDocuments() {
     if (!files?.length) return
     setIsUploading(true)
     try {
-      await caseApi.uploadDocuments(Array.from(files))
+      await caseApi.uploadDocuments(Array.from(files), caseId)
       toast.success(`Загружено ${files.length} документ(ов)`)
       refetch()
     } catch { toast.error('Ошибка загрузки') }
@@ -411,6 +389,9 @@ export function CaseDocuments() {
   }
 
   if (isLoading) return <div className="grid grid-cols-2 gap-4">{[1, 2, 3, 4].map(i => <Skeleton key={i} className="h-32" />)}</div>
+
+  // Empty state when there are no documents for this case
+  const showEmptyState = documents.length === 0 && !isLoading
 
   return (
     <div className="space-y-6">

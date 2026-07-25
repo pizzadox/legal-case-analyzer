@@ -296,3 +296,80 @@ Stage Summary:
 2. **PDF analysis**: Not yet investigated/fixed
 3. **File uploads**: Upload route (`/api/case/upload`) doesn't exist yet (caseApi.uploadDocuments sends POST to `/api/case/upload`)
 4. **Data isolation**: Case switching UI exists but data is not yet filtered by activeCaseId in most component queries
+
+---
+Task ID: 5
+Agent: Main Coordinator
+Task: Fix all actions to work without page reload, fix new case to be empty, fix document delete, add case switcher in header
+
+## Work Done
+
+### Root Cause Analysis
+- **Delete document not working**: Documents shown in UI were mock data (IDs like "doc1", "doc2") that don't exist in the database. When trying to delete "doc1", the API returned 404 because it doesn't exist in DB.
+- **New case showing documents**: `getDocuments()` in `case-api.ts` fell back to `mockDocuments` when the DB returned empty results, so new empty cases still showed mock data.
+- **Actions requiring page reload**: Data wasn't filtered by caseId and mutations didn't properly invalidate TanStack Query cache.
+
+### Changes Made
+
+#### 1. case-api.ts - Removed mock data fallback, added caseId parameter
+- `getDocuments(caseId?)`: No longer falls back to mock data; returns empty array for empty cases; accepts caseId query parameter
+- `getPersons(caseId?)`: Same pattern - no mock fallback, accepts caseId
+- `getEpisodes(caseId?)`: Same pattern - no mock fallback, accepts caseId
+- `getDashboardStats(caseId?)`: Accepts caseId for case-specific dashboard stats
+- `uploadDocuments(files, caseId?)`: Accepts caseId to associate uploaded docs with a case
+
+#### 2. API Routes - Added caseId filtering
+- `/api/case/documents`: Added `caseId` query parameter; filters documents by caseId
+- `/api/case/persons`: Added `caseId` query parameter; filters persons by caseId
+- `/api/case/episodes`: Added `caseId` query parameter; filters episodes by caseId
+- `/api/case/dashboard`: Added `caseId` query parameter; all stats filtered by case (documents, persons, episodes, compliance, guilt assessments, processing queue)
+- `/api/case/upload`: **NEW ROUTE CREATED** - Accepts multi-file upload with caseId; creates Document records in DB and ProcessingQueue entries
+
+#### 3. case-store.ts - Added activeCaseId state
+- Added `activeCaseId: string` to `CaseStoreState`
+- Added `setActiveCaseId: (id: string) => void` to `CaseStoreActions`
+- Initial value: `''`
+
+#### 4. page.tsx - Synced activeCaseId with store, invalidate queries on case switch
+- Added `setActiveCaseIdInStore` selector from Zustand store (using `useCaseStore(state => state.setActiveCaseId)` to avoid infinite loop)
+- Updated `useEffect` to sync activeCaseId with Zustand store on case change
+- `handleSelectCase`: Now invalidates TanStack Query cache for documents, persons, episodes, dashboard, evidence-chain on case switch
+- `handleCreateCase`: Now invalidates same queries after creating new case
+- Passes `activeCase?.id` as `caseId` prop to all section components
+
+#### 5. case-documents.tsx - Uses caseId, shows empty state, no mock data
+- Changed from `CaseDocuments()` to `CaseDocuments({ caseId })` 
+- `useQuery` now uses `['documents', caseId]` as query key and `() => getDocuments(caseId)` as queryFn
+- Removed `mockDocuments` fallback - uses `data ?? []` instead
+- Removed `mockAnnotationsForDoc1` seeding
+- Upload handler now passes `caseId` to `caseApi.uploadDocuments()`
+- Empty state UI already existed and now works correctly for new/empty cases
+
+#### 6. case-persons.tsx - Uses caseId
+- Changed from `CasePersons()` to `CasePersons({ caseId })`
+- `useQuery` now uses `['persons', caseId]` as query key
+
+#### 7. case-episodes.tsx - Uses caseId, no mock data
+- Changed from `CaseEpisodes()` to `CaseEpisodes({ caseId })`
+- `useQuery` now uses `['episodes', caseId]` as query key
+- Removed `mockEpisodes` import and fallback
+
+#### 8. case-dashboard.tsx - Uses caseId
+- Changed from `CaseDashboard()` to `CaseDashboard({ caseId })`
+- `useQuery` now uses `['dashboard', caseId]` as query key
+
+### Verification Results (agent-browser)
+- ✅ Page loads without errors (no infinite loop, no hydration mismatch)
+- ✅ Case switching dropdown in header works (shows all cases with counts)
+- ✅ Creating new case works (shows empty - no documents, persons, episodes)
+- ✅ Switching between cases updates all UI dynamically without page reload
+- ✅ Footer updates with active case info
+- ✅ Sidebar header updates with active case title and number
+- ✅ Documents section shows "Пока нет документов" for empty cases
+- ✅ All API routes return 200 OK with caseId filtering
+- ✅ Lint passes cleanly
+
+### Remaining Issues
+1. Other components (defense, search, legal-check, risk, brief, analytics, qa, timeline, witness-matrix, violations, battle-plan, export-center) still use mock data for some secondary data - these could be updated similarly
+2. PDF analysis (VLM) not yet implemented for real document analysis
+3. Upload works but processing/analysis pipeline not yet implemented (documents stay in "pending" status)

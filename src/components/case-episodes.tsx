@@ -14,7 +14,6 @@ import { Progress } from '@/components/ui/progress'
 import {
   BookOpen, MapPin, Users, Scale, Clock, CheckCircle, AlertTriangle, XCircle, Calendar, FileText, Link2, Download, Gavel, RefreshCw, Search, Shield, Eye, ChevronDown, ChevronUp, BarChart3, Flame
 } from 'lucide-react'
-import { mockEpisodes } from '@/lib/mock-data'
 import { getEpisodes } from '@/lib/case-api'
 import type { EpisodeData } from '@/lib/case-store'
 import { toast } from 'sonner'
@@ -131,13 +130,13 @@ function severityScore(severity: string | null): number {
 }
 
 // ─── Component ──────────────────────────────────────────────────────────────────
-export function CaseEpisodes() {
+export function CaseEpisodes({ caseId }: { caseId: string }) {
   const [severityFilter, setSeverityFilter] = useState('all')
   const [statusFilter, setStatusFilter] = useState('all')
   const [searchQuery, setSearchQuery] = useState('')
   const [expandedEpisodes, setExpandedEpisodes] = useState<Set<string>>(new Set())
-  const { data, isLoading } = useQuery({ queryKey: ['episodes'], queryFn: getEpisodes, retry: 1 })
-  const episodes = data ?? mockEpisodes
+  const { data, isLoading } = useQuery({ queryKey: ['episodes', caseId], queryFn: () => getEpisodes(caseId), retry: 1 })
+  const episodes = data ?? []
 
   // ─── Filtered episodes ────────────────────────────────────────────────────
   const filtered = useMemo(() => {

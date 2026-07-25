@@ -4,17 +4,21 @@ import { db } from '@/lib/db';
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
+    const caseId = searchParams.get('caseId');
     const status = searchParams.get('status');
     const type = searchParams.get('type');
     const dateFrom = searchParams.get('dateFrom');
     const dateTo = searchParams.get('dateTo');
     const page = parseInt(searchParams.get('page') || '1');
-    const limit = parseInt(searchParams.get('limit') || '20');
+    const limit = parseInt(searchParams.get('limit') || '50');
     const skip = (page - 1) * limit;
 
     // Build filter conditions
     const where: Record<string, unknown> = {};
 
+    if (caseId) {
+      where.caseId = caseId;
+    }
     if (status) {
       where.processingStatus = status;
     }

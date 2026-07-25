@@ -502,6 +502,7 @@ export interface DashboardStats {
 }
 
 interface CaseStoreState {
+  activeCaseId: string
   activeSection: SectionId
   documents: DocumentData[]
   persons: PersonData[]
@@ -530,6 +531,7 @@ interface CaseStoreState {
 }
 
 interface CaseStoreActions {
+  setActiveCaseId: (id: string) => void
   setActiveSection: (section: SectionId) => void
   setDocuments: (documents: DocumentData[]) => void
   setPersons: (persons: PersonData[]) => void
@@ -560,6 +562,7 @@ interface CaseStoreActions {
 }
 
 export const useCaseStore = create<CaseStoreState & CaseStoreActions>((set) => ({
+  activeCaseId: '',
   activeSection: 'dashboard',
   documents: [],
   persons: [],
@@ -585,6 +588,7 @@ export const useCaseStore = create<CaseStoreState & CaseStoreActions>((set) => (
   searchDateTo: null,
   currentQuestion: '',
   sidebarCollapsed: false,
+  setActiveCaseId: (id) => set({ activeCaseId: id }),
   setActiveSection: (section) => set({ activeSection: section }),
   setDocuments: (documents) => set({ documents }),
   setPersons: (persons) => set({ persons }),

@@ -1,29 +1,40 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
+    const { searchParams } = new URL(request.url);
+    const caseId = searchParams.get('caseId');
+
+    // Build base filter for caseId
+    const docFilter = caseId ? { caseId } : {};
+    const personFilter = caseId ? { caseId } : {};
+    const episodeFilter = caseId ? { caseId } : {};
+
     // Aggregate stats - documents
-    const totalDocuments = await db.document.count();
+    const totalDocuments = await db.document.count({ where: docFilter });
     const documentsByStatus = await db.document.groupBy({
       by: ['processingStatus'],
       _count: { id: true },
+      where: docFilter,
     });
 
     const documentsByType = await db.document.groupBy({
       by: ['documentType'],
       _count: { id: true },
+      where: docFilter,
     });
 
     // Aggregate stats - persons
-    const totalPersons = await db.person.count();
+    const totalPersons = await db.person.count({ where: personFilter });
     const personsByRole = await db.person.groupBy({
       by: ['role'],
       _count: { id: true },
+      where: personFilter,
     });
 
     const kolesnichenkoPerson = await db.person.findFirst({
-      where: { isKolesnichenko: true },
+      where: { ...personFilter, isKolesnichenko: true },
       select: {
         id: true,
         fullName: true,
@@ -34,34 +45,33 @@ export async function GET() {
     });
 
     // Aggregate stats - episodes
-    const totalEpisodes = await db.episode.count();
+    const totalEpisodes = await db.episode.count({ where: episodeFilter });
     const episodesBySeverity = await db.episode.groupBy({
       by: ['severity'],
       _count: { id: true },
+      where: episodeFilter,
     });
 
     const episodesByStatus = await db.episode.groupBy({
       by: ['status'],
       _count: { id: true },
+      where: episodeFilter,
     });
 
-    // Aggregate stats - articles
+    // Aggregate stats - articles (global)
     const totalArticles = await db.article.count();
-
-    // Aggregate stats - locations
     const totalLocations = await db.location.count();
-
-    // Aggregate stats - cross references
     const totalCrossReferences = await db.crossReference.count();
 
-    // Processing queue status
+    // Processing queue (filtered by document's caseId)
     const queueByStatus = await db.processingQueue.groupBy({
       by: ['status'],
       _count: { id: true },
+      where: caseId ? { document: { caseId } } : {},
     });
 
     const queueInProgress = await db.processingQueue.findMany({
-      where: { status: 'processing' },
+      where: { status: 'processing', ...(caseId ? { document: { caseId } } : {}) },
       include: {
         document: {
           select: { id: true, originalName: true, processingStatus: true },
@@ -69,8 +79,9 @@ export async function GET() {
       },
     });
 
-    // Guilt assessment summary
+    // Guilt assessment summary (filtered by person's caseId)
     const guiltAssessments = await db.guiltAssessment.findMany({
+      where: caseId ? { person: { caseId } } : {},
       include: {
         person: { select: { id: true, fullName: true, role: true, isKolesnichenko: true } },
         episode: { select: { id: true, title: true } },
@@ -98,8 +109,9 @@ export async function GET() {
       }
     }
 
-    // Compliance check summary
+    // Compliance check summary (filtered by document's caseId)
     const complianceChecks = await db.legalCompliance.findMany({
+      where: caseId ? { document: { caseId } } : {},
       include: {
         document: { select: { id: true, originalName: true } },
         article: { select: { id: true, code: true } },
@@ -115,6 +127,7 @@ export async function GET() {
 
     // Recent documents
     const recentDocuments = await db.document.findMany({
+      where: docFilter,
       orderBy: { uploadedAt: 'desc' },
       take: 5,
       select: {
@@ -140,7 +153,6 @@ export async function GET() {
       }
     }
 
-    // Format type counts for documents
     const documentTypeMap: Record<string, number> = {};
     for (const item of documentsByType) {
       if (item.documentType) {
@@ -148,7 +160,6 @@ export async function GET() {
       }
     }
 
-    // Format role counts for persons
     const personRoleMap: Record<string, number> = {};
     for (const item of personsByRole) {
       if (item.role) {
@@ -156,7 +167,6 @@ export async function GET() {
       }
     }
 
-    // Format severity counts for episodes
     const episodeSeverityMap: Record<string, number> = {};
     for (const item of episodesBySeverity) {
       if (item.severity) {
@@ -164,7 +174,6 @@ export async function GET() {
       }
     }
 
-    // Format episode status counts
     const episodeStatusMap: Record<string, number> = {};
     for (const item of episodesByStatus) {
       if (item.status) {
@@ -172,7 +181,6 @@ export async function GET() {
       }
     }
 
-    // Format queue status counts
     const queueStatusMap: Record<string, number> = {};
     for (const item of queueByStatus) {
       queueStatusMap[item.status] = item._count.id;

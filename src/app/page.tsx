@@ -15,6 +15,7 @@ import { LayoutDashboard, FileText, Users, BookOpen, Search, MessageSquare, Shie
 import { useTheme } from 'next-themes'
 import { toast } from 'sonner'
 import type { SectionId, NotificationData, CriminalCaseData } from '@/lib/case-store'
+import { useCaseStore } from '@/lib/case-store'
 import * as caseApi from '@/lib/case-api'
 import { Input } from '@/components/ui/input'
 import { mockNotifications } from '@/lib/mock-data'
@@ -100,19 +101,31 @@ export default function CasePage() {
     return cases[0]
   }, [cases, activeCaseId])
 
-  // Persist active case to localStorage when it changes
+  // Sync activeCaseId with the Zustand store - use individual setter to avoid infinite loop
+  const setActiveCaseIdInStore = useCaseStore(state => state.setActiveCaseId)
+
+  // Persist active case to localStorage + store when it changes
   useEffect(() => {
     if (activeCase && activeCase.id !== activeCaseId) {
       setActiveCaseId(activeCase.id)
       localStorage.setItem('activeCaseId', activeCase.id)
+      setActiveCaseIdInStore(activeCase.id)
     } else if (activeCase) {
       localStorage.setItem('activeCaseId', activeCase.id)
+      setActiveCaseIdInStore(activeCase.id)
     }
-  }, [activeCase, activeCaseId])
+  }, [activeCase, activeCaseId, setActiveCaseIdInStore])
 
   const handleSelectCase = (caseId: string) => {
     setActiveCaseId(caseId)
     localStorage.setItem('activeCaseId', caseId)
+    setActiveCaseIdInStore(caseId)
+    // Invalidate all case-related queries so data refetches for the new case
+    queryClient.invalidateQueries({ queryKey: ['documents'] })
+    queryClient.invalidateQueries({ queryKey: ['persons'] })
+    queryClient.invalidateQueries({ queryKey: ['episodes'] })
+    queryClient.invalidateQueries({ queryKey: ['dashboard'] })
+    queryClient.invalidateQueries({ queryKey: ['evidence-chain'] })
     const selectedCase = cases.find(c => c.id === caseId)
     toast.success(`Дело переключено: ${selectedCase?.caseNumber || caseId}`)
   }
@@ -133,6 +146,12 @@ export default function CasePage() {
       await queryClient.invalidateQueries({ queryKey: ['criminal-cases'] })
       setActiveCaseId(created.id)
       localStorage.setItem('activeCaseId', created.id)
+      setActiveCaseIdInStore(created.id)
+      // Invalidate all case-related queries so new (empty) case data loads
+      queryClient.invalidateQueries({ queryKey: ['documents'] })
+      queryClient.invalidateQueries({ queryKey: ['persons'] })
+      queryClient.invalidateQueries({ queryKey: ['episodes'] })
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] })
       setNewCaseDialogOpen(false)
       setNewCaseForm({ caseNumber: '', caseTitle: '', defendantName: '', articles: '' })
       toast.success(`Дело ${created.caseNumber} создано`)
@@ -147,11 +166,12 @@ export default function CasePage() {
   const runCommand = useCallback((id: SectionId) => { setActiveSection(id); setCommandOpen(false) }, [])
 
   const renderSection = () => {
+    const cid = activeCase?.id || ''
     switch (activeSection) {
-      case 'dashboard': return <CaseDashboard />
-      case 'documents': return <CaseDocuments />
-      case 'persons': return <CasePersons />
-      case 'episodes': return <CaseEpisodes />
+      case 'dashboard': return <CaseDashboard caseId={cid} />
+      case 'documents': return <CaseDocuments caseId={cid} />
+      case 'persons': return <CasePersons caseId={cid} />
+      case 'episodes': return <CaseEpisodes caseId={cid} />
       case 'search': return <CaseSearch />
       case 'qa': return <CaseQa />
       case 'defense': return <CaseDefense />
@@ -165,7 +185,7 @@ export default function CasePage() {
       case 'export-center': return <CaseExportCenter />
       case 'battle-plan': return <CaseBattlePlan />
       case 'violations': return <CaseViolations />
-      default: return <CaseDashboard />
+      default: return <CaseDashboard caseId={cid} />
     }
   }
 
