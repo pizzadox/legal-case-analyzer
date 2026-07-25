@@ -176,11 +176,57 @@ export interface ProcessingStatusResponse {
 }
 
 export async function getProcessingStatus(caseId: string): Promise<ProcessingStatusResponse> {
-  const response = await fetch(`/api/case/processing-status?XTransformPort=3005&caseId=${encodeURIComponent(caseId)}`)
-  if (!response.ok) {
-    throw new Error('Ошибка получения статуса обработки')
+  try {
+    const response = await fetch(`/api/status?XTransformPort=3005&caseId=${encodeURIComponent(caseId)}`)
+    if (!response.ok) {
+      // Return empty status if service is unavailable instead of throwing
+      return {
+        caseId,
+        total: 0,
+        completed: 0,
+        failed: 0,
+        processing: 0,
+        queued: 0,
+        progressPercent: 0,
+        items: [],
+      }
+    }
+    const data = await response.json()
+    // Map doc-processor response field names to our frontend types
+    return {
+      caseId: data.caseId || caseId,
+      total: data.total || 0,
+      completed: data.completed || 0,
+      failed: data.failed || 0,
+      processing: data.processing || 0,
+      queued: data.queued || 0,
+      progressPercent: data.progress ?? data.progressPercent ?? 0,
+      items: (data.items || []).map((item: any) => ({
+        id: item.id,
+        documentId: item.documentId,
+        documentName: item.documentName,
+        queuePosition: item.queuePosition,
+        status: item.status,
+        startedAt: item.startedAt,
+        completedAt: item.completedAt,
+        error: item.error,
+        processingStatus: item.processingStatus,
+        isCurrentlyProcessing: item.isCurrentlyProcessing || false,
+      })),
+    }
+  } catch {
+    // Return empty status if service is unavailable
+    return {
+      caseId,
+      total: 0,
+      completed: 0,
+      failed: 0,
+      processing: 0,
+      queued: 0,
+      progressPercent: 0,
+      items: [],
+    }
   }
-  return response.json()
 }
 
 // Get a single document detail

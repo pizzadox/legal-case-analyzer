@@ -182,7 +182,7 @@ export default function CasePage() {
       case 'witness-matrix': return <CaseWitnessMatrix />
       case 'brief': return <CaseBrief />
       case 'analytics': return <CaseAnalytics />
-      case 'export-center': return <CaseExportCenter />
+      case 'export-center': return <CaseExportCenter caseId={cid} />
       case 'battle-plan': return <CaseBattlePlan />
       case 'violations': return <CaseViolations />
       default: return <CaseDashboard caseId={cid} />

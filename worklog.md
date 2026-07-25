@@ -502,3 +502,30 @@ Task: Increase upload limit to 500MB, add multi-format support, background proce
 1. **OOM kills**: Chrome processes + Next.js compilation spike exceed available RAM, causing server crashes during browser testing
 2. **Processing pipeline**: Not yet tested end-to-end with real file upload + AI processing (needs actual document upload to test full pipeline)
 3. **Other components**: Defense, search, legal-check, risk, brief, analytics, qa, timeline, witness-matrix, violations still use some mock data for secondary data
+
+---
+Task ID: 5
+Agent: Main Coordinator
+Task: Fix critical bugs and set up document processing pipeline
+
+Work Log:
+- Fixed 404 error on processing-status API: Changed URL from `/api/case/processing-status` to `/api/status` (matching doc-processor's actual endpoint)
+- Added graceful error handling in getProcessingStatus() - returns empty status instead of throwing when service unavailable
+- Created `/api/case/upload/route.ts` - new upload API route that saves files, creates Document + ProcessingQueue records
+- Updated next.config.ts to set 500MB body size limit for uploads
+- Fixed doc-processor VLM extraction: Replaced SDK base64 approach with z-ai CLI subprocess approach (more stable for large files)
+- Rewrote extraction.ts to use pdftotext + pdftoppm + z-ai CLI for OCR of scanned PDFs
+- Fixed doc-processor to process only 1 document at a time (skip polling when currentlyProcessing.size > 0)
+- Started doc-processor with keep-alive.sh for crash recovery
+- Registered 3 PDF files for case 111 in database (том 1_0001-страницы-1/2/3.pdf)
+- Cleared all data for case 111 (documents, persons, episodes)
+- Rewrote CaseExportCenter component to use real data from API (CSV, JSON, HTML, PDF exports now functional)
+- Passed caseId prop to CaseExportCenter from page.tsx
+- Verified app renders correctly via agent-browser (documents visible in list for case 111)
+
+Stage Summary:
+- Upload route created and functional
+- Processing pipeline restructured: pdftotext → pdftoppm → z-ai CLI OCR → LLM analysis
+- Export Center now works with real case data (CSV/JSON/HTML/PDF)
+- Document processing is ongoing (OCR of scanned PDFs takes time per page)
+- Key fix: VLM uses CLI subprocess instead of SDK (prevents process crashes)

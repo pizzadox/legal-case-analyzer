@@ -195,14 +195,18 @@ function processDocumentAsync(queueId: string, documentId: string): void {
 async function pollAndProcess(): Promise<void> {
   if (!isRunning) return
 
+  // Skip polling if we're already processing a document
+  if (currentlyProcessing.size > 0) {
+    console.log(`[Poller] Currently processing ${currentlyProcessing.size} document(s), skipping poll`)
+    return
+  }
+
   try {
-    // Find queue entries that are queued or stuck in processing
+    // Find queue entries that are queued
     // Only process documents not already being handled
     const pendingEntries = await db.processingQueue.findMany({
       where: {
-        status: { in: ['queued', 'processing'] },
-        // Only pick entries not currently being processed by this instance
-        id: { notIn: Array.from(currentlyProcessing) },
+        status: 'queued',
       },
       include: {
         document: {
@@ -226,36 +230,7 @@ async function pollAndProcess(): Promise<void> {
     }
 
     const entry = pendingEntries[0]
-    console.log(`[Poller] Found document to process: ${entry.document.originalName} (queueId: ${entry.id}, status: ${entry.status})`)
-
-    // Reset stuck processing entries (if they've been processing for too long, they might be stuck)
-    if (entry.status === 'processing' && entry.startedAt) {
-      const startedAt = new Date(entry.startedAt)
-      const now = new Date()
-      const elapsedMinutes = (now.getTime() - startedAt.getTime()) / (1000 * 60)
-
-      // If processing for more than 30 minutes, it's likely stuck - reset to queued
-      if (elapsedMinutes > 30) {
-        console.log(`[Poller] Entry ${entry.id} has been processing for ${elapsedMinutes} minutes - resetting to queued`)
-        await db.processingQueue.update({
-          where: { id: entry.id },
-          data: { status: 'queued', startedAt: null },
-        })
-        await db.document.update({
-          where: { id: entry.documentId },
-          data: { processingStatus: 'pending', processingError: 'Processing timeout - retrying' },
-        })
-        return
-      }
-    }
-
-    // Also reset the document status if it's stuck in 'processing' but queue is 'queued'
-    if (entry.document.processingStatus === 'processing' && entry.status === 'queued') {
-      await db.document.update({
-        where: { id: entry.documentId },
-        data: { processingStatus: 'pending' },
-      })
-    }
+    console.log(`[Poller] Found document to process: ${entry.document.originalName} (queueId: ${entry.id})`)
 
     // Process the document
     processDocumentAsync(entry.id, entry.documentId)
