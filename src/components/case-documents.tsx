@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useRef, useEffect } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -19,7 +19,7 @@ import {
   FileText, Upload, RefreshCw, Eye, CheckCircle, Clock, AlertTriangle, Loader2, Zap, XCircle, Trash2, Scale, BookOpen, Gavel, GitCompare, Download, Link2, ShieldCheck, ShieldAlert, ShieldX, BrainCircuit, Globe, TrendingDown, FileSearch, MessageSquare, Plus, Calendar, User, Search, X
 } from 'lucide-react'
 import * as caseApi from '@/lib/case-api'
-import type { DocumentData, EvidenceChainData } from '@/lib/case-store'
+import type { DocumentData, EvidenceChainData, ProcessingStatusResponse } from '@/lib/case-store'
 
 interface Annotation {
   id: string
@@ -185,20 +185,34 @@ function EvidenceChainSection({ items }: { items: EvidenceChainData[] }) {
   )
 }
 
-// Export CSV helper
+// Export CSV helper (Russian headers, semicolon-separated for Excel compatibility)
 function exportDocumentsCSV(docs: DocumentData[]) {
-  const rows = ['Name,Type,Date,Status,Size,Summary']
-  docs.forEach(d => {
-    rows.push(`"${d.originalName}",${d.documentType ?? ''},${d.documentDate ?? ''},${d.processingStatus},${fmtSize(d.fileSize)},${d.summary ?? ''}`)
-  })
-  const blob = new Blob([rows.join('\n')], { type: 'text/csv;charset=utf-8' })
+  const headers = ['Название', 'Тип', 'Статус', 'Дата документа', 'Размер (КБ)', 'Дата загрузки', 'Описание']
+  const rows = docs.map(d => [
+    d.originalName,
+    d.documentType ?? '',
+    d.processingStatus,
+    d.documentDate ?? '',
+    Math.round(d.fileSize / 1024),
+    new Date(d.uploadedAt).toLocaleDateString('ru-RU'),
+    d.summary ?? '',
+  ])
+  const csv = [headers.join(';'), ...rows.map(r => r.join(';'))].join('\n')
+  const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8' })
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = url
-  a.download = 'documents.csv'
+  a.download = `documents_export_${new Date().toISOString().slice(0,10)}.csv`
   a.click()
   URL.revokeObjectURL(url)
   toast.success('CSV экспорт выполнен')
+}
+
+// Export PDF helper (opens printable HTML in new window)
+function exportDocumentsPDF(docs: DocumentData[]) {
+  const html = `<html><head><title>Экспорт документов</title><style>body{font-family:Arial;padding:20px}table{border-collapse:collapse;width:100%}th,td{border:1px solid #ccc;padding:8px;text-align:left}th{background:#f5f5f5}</style></head><body><h1>Экспорт документов уголовного дела</h1><table><tr><th>Название</th><th>Тип</th><th>Статус</th><th>Дата</th><th>Размер</th><th>Описание</th></tr>${docs.map(d => `<tr><td>${d.originalName}</td><td>${d.documentType ?? ''}</td><td>${d.processingStatus}</td><td>${d.documentDate ?? ''}</td><td>${Math.round(d.fileSize/1024)} КБ</td><td>${d.summary ?? ''}</td></tr>`).join('')}</table></body></html>`
+  const w = window.open('', '_blank')
+  if (w) { w.document.write(html); w.document.close(); w.print() }
 }
 
 // Document comparison dialog
@@ -238,6 +252,7 @@ function DocumentCompareDialog({ doc1, doc2, onClose }: { doc1: DocumentData; do
 }
 
 export function CaseDocuments({ caseId }: { caseId: string }) {
+  const queryClient = useQueryClient()
   const [isUploading, setIsUploading] = useState(false)
   const [isDragOver, setIsDragOver] = useState(false)
   const [selectedDoc, setSelectedDoc] = useState<DocumentData | null>(null)
@@ -259,6 +274,26 @@ export function CaseDocuments({ caseId }: { caseId: string }) {
     retry: 1,
   })
   const { data: evidenceChainData } = useQuery({ queryKey: ['evidence-chain'], queryFn: caseApi.getEvidenceChain, retry: 1 })
+  
+  // Poll processing status from the microservice every 5 seconds
+  const { data: processingStatus } = useQuery<ProcessingStatusResponse>({ 
+    queryKey: ['processing-status', caseId],
+    queryFn: () => caseApi.getProcessingStatus(caseId),
+    refetchInterval: 5000, // Poll every 5 seconds
+    retry: 1,
+    enabled: !!caseId, // Only poll when we have a caseId
+  })
+  
+  // Auto-refresh document list when processing completes
+  useEffect(() => {
+    if (processingStatus && processingStatus.items.some(item => item.status === 'completed' || item.status === 'failed')) {
+      queryClient.invalidateQueries({ queryKey: ['documents', caseId] })
+      queryClient.invalidateQueries({ queryKey: ['persons', caseId] })
+      queryClient.invalidateQueries({ queryKey: ['episodes', caseId] })
+      queryClient.invalidateQueries({ queryKey: ['dashboard', caseId] })
+    }
+  }, [processingStatus, caseId, queryClient])
+  
   const documents = data ?? []
   const evidenceChain = evidenceChainData ?? []
   const filteredDocs = quickFilter === 'all' ? documents : documents.filter(d => d.documentType === quickFilter)
@@ -285,7 +320,9 @@ export function CaseDocuments({ caseId }: { caseId: string }) {
     try {
       await caseApi.uploadDocuments(Array.from(files), caseId)
       toast.success(`Загружено ${files.length} документ(ов)`)
-      refetch()
+      await queryClient.invalidateQueries({ queryKey: ['documents', caseId] })
+      // Reset file input so the same file can be re-uploaded
+      if (fileRef.current) fileRef.current.value = ''
     } catch { toast.error('Ошибка загрузки') }
     setIsUploading(false)
   }
@@ -407,16 +444,57 @@ export function CaseDocuments({ caseId }: { caseId: string }) {
           ) : (
             <>
               <Upload className="w-8 h-8 mx-auto text-muted-foreground" />
-              <p className="mt-2 text-sm font-medium">Перетащите PDF-файлы сюда</p>
+              <p className="mt-2 text-sm font-medium">Перетащите файлы сюда</p>
               <p className="text-xs text-muted-foreground">или нажмите кнопку ниже</p>
               <Button size="sm" className="mt-3 rounded-xl bg-gradient-to-r from-red-700 to-red-800 text-white shadow-sm" onClick={() => fileRef.current?.click()}>
                 <Upload className="w-4 h-4 mr-1" />Выбрать файлы
               </Button>
-              <input ref={fileRef} type="file" accept=".pdf" multiple className="hidden" onChange={e => handleUpload(e.target.files)} />
+              <input ref={fileRef} type="file" accept=".pdf,.doc,.docx,.txt,.rtf,.jpg,.jpeg,.png,.gif,.bmp,.tiff,.webp,.xls,.xlsx,.odt,.ods,.csv" multiple className="hidden" onChange={e => handleUpload(e.target.files)} />
+              <p className="text-xs text-muted-foreground mt-2">PDF, DOC, DOCX, TXT, RTF, изображения, XLS/XLSX, ODT/ODS, CSV</p>
             </>
           )}
         </CardContent>
       </Card>
+
+      {/* Processing Status Panel */}
+      {processingStatus && processingStatus.total > 0 && (
+        <Card className="rounded-xl shadow-sm border-t-2 border-t-amber-500 bg-gradient-to-br from-card via-card to-amber-500/5">
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <Loader2 className={`w-4 h-4 ${processingStatus.processing > 0 ? 'animate-spin text-amber-600' : processingStatus.failed > 0 ? 'text-red-700' : 'text-emerald-600'}`} />
+                <span className="text-sm font-semibold">
+                  {processingStatus.processing > 0 ? 'Обработка документов...' 
+                    : processingStatus.queued > 0 ? 'В очереди на обработку'
+                    : processingStatus.failed > 0 ? 'Обработка завершена (есть ошибки)'
+                    : 'Все документы обработаны'}
+                </span>
+              </div>
+              <Badge className={processingStatus.processing > 0 ? 'bg-amber-600 text-white' : processingStatus.failed > 0 ? 'bg-red-700 text-white' : 'bg-emerald-600 text-white'}>
+                {processingStatus.progressPercent}%
+              </Badge>
+            </div>
+            <Progress value={processingStatus.progressPercent} className="h-2 rounded-full mb-3" />
+            <div className="space-y-1.5 max-h-40 overflow-y-auto">
+              {processingStatus.items.map(item => (
+                <div key={item.id} className="flex items-center gap-2 text-xs">
+                  {item.status === 'queued' && <Clock className="w-3 h-3 text-stone-500" />}
+                  {item.status === 'processing' && <Loader2 className="w-3 h-3 animate-spin text-amber-600" />}
+                  {(item.status === 'completed') && <CheckCircle className="w-3 h-3 text-emerald-600" />}
+                  {item.status === 'failed' && <XCircle className="w-3 h-3 text-red-700" />}
+                  <span className="truncate flex-1">{item.documentName}</span>
+                  <span className="text-muted-foreground shrink-0">
+                    {item.status === 'queued' ? 'в очереди' 
+                      : item.status === 'processing' ? 'обработка...' 
+                      : item.status === 'completed' ? 'готово' 
+                      : 'ошибка'}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Compare / Export controls */}
       <div className="flex items-center gap-2 flex-wrap">
@@ -428,8 +506,8 @@ export function CaseDocuments({ caseId }: { caseId: string }) {
         )}
         {compareMode && <Badge variant="outline" className="text-xs">Выбрано: {selectedForCompare.length} / 2</Badge>}
         <Separator orientation="vertical" className="h-4 mx-2" />
-        <Button size="sm" variant="outline" className="rounded-xl gap-1" onClick={() => exportDocumentsCSV(documents)}><Download className="w-3 h-3" />Export CSV</Button>
-        <Button size="sm" variant="outline" className="rounded-xl gap-1" onClick={() => toast.info('PDF экспорт будет доступен в будущих версиях')}><FileText className="w-3 h-3" />Export PDF</Button>
+        <Button size="sm" variant="outline" className="rounded-xl gap-1" onClick={() => exportDocumentsCSV(documents)}><Download className="w-3 h-3" />Экспорт CSV</Button>
+        <Button size="sm" variant="outline" className="rounded-xl gap-1" onClick={() => exportDocumentsPDF(documents)}><FileText className="w-3 h-3" />Экспорт PDF</Button>
       </div>
 
       {/* Quick Filter row */}
@@ -529,7 +607,7 @@ export function CaseDocuments({ caseId }: { caseId: string }) {
               <FileText className="w-10 h-10 text-stone-500" />
             </div>
             <p className="mt-2 text-base font-semibold">Пока нет документов</p>
-            <p className="text-sm text-muted-foreground mt-1 max-w-md mx-auto">Загрузите PDF-файлы уголовного дела — обвинительное заключение, протоколы, показания — для запуска AI-анализа и проверки.</p>
+            <p className="text-sm text-muted-foreground mt-1 max-w-md mx-auto">Загрузите файлы уголовного дела — обвинительное заключение, протоколы, показания — для запуска AI-анализа и проверки.</p>
             <Button size="sm" className="mt-4 rounded-xl bg-gradient-to-r from-red-700 to-red-800 text-white shadow-sm" onClick={() => fileRef.current?.click()}>
               <Upload className="w-4 h-4 mr-1" />Загрузить документ
             </Button>

@@ -382,6 +382,31 @@ export interface AnalyticsData {
   workloadByMonth: { month: string; documents: number; actions: number; hearings: number }[]
 }
 
+// Processing status from microservice
+export interface ProcessingStatusItem {
+  id: string
+  documentId: string
+  documentName: string
+  queuePosition: number
+  status: string
+  startedAt: string | null
+  completedAt: string | null
+  error: string | null
+  processingStatus: string
+  isCurrentlyProcessing: boolean
+}
+
+export interface ProcessingStatusResponse {
+  caseId: string
+  total: number
+  completed: number
+  failed: number
+  processing: number
+  queued: number
+  progressPercent: number
+  items: ProcessingStatusItem[]
+}
+
 export interface CriminalCaseData {
   id: string
   caseNumber: string

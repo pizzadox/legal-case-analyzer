@@ -1,0 +1,849 @@
+     1→'use client'
+     2→
+     3→import { useState, useRef, useEffect } from 'react'
+     4→import { useQuery } from '@tanstack/react-query'
+     5→import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+     6→import { Badge } from '@/components/ui/badge'
+     7→import { Button } from '@/components/ui/button'
+     8→import { Progress } from '@/components/ui/progress'
+     9→import { Skeleton } from '@/components/ui/skeleton'
+    10→import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+    11→import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet'
+    12→import { Textarea } from '@/components/ui/textarea'
+    13→import { Avatar, AvatarFallback } from '@/components/ui/avatar'
+    14→import { ScrollArea } from '@/components/ui/scroll-area'
+    15→import { Separator } from '@/components/ui/separator'
+    16→import { toast } from 'sonner'
+    17→import { toast as shadcnToast } from '@/hooks/use-toast'
+    18→import {
+    19→  FileText, Upload, RefreshCw, Eye, CheckCircle, Clock, AlertTriangle, Loader2, Zap, XCircle, Trash2, Scale, BookOpen, Gavel, GitCompare, Download, Link2, ShieldCheck, ShieldAlert, ShieldX, BrainCircuit, Globe, TrendingDown, FileSearch, MessageSquare, Plus, Calendar, User, Search, X
+    20→} from 'lucide-react'
+    21→import * as caseApi from '@/lib/case-api'
+    22→import type { DocumentData, EvidenceChainData } from '@/lib/case-store'
+    23→
+    24→interface Annotation {
+    25→  id: string
+    26→  text: string
+    27→  author: string
+    28→  timestamp: string
+    29→}
+    30→
+    31→// Format ISO timestamp in Russian style: dd.MM.yyyy HH:mm
+    32→function formatRussianDateTime(iso: string): string {
+    33→  try {
+    34→    const d = new Date(iso)
+    35→    if (isNaN(d.getTime())) return iso
+    36→    const dd = String(d.getDate()).padStart(2, '0')
+    37→    const mm = String(d.getMonth() + 1).padStart(2, '0')
+    38→    const yyyy = d.getFullYear()
+    39→    const hh = String(d.getHours()).padStart(2, '0')
+    40→    const min = String(d.getMinutes()).padStart(2, '0')
+    41→    return `${dd}.${mm}.${yyyy} ${hh}:${min}`
+    42→  } catch {
+    43→    return iso
+    44→  }
+    45→}
+    46→
+    47→// localStorage helpers for per-document annotations
+    48→const ANNOTATIONS_PREFIX = 'case-doc-annotations-'
+    49→
+    50→function loadAllAnnotations(): Record<string, Annotation[]> {
+    51→  if (typeof window === 'undefined') return {}
+    52→  const loaded: Record<string, Annotation[]> = {}
+    53→  try {
+    54→    for (let i = 0; i < window.localStorage.length; i++) {
+    55→      const key = window.localStorage.key(i)
+    56→      if (key && key.startsWith(ANNOTATIONS_PREFIX)) {
+    57→        const docId = key.replace(ANNOTATIONS_PREFIX, '')
+    58→        const stored = window.localStorage.getItem(key)
+    59→        if (stored) {
+    60→          try {
+    61→            const parsed = JSON.parse(stored)
+    62→            if (Array.isArray(parsed)) loaded[docId] = parsed
+    63→          } catch {
+    64→            /* ignore malformed entries */
+    65→          }
+    66→        }
+    67→      }
+    68→    }
+    69→  } catch {
+    70→    /* localStorage unavailable */
+    71→  }
+    72→  return loaded
+    73→}
+    74→
+    75→function saveAnnotationsForDoc(docId: string, anns: Annotation[]) {
+    76→  if (typeof window === 'undefined') return
+    77→  try {
+    78→    window.localStorage.setItem(`${ANNOTATIONS_PREFIX}${docId}`, JSON.stringify(anns))
+    79→  } catch {
+    80→    /* ignore quota errors */
+    81→  }
+    82→}
+    83→
+    84→function fmtSize(b: number) {
+    85→  if (b < 1024) return b + ' Б'
+    86→  if (b < 1048576) return (b / 1024).toFixed(1) + ' КБ'
+    87→  return (b / 1048576).toFixed(1) + ' МБ'
+    88→}
+    89→
+    90→const STATUS: Record<string, { icon: React.ReactNode; badge: string; label: string }> = {
+    91→  completed: { icon: <CheckCircle className="w-3 h-3 text-emerald-600" />, badge: 'bg-emerald-700 text-white', label: 'Обработан' },
+    92→  processing: { icon: <Clock className="w-3 h-3 text-amber-500 animate-spin" />, badge: 'bg-amber-600 text-white', label: 'В обработке' },
+    93→  pending: { icon: <Clock className="w-3 h-3 text-stone-400" />, badge: 'bg-stone-500 text-white', label: 'Ожидает' },
+    94→  failed: { icon: <XCircle className="w-3 h-3 text-red-600" />, badge: 'bg-red-700 text-white', label: 'Ошибка' },
+    95→}
+    96→
+    97→// Document type icons for legal document style
+    98→const TYPE_ICON: Record<string, React.ReactNode> = {
+    99→  обвинение: <Gavel className="w-4 h-4 text-red-700" />,
+   100→  показание: <Eye className="w-4 h-4 text-orange-600" />,
+   101→  протокол: <FileText className="w-4 h-4 text-amber-600" />,
+   102→  экспертиза: <Scale className="w-4 h-4 text-stone-600" />,
+   103→}
+   104→
+   105→const TYPE_BADGE: Record<string, string> = {
+   106→  обвинение: 'bg-red-700 text-white',
+   107→  показание: 'bg-orange-600 text-white',
+   108→  протокол: 'bg-amber-600 text-white',
+   109→  экспертиза: 'bg-stone-600 text-white',
+   110→}
+   111→
+   112→const QUICK_FILTERS = [
+   113→  { value: 'all', label: 'Все' },
+   114→  { value: 'обвинение', label: 'Обвинение' },
+   115→  { value: 'показание', label: 'Показание' },
+   116→  { value: 'протокол', label: 'Протокол' },
+   117→  { value: 'экспертиза', label: 'Экспертиза' },
+   118→] as const
+   119→
+   120→const ADMISS_CONFIG: Record<string, { icon: React.ReactNode; badge: string; label: string }> = {
+   121→  admissible: { icon: <ShieldCheck className="w-3 h-3 text-emerald-700" />, badge: 'bg-emerald-700 text-white', label: 'Допустимо' },
+   122→  questionable: { icon: <ShieldAlert className="w-3 h-3 text-amber-600" />, badge: 'bg-amber-600 text-white', label: 'Сомнительно' },
+   123→  inadmissible: { icon: <ShieldX className="w-3 h-3 text-red-700" />, badge: 'bg-red-700 text-white', label: 'Недопустимо' },
+   124→}
+   125→
+   126→const CHALLENGE_SEV: Record<string, string> = { low: 'bg-stone-500 text-white', medium: 'bg-amber-600 text-white', high: 'bg-red-700 text-white' }
+   127→
+   128→// Integrity score ring (small SVG)
+   129→function IntegrityRing({ score }: { score: number }) {
+   130→  const radius = 18, circ = 2 * Math.PI * radius, offset = circ - (score / 100) * circ
+   131→  const color = score >= 75 ? '#059669' : score >= 50 ? '#d97706' : '#dc2626'
+   132→  return (
+   133→    <div className="relative w-12 h-12 shrink-0">
+   134→      <svg width="48" height="48" className="transform -rotate-90"><circle cx="24" cy="24" r={radius} stroke="#e5e7eb" strokeWidth="4" fill="none" className="dark:stroke-stone-700" /><circle cx="24" cy="24" r={radius} stroke={color} strokeWidth="4" fill="none" strokeDasharray={circ} strokeDashoffset={offset} strokeLinecap="round" className="transition-all duration-700" /></svg>
+   135→      <div className="absolute inset-0 flex items-center justify-center text-xs font-bold" style={{ color }}>{score}</div>
+   136→    </div>
+   137→  )
+   138→}
+   139→
+   140→// Evidence Chain Section
+   141→function EvidenceChainSection({ items }: { items: EvidenceChainData[] }) {
+   142→  return (
+   143→    <Card className="rounded-xl shadow-sm border-l-4 border-stone-500">
+   144→      <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2"><Link2 className="w-4 h-4 text-amber-600" /> Цепочка сохранности доказательств <Badge variant="outline" className="text-xs">{items.length} объектов</Badge></CardTitle></CardHeader>
+   145→      <CardContent className="p-4 space-y-3 max-h-[480px] overflow-y-auto scrollbar-thin">
+   146→        {items.map(ev => {
+   147→          const adm = ADMISS_CONFIG[ev.admissibility] ?? ADMISS_CONFIG.questionable
+   148→          return (
+   149→            <div key={ev.evidenceId} className="border rounded-xl p-3 bg-muted/30">
+   150→              <div className="flex items-start gap-3">
+   151→                <IntegrityRing score={ev.integrityScore} />
+   152→                <div className="flex-1 min-w-0">
+   153→                  <div className="flex items-center gap-2 flex-wrap">
+   154→                    <p className="font-medium text-sm">{ev.evidenceName}</p>
+   155→                    <Badge variant="outline" className="text-xs">{ev.evidenceType}</Badge>
+   156→                    <Badge className={adm.badge}>{adm.icon}{adm.label}</Badge>
+   157→                  </div>
+   158→                  <p className="text-xs text-muted-foreground mt-1">Изъят: {new Date(ev.collectedAt).toLocaleDateString('ru-RU')} • {ev.collectedBy}</p>
+   159→                  <p className="text-xs text-muted-foreground">{ev.location}</p>
+   160→                </div>
+   161→              </div>
+   162→              {/* Chain steps as vertical mini-timeline */}
+   163→              <div className="mt-2 relative pl-4 space-y-1.5">
+   164→                {ev.chainSteps.map((step, i) => (
+   165→                  <div key={step.id} className="relative">
+   166→                    <div className={`absolute -left-4 top-1 w-2 h-2 rounded-full ${step.status === 'intact' ? 'bg-emerald-500' : step.status === 'transferred' ? 'bg-amber-500' : step.status === 'analyzed' ? 'bg-stone-500' : 'bg-red-500'}`} />
+   167→                    {i < ev.chainSteps.length - 1 && <div className="absolute -left-[13px] top-2 w-0.5 h-3 bg-stone-300 dark:bg-stone-600" />}
+   168→                    <p className="text-xs"><span className="font-medium">{step.action}</span> — {step.actor} <span className="text-muted-foreground">({new Date(step.timestamp).toLocaleDateString('ru-RU', { day: '2-digit', month: 'short' })})</span></p>
+   169→                  </div>
+   170→                ))}
+   171→              </div>
+   172→              {/* Challenges */}
+   173→              {ev.challenges.length > 0 && (
+   174→                <div className="mt-2 flex flex-wrap gap-1">
+   175→                  {ev.challenges.map((c, i) => (
+   176→                    <Badge key={i} className={`${CHALLENGE_SEV[c.severity]} text-xs`}><AlertTriangle className="w-2 h-2 mr-1" />{c.description}</Badge>
+   177→                  ))}
+   178→                </div>
+   179→              )}
+   180→            </div>
+   181→          )
+   182→        })}
+   183→      </CardContent>
+   184→    </Card>
+   185→  )
+   186→}
+   187→
+   188→// Export CSV helper
+   189→function exportDocumentsCSV(docs: DocumentData[]) {
+   190→  const rows = ['Name,Type,Date,Status,Size,Summary']
+   191→  docs.forEach(d => {
+   192→    rows.push(`"${d.originalName}",${d.documentType ?? ''},${d.documentDate ?? ''},${d.processingStatus},${fmtSize(d.fileSize)},${d.summary ?? ''}`)
+   193→  })
+   194→  const blob = new Blob([rows.join('\n')], { type: 'text/csv;charset=utf-8' })
+   195→  const url = URL.createObjectURL(blob)
+   196→  const a = document.createElement('a')
+   197→  a.href = url
+   198→  a.download = 'documents.csv'
+   199→  a.click()
+   200→  URL.revokeObjectURL(url)
+   201→  toast.success('CSV экспорт выполнен')
+   202→}
+   203→
+   204→// Document comparison dialog
+   205→function DocumentCompareDialog({ doc1, doc2, onClose }: { doc1: DocumentData; doc2: DocumentData; onClose: () => void }) {
+   206→  const fields = [
+   207→    { label: 'Название', key1: doc1.originalName, key2: doc2.originalName },
+   208→    { label: 'Тип', key1: doc1.documentType ?? '—', key2: doc2.documentType ?? '—' },
+   209→    { label: 'Дата документа', key1: doc1.documentDate ?? '—', key2: doc2.documentDate ?? '—' },
+   210→    { label: 'Статус', key1: doc1.processingStatus, key2: doc2.processingStatus },
+   211→    { label: 'Размер', key1: fmtSize(doc1.fileSize), key2: fmtSize(doc2.fileSize) },
+   212→    { label: 'Источник', key1: doc1.sourceReference ?? '—', key2: doc2.sourceReference ?? '—' },
+   213→  ]
+   214→  const renderSide = (doc: DocumentData, label: string, getValue: (f: typeof fields[number]) => string) => (
+   215→    <div className="space-y-3">
+   216→      <div className="p-3 rounded-lg bg-muted"><p className="font-medium text-xs mb-1">{label}</p>{doc.documentType && <Badge className={TYPE_BADGE[doc.documentType] ?? 'bg-stone-500 text-white'}>{doc.documentType}</Badge>}</div>
+   217→      {fields.map(f => (
+   218→        <div key={f.label} className={`p-2 rounded-lg ${f.key1 !== f.key2 ? 'bg-red-100 dark:bg-red-900/30 border border-red-300 dark:border-red-700' : 'bg-muted/50'}`}>
+   219→          <p className="text-xs font-medium text-muted-foreground">{f.label}</p><p className="text-xs font-semibold">{getValue(f)}</p>
+   220→        </div>
+   221→      ))}
+   222→      {doc.summary && <div className="p-2 rounded-lg bg-muted"><p className="text-xs font-medium text-muted-foreground">Краткое содержание</p><p className="text-xs">{doc.summary}</p></div>}
+   223→    </div>
+   224→  )
+   225→  return (
+   226→    <Dialog open={true} onOpenChange={onClose}>
+   227→      <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto rounded-xl">
+   228→        <DialogHeader><DialogTitle className="text-sm flex items-center gap-2"><GitCompare className="w-4 h-4" /> Сравнение документов</DialogTitle></DialogHeader>
+   229→        <div className="grid grid-cols-2 gap-4 text-sm">
+   230→          {renderSide(doc1, 'Документ A', f => f.key1)}
+   231→          {renderSide(doc2, 'Документ B', f => f.key2)}
+   232→        </div>
+   233→        <Separator className="mt-3" />
+   234→        <p className="text-xs text-muted-foreground">Отличия выделены красным фоном</p>
+   235→      </DialogContent>
+   236→    </Dialog>
+   237→  )
+   238→}
+   239→
+   240→export function CaseDocuments({ caseId }: { caseId: string }) {
+   241→  const [isUploading, setIsUploading] = useState(false)
+   242→  const [isDragOver, setIsDragOver] = useState(false)
+   243→  const [selectedDoc, setSelectedDoc] = useState<DocumentData | null>(null)
+   244→  const [analyzingId, setAnalyzingId] = useState<string | null>(null)
+   245→  const [compareMode, setCompareMode] = useState(false)
+   246→  const [compareDocs, setCompareDocs] = useState<[DocumentData, DocumentData] | null>(null)
+   247→  const [selectedForCompare, setSelectedForCompare] = useState<string[]>([])
+   248→  const [quickFilter, setQuickFilter] = useState<string>('all')
+   249→  // Annotations state: keyed by document id.
+   250→  const [annotations, setAnnotations] = useState<Record<string, Annotation[]>>({})
+   251→  const [newAnnotation, setNewAnnotation] = useState('')
+   252→  const [docSearch, setDocSearch] = useState('')
+   253→  const [docSearchCaseSensitive, setDocSearchCaseSensitive] = useState(false)
+   254→  const fileRef = useRef<HTMLInputElement>(null)
+   255→
+   256→  const { data, isLoading, refetch } = useQuery({
+   257→    queryKey: ['documents', caseId],
+   258→    queryFn: () => caseApi.getDocuments(caseId),
+   259→    retry: 1,
+   260→  })
+   261→  const { data: evidenceChainData } = useQuery({ queryKey: ['evidence-chain'], queryFn: caseApi.getEvidenceChain, retry: 1 })
+   262→  const documents = data ?? []
+   263→  const evidenceChain = evidenceChainData ?? []
+   264→  const filteredDocs = quickFilter === 'all' ? documents : documents.filter(d => d.documentType === quickFilter)
+   265→
+   266→  // Load persisted annotations from localStorage on mount.
+   267→  useEffect(() => {
+   268→    const loaded = loadAllAnnotations()
+   269→    if (Object.keys(loaded).length > 0) {
+   270→      // eslint-disable-next-line react-hooks/set-state-in-effect
+   271→      setAnnotations(prev => ({ ...prev, ...loaded }))
+   272→    }
+   273→  }, [])
+   274→
+   275→  // Persist per-document annotations to localStorage whenever they change
+   276→  useEffect(() => {
+   277→    for (const [docId, anns] of Object.entries(annotations)) {
+   278→      saveAnnotationsForDoc(docId, anns)
+   279→    }
+   280→  }, [annotations])
+   281→
+   282→  const handleUpload = async (files: FileList | null) => {
+   283→    if (!files?.length) return
+   284→    setIsUploading(true)
+   285→    try {
+   286→      await caseApi.uploadDocuments(Array.from(files), caseId)
+   287→      toast.success(`Загружено ${files.length} документ(ов)`)
+   288→      refetch()
+   289→    } catch { toast.error('Ошибка загрузки') }
+   290→    setIsUploading(false)
+   291→  }
+   292→
+   293→  const handleAnalyze = async (docId: string) => {
+   294→    setAnalyzingId(docId)
+   295→    try {
+   296→      await caseApi.processDocument(docId)
+   297→      toast.success('Анализ запущен')
+   298→      refetch()
+   299→    } catch { toast.error('Ошибка анализа') }
+   300→    setAnalyzingId(null)
+   301→  }
+   302→
+   303→  const handleDelete = async (docId: string) => {
+   304→    try {
+   305→      await caseApi.deleteDocument(docId)
+   306→      toast.success('Документ удалён')
+   307→      refetch()
+   308→    } catch { toast.error('Ошибка удаления') }
+   309→  }
+   310→
+   311→  const handleCompareSelect = (docId: string) => {
+   312→    if (selectedForCompare.includes(docId)) {
+   313→      setSelectedForCompare(selectedForCompare.filter(id => id !== docId))
+   314→    } else if (selectedForCompare.length < 2) {
+   315→      setSelectedForCompare([...selectedForCompare, docId])
+   316→    }
+   317→  }
+   318→
+   319→  const handleCompare = () => {
+   320→    if (selectedForCompare.length === 2) {
+   321→      const d1 = documents.find(d => d.id === selectedForCompare[0])
+   322→      const d2 = documents.find(d => d.id === selectedForCompare[1])
+   323→      if (d1 && d2) {
+   324→        setCompareDocs([d1, d2])
+   325→        setCompareMode(false)
+   326→        setSelectedForCompare([])
+   327→      }
+   328→    } else {
+   329→      toast.error('Выберите 2 документа для сравнения')
+   330→    }
+   331→  }
+   332→
+   333→  const handleAddAnnotation = (docId: string) => {
+   334→    const text = newAnnotation.trim()
+   335→    if (!text) return
+   336→    const ann: Annotation = {
+   337→      id: `an-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+   338→      text,
+   339→      author: 'Адвокат Петров А.В.',
+   340→      timestamp: new Date().toISOString(),
+   341→    }
+   342→    setAnnotations(prev => ({
+   343→      ...prev,
+   344→      [docId]: [...(prev[docId] ?? []), ann],
+   345→    }))
+   346→    setNewAnnotation('')
+   347→    shadcnToast({ title: 'Комментарий добавлен', description: 'Заметка сохранена и будет доступна после перезагрузки.' })
+   348→  }
+   349→
+   350→  const handleDeleteAnnotation = (docId: string, annotationId: string) => {
+   351→    setAnnotations(prev => ({
+   352→      ...prev,
+   353→      [docId]: (prev[docId] ?? []).filter(a => a.id !== annotationId),
+   354→    }))
+   355→    shadcnToast({ title: 'Комментарий удалён' })
+   356→  }
+   357→
+   358→  const handleOpenDoc = (doc: DocumentData) => {
+   359→    setSelectedDoc(doc)
+   360→    setNewAnnotation('')
+   361→    setDocSearch('')
+   362→  }
+   363→
+   364→  // Build highlighted extracted text with search matches
+   365→  const highlightText = (text: string, query: string, caseSensitive: boolean) => {
+   366→    if (!query.trim()) return text
+   367→    const flags = caseSensitive ? 'g' : 'gi'
+   368→    const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+   369→    const regex = new RegExp(`(${escaped})`, flags)
+   370→    const parts = text.split(regex)
+   371→    return parts.map((part, i) => {
+   372→      if (i % 2 === 1) {
+   373→        return (
+   374→          <mark key={i} className="bg-yellow-300 dark:bg-yellow-400 text-black dark:text-black rounded px-0.5 font-bold shadow-sm ring-1 ring-yellow-500/40">
+   375→            {part}
+   376→          </mark>
+   377→        )
+   378→      }
+   379→      return part
+   380→    })
+   381→  }
+   382→
+   383→  const countMatches = (text: string, query: string, caseSensitive: boolean) => {
+   384→    if (!query.trim()) return 0
+   385→    const flags = caseSensitive ? 'g' : 'gi'
+   386→    const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+   387→    const regex = new RegExp(escaped, flags)
+   388→    return (text.match(regex) ?? []).length
+   389→  }
+   390→
+   391→  if (isLoading) return <div className="grid grid-cols-2 gap-4">{[1, 2, 3, 4].map(i => <Skeleton key={i} className="h-32" />)}</div>
+   392→
+   393→  // Empty state when there are no documents for this case
+   394→  const showEmptyState = documents.length === 0 && !isLoading
+   395→
+   396→  return (
+   397→    <div className="space-y-6">
+   398→      {/* Upload Area */}
+   399→      <Card className={`border-2 rounded-xl transition-colors shadow-sm ${isDragOver ? 'border-amber-500 bg-amber-500/5' : 'border-dashed border-stone-600'}`}
+   400→        onDragOver={e => { e.preventDefault(); setIsDragOver(true) }}
+   401→        onDragLeave={() => setIsDragOver(false)}
+   402→        onDrop={e => { e.preventDefault(); setIsDragOver(false); handleUpload(e.dataTransfer.files) }}
+   403→      >
+   404→        <CardContent className="p-6 text-center">
+   405→          {isUploading ? (
+   406→            <div className="flex flex-col items-center gap-2"><Loader2 className="w-8 h-8 animate-spin text-amber-500" /><p className="text-sm">Загрузка...</p><Progress value={50} className="w-48" /></div>
+   407→          ) : (
+   408→            <>
+   409→              <Upload className="w-8 h-8 mx-auto text-muted-foreground" />
+   410→              <p className="mt-2 text-sm font-medium">Перетащите PDF-файлы сюда</p>
+   411→              <p className="text-xs text-muted-foreground">или нажмите кнопку ниже</p>
+   412→              <Button size="sm" className="mt-3 rounded-xl bg-gradient-to-r from-red-700 to-red-800 text-white shadow-sm" onClick={() => fileRef.current?.click()}>
+   413→                <Upload className="w-4 h-4 mr-1" />Выбрать файлы
+   414→              </Button>
+   415→              <input ref={fileRef} type="file" accept=".pdf" multiple className="hidden" onChange={e => handleUpload(e.target.files)} />
+   416→            </>
+   417→          )}
+   418→        </CardContent>
+   419→      </Card>
+   420→
+   421→      {/* Compare / Export controls */}
+   422→      <div className="flex items-center gap-2 flex-wrap">
+   423→        <Button size="sm" variant={compareMode ? 'default' : 'outline'} className="rounded-xl" onClick={() => { setCompareMode(!compareMode); setSelectedForCompare([]) }}>
+   424→          <GitCompare className="w-3 h-3 mr-1" />{compareMode ? 'Отмена сравнения' : 'Сравнить'}
+   425→        </Button>
+   426→        {compareMode && selectedForCompare.length === 2 && (
+   427→          <Button size="sm" className="rounded-xl bg-gradient-to-r from-red-700 to-red-800 text-white" onClick={handleCompare}><GitCompare className="w-3 h-3 mr-1" />Сравнить выбранные</Button>
+   428→        )}
+   429→        {compareMode && <Badge variant="outline" className="text-xs">Выбрано: {selectedForCompare.length} / 2</Badge>}
+   430→        <Separator orientation="vertical" className="h-4 mx-2" />
+   431→        <Button size="sm" variant="outline" className="rounded-xl gap-1" onClick={() => exportDocumentsCSV(documents)}><Download className="w-3 h-3" />Export CSV</Button>
+   432→        <Button size="sm" variant="outline" className="rounded-xl gap-1" onClick={() => toast.info('PDF экспорт будет доступен в будущих версиях')}><FileText className="w-3 h-3" />Export PDF</Button>
+   433→      </div>
+   434→
+   435→      {/* Quick Filter row */}
+   436→      <div className="flex items-center gap-2 flex-wrap">
+   437→        <span className="text-xs font-semibold text-muted-foreground">Быстрый фильтр:</span>
+   438→        {QUICK_FILTERS.map(f => (
+   439→          <Button key={f.value} size="sm" variant={quickFilter === f.value ? 'default' : 'outline'} className={`rounded-xl text-xs h-7 ${quickFilter === f.value ? 'bg-gradient-to-r from-red-700 to-red-800 text-white' : ''}`} onClick={() => setQuickFilter(f.value)}>
+   440→            {f.label}
+   441→          </Button>
+   442→        ))}
+   443→        <Badge variant="outline" className="text-xs ml-1">{filteredDocs.length} из {documents.length}</Badge>
+   444→      </div>
+   445→
+   446→      {/* Document List */}
+   447→      <div className="grid sm:grid-cols-2 gap-4">
+   448→        {filteredDocs.length === 0 && documents.length > 0 && (
+   449→          <Card className="sm:col-span-2 rounded-xl shadow-sm border-t-2 border-t-amber-500 bg-gradient-to-br from-card via-card to-amber-500/5">
+   450→            <CardContent className="p-8 text-center">
+   451→              <div className="flex items-center justify-center w-16 h-16 rounded-full bg-amber-500/10 mx-auto mb-3 ring-4 ring-amber-500/5">
+   452→                <FileSearch className="w-8 h-8 text-amber-600" />
+   453→              </div>
+   454→              <p className="text-sm font-semibold">Документы не найдены</p>
+   455→              <p className="text-xs text-muted-foreground mt-1">Попробуйте сбросить фильтр или изменить запрос</p>
+   456→              <Button size="sm" variant="outline" className="mt-3 rounded-xl" onClick={() => setQuickFilter('all')}>
+   457→                <RefreshCw className="w-3 h-3 mr-1" />Сбросить фильтр
+   458→              </Button>
+   459→            </CardContent>
+   460→          </Card>
+   461→        )}
+   462→        {filteredDocs.map(doc => {
+   463→          const docAnnotationCount = annotations[doc.id]?.length ?? 0
+   464→          return (
+   465→          <Card
+   466→            key={doc.id}
+   467→            onClick={() => compareMode ? handleCompareSelect(doc.id) : handleOpenDoc(doc)}
+   468→            className={`rounded-xl shadow-sm transition-colors cursor-pointer hover:bg-muted/50 hover:shadow-md ${compareMode && selectedForCompare.includes(doc.id) ? 'border-2 border-amber-500 ring-1 ring-amber-500/30' : ''}`}
+   469→          >
+   470→            <CardContent className="p-4">
+   471→              <div className="flex items-start gap-3">
+   472→                <div className="flex items-center justify-center w-9 h-9 rounded-xl bg-muted/50">{TYPE_ICON[doc.documentType ?? ''] ?? <BookOpen className="w-4 h-4 text-muted-foreground" />}</div>
+   473→                <div className="flex-1 min-w-0">
+   474→                  <div className="flex items-start justify-between gap-2">
+   475→                    <p className="font-medium text-sm truncate">{doc.originalName}</p>
+   476→                    <Badge
+   477→                      variant="outline"
+   478→                      className={`text-xs shrink-0 ${docAnnotationCount > 0 ? 'border-amber-500/40 text-amber-700 bg-amber-500/10' : 'text-muted-foreground'}`}
+   479→                      title={docAnnotationCount > 0 ? `${docAnnotationCount} комментарий(ев)` : 'Нет комментариев'}
+   480→                    >
+   481→                      <MessageSquare className="w-2.5 h-2.5 mr-1" />
+   482→                      {docAnnotationCount}
+   483→                    </Badge>
+   484→                  </div>
+   485→                  <p className="text-xs text-muted-foreground">{fmtSize(doc.fileSize)} • {new Date(doc.uploadedAt).toLocaleDateString('ru')}</p>
+   486→                  <div className="flex items-center gap-1 mt-2">
+   487→                    {STATUS[doc.processingStatus]?.icon}
+   488→                    <Badge className={STATUS[doc.processingStatus]?.badge ?? 'bg-stone-500 text-white'}>{STATUS[doc.processingStatus]?.label ?? doc.processingStatus}</Badge>
+   489→                    {doc.documentType && <Badge className={TYPE_BADGE[doc.documentType] ?? 'bg-stone-500 text-white'}>{doc.documentType}</Badge>}
+   490→                  </div>
+   491→                  {doc.summary && <p className="text-xs text-muted-foreground mt-2 line-clamp-2">{doc.summary}</p>}
+   492→                </div>
+   493→              </div>
+   494→              <Separator className="mt-3" />
+   495→              <div className="flex gap-1 mt-3" onClick={(e) => e.stopPropagation()}>
+   496→                {compareMode ? (
+   497→                  <Button size="sm" variant={selectedForCompare.includes(doc.id) ? 'default' : 'outline'} className="rounded-xl"
+   498→                    onClick={() => handleCompareSelect(doc.id)}>
+   499→                    {selectedForCompare.includes(doc.id) ? <CheckCircle className="w-3 h-3 mr-1" /> : <GitCompare className="w-3 h-3 mr-1" />}
+   500→                    {selectedForCompare.includes(doc.id) ? 'Выбран' : 'Выбрать'}
+   501→                  </Button>
+   502→                ) : (
+   503→                  <>
+   504→                    {doc.processingStatus === 'completed' && (
+   505→                      <Button size="sm" variant="outline" className="rounded-lg" onClick={() => handleOpenDoc(doc)}><Eye className="w-3 h-3 mr-1" />Просмотр</Button>
+   506→                    )}
+   507→                    {doc.processingStatus === 'pending' && (
+   508→                      <Button size="sm" className="rounded-lg bg-gradient-to-r from-red-700 to-red-800 text-white" onClick={() => handleAnalyze(doc.id)} disabled={analyzingId === doc.id}>
+   509→                        {analyzingId === doc.id ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : <Zap className="w-3 h-3 mr-1" />}Анализ
+   510→                      </Button>
+   511→                    )}
+   512→                    {doc.processingStatus === 'failed' && (
+   513→                      <Button size="sm" variant="outline" className="rounded-lg" onClick={() => handleAnalyze(doc.id)}><RefreshCw className="w-3 h-3 mr-1" />Повторить</Button>
+   514→                    )}
+   515→                    <Button size="sm" variant="ghost" className="rounded-lg" onClick={() => handleDelete(doc.id)}><Trash2 className="w-3 h-3" /></Button>
+   516→                  </>
+   517→                )}
+   518→              </div>
+   519→            </CardContent>
+   520→          </Card>
+   521→          )
+   522→        })}
+   523→      </div>
+   524→
+   525→      {documents.length === 0 && (
+   526→        <Card className="rounded-xl shadow-sm border-t-2 border-t-stone-500 bg-gradient-to-br from-card via-card to-stone-500/5">
+   527→          <CardContent className="p-8 text-center">
+   528→            <div className="flex items-center justify-center w-20 h-20 rounded-full bg-stone-500/10 mx-auto mb-4 ring-4 ring-stone-500/5">
+   529→              <FileText className="w-10 h-10 text-stone-500" />
+   530→            </div>
+   531→            <p className="mt-2 text-base font-semibold">Пока нет документов</p>
+   532→            <p className="text-sm text-muted-foreground mt-1 max-w-md mx-auto">Загрузите PDF-файлы уголовного дела — обвинительное заключение, протоколы, показания — для запуска AI-анализа и проверки.</p>
+   533→            <Button size="sm" className="mt-4 rounded-xl bg-gradient-to-r from-red-700 to-red-800 text-white shadow-sm" onClick={() => fileRef.current?.click()}>
+   534→              <Upload className="w-4 h-4 mr-1" />Загрузить документ
+   535→            </Button>
+   536→          </CardContent>
+   537→        </Card>
+   538→      )}
+   539→
+   540→      {/* Evidence Chain Section */}
+   541→      {evidenceChain.length > 0 && <EvidenceChainSection items={evidenceChain} />}
+   542→
+   543→      {/* AI Document Insights - new feature: smart metadata summary */}
+   544→      <Card className="rounded-xl shadow-sm border-l-4 border-purple-700/50 bg-gradient-to-r from-purple-900/10 to-transparent">
+   545→        <CardHeader className="pb-2">
+   546→          <CardTitle className="text-sm flex items-center gap-2">
+   547→            <BrainCircuit className="w-4 h-4 text-purple-700" /> ИИ-инсайты по документам
+   548→          </CardTitle>
+   549→        </CardHeader>
+   550→        <CardContent className="p-4 space-y-3">
+   551→          <div className="grid sm:grid-cols-3 gap-3">
+   552→            {/* Languages detected */}
+   553→            <div className="p-2 rounded-lg bg-muted/40">
+   554→              <p className="text-xs font-semibold mb-1.5 flex items-center gap-1"><Globe className="w-3 h-3 text-amber-600" />Языки</p>
+   555→              <div className="flex flex-wrap gap-1">
+   556→                <Badge className="bg-emerald-700 text-white text-xs">Русский — 8</Badge>
+   557→                <Badge variant="outline" className="text-xs">Английский — 1</Badge>
+   558→              </div>
+   559→            </div>
+   560→            {/* Average processing time */}
+   561→            <div className="p-2 rounded-lg bg-muted/40">
+   562→              <p className="text-xs font-semibold mb-1.5 flex items-center gap-1"><Zap className="w-3 h-3 text-amber-600" />Среднее время</p>
+   563→              <p className="text-lg font-bold">2.4 <span className="text-xs text-muted-foreground font-normal">сек/док</span></p>
+   564→              <p className="text-xs text-emerald-700 flex items-center gap-1"><TrendingDown className="w-2 h-2" />-15% к прошлой неделе</p>
+   565→            </div>
+   566→            {/* Total pages processed */}
+   567→            <div className="p-2 rounded-lg bg-muted/40">
+   568→              <p className="text-xs font-semibold mb-1.5 flex items-center gap-1"><FileText className="w-3 h-3 text-amber-600" />Страниц обработано</p>
+   569→              <p className="text-lg font-bold">{documents.reduce((s, d) => s + Math.ceil(d.fileSize / 50000), 0)} <span className="text-xs text-muted-foreground font-normal">стр.</span></p>
+   570→              <p className="text-xs text-muted-foreground">в {documents.length} документах</p>
+   571→            </div>
+   572→          </div>
+   573→          <Separator />
+   574→          {/* Top entities extracted */}
+   575→          <div>
+   576→            <p className="text-xs font-semibold mb-1.5 flex items-center gap-1"><BrainCircuit className="w-3 h-3 text-purple-700" />Топ извлечённых сущностей</p>
+   577→            <div className="flex flex-wrap gap-1.5">
+   578→              {[
+   579→                { ent: 'Колесниченко Д.А.', type: 'человек', color: 'bg-red-100 text-red-800 border-red-200' },
+   580→                { ent: 'ООО "ФинансГрупп"', type: 'организация', color: 'bg-amber-100 text-amber-800 border-amber-200' },
+   581→                { ent: 'ст. 159 ч.3 УК РФ', type: 'статья', color: 'bg-stone-100 text-stone-800 border-stone-300' },
+   582→                { ent: 'г. Москва', type: 'место', color: 'bg-emerald-100 text-emerald-800 border-emerald-200' },
+   583→                { ent: '15.03.2024', type: 'дата', color: 'bg-purple-100 text-purple-800 border-purple-200' },
+   584→                { ent: 'бухгалтер', type: 'должность', color: 'bg-orange-100 text-orange-800 border-orange-200' },
+   585→              ].map((e, i) => (
+   586→                <Badge key={i} variant="outline" className={`text-xs border ${e.color} font-medium`}>
+   587→                  {e.ent} <span className="opacity-60 ml-1">({e.type})</span>
+   588→                </Badge>
+   589→              ))}
+   590→            </div>
+   591→          </div>
+   592→        </CardContent>
+   593→      </Card>
+   594→
+   595→      <Separator />
+   596→      <p className="text-xs text-muted-foreground">Показано {filteredDocs.length} из {documents.length} документов из базы данных</p>
+   597→
+   598→      {/* Document Annotations Side Panel */}
+   599→      <Sheet
+   600→        open={!!selectedDoc}
+   601→        onOpenChange={(open) => { if (!open) { setSelectedDoc(null); setNewAnnotation('') } }}
+   602→      >
+   603→        <SheetContent side="right" className="w-full sm:max-w-xl p-0 gap-0 flex flex-col">
+   604→          <SheetHeader className="p-4 border-b shrink-0 space-y-1">
+   605→            <SheetTitle className="text-base flex items-start gap-2 pr-8">
+   606→              <FileText className="w-4 h-4 mt-0.5 shrink-0 text-amber-600" />
+   607→              <span className="break-words leading-tight">{selectedDoc?.originalName}</span>
+   608→            </SheetTitle>
+   609→            <SheetDescription className="text-xs flex items-center gap-2 flex-wrap">
+   610→              <span>{selectedDoc?.fileName}</span>
+   611→              {selectedDoc && <span>• {fmtSize(selectedDoc.fileSize)}</span>}
+   612→              {selectedDoc && (
+   613→                <Badge className={STATUS[selectedDoc.processingStatus]?.badge ?? 'bg-stone-500 text-white'}>
+   614→                  {STATUS[selectedDoc.processingStatus]?.label ?? selectedDoc.processingStatus}
+   615→                </Badge>
+   616→              )}
+   617→            </SheetDescription>
+   618→          </SheetHeader>
+   619→
+   620→          <div className="flex-1 overflow-y-auto p-4 space-y-4">
+   621→            {/* Metadata section */}
+   622→            <Card className="rounded-xl shadow-sm">
+   623→              <CardHeader className="pb-2"><CardTitle className="text-sm">Метаданные документа</CardTitle></CardHeader>
+   624→              <CardContent className="space-y-2 text-xs">
+   625→                {selectedDoc?.documentType && (
+   626→                  <div className="flex items-center gap-2">
+   627→                    <FileText className="w-3 h-3 text-muted-foreground shrink-0" />
+   628→                    <span className="text-muted-foreground w-24">Тип:</span>
+   629→                    <Badge className={TYPE_BADGE[selectedDoc.documentType] ?? 'bg-stone-500 text-white'}>{selectedDoc.documentType}</Badge>
+   630→                  </div>
+   631→                )}
+   632→                <div className="flex items-center gap-2">
+   633→                  <Calendar className="w-3 h-3 text-muted-foreground shrink-0" />
+   634→                  <span className="text-muted-foreground w-24">Дата документа:</span>
+   635→                  <span className="font-medium">{selectedDoc?.documentDate ?? '—'}</span>
+   636→                </div>
+   637→                <div className="flex items-center gap-2">
+   638→                  <BookOpen className="w-3 h-3 text-muted-foreground shrink-0" />
+   639→                  <span className="text-muted-foreground w-24">Источник:</span>
+   640→                  <span className="font-medium">{selectedDoc?.sourceReference ?? '—'}</span>
+   641→                </div>
+   642→                <div className="flex items-center gap-2">
+   643→                  <FileText className="w-3 h-3 text-muted-foreground shrink-0" />
+   644→                  <span className="text-muted-foreground w-24">Размер файла:</span>
+   645→                  <span className="font-medium">{selectedDoc && fmtSize(selectedDoc.fileSize)}</span>
+   646→                </div>
+   647→                {selectedDoc?.uploadedAt && (
+   648→                  <div className="flex items-center gap-2">
+   649→                    <Calendar className="w-3 h-3 text-muted-foreground shrink-0" />
+   650→                    <span className="text-muted-foreground w-24">Загружен:</span>
+   651→                    <span className="font-medium">{formatRussianDateTime(selectedDoc.uploadedAt)}</span>
+   652→                  </div>
+   653→                )}
+   654→                {selectedDoc?.summary && (
+   655→                  <div className="pt-2 border-t mt-2">
+   656→                    <p className="text-muted-foreground mb-1">Краткое содержание:</p>
+   657→                    <p>{selectedDoc.summary}</p>
+   658→                  </div>
+   659→                )}
+   660→              </CardContent>
+   661→            </Card>
+   662→
+   663→            {/* Extracted text with search/highlight */}
+   664→            {selectedDoc?.extractedText && (
+   665→              <Card className="rounded-xl shadow-sm">
+   666→                <CardHeader className="pb-2">
+   667→                  <CardTitle className="text-sm flex items-center gap-2">
+   668→                    <FileText className="w-4 h-4 text-amber-600" /> Извлечённый текст
+   669→                    <Badge variant="outline" className="text-xs ml-auto">
+   670→                      {selectedDoc.extractedText.length.toLocaleString('ru-RU')} симв.
+   671→                    </Badge>
+   672→                  </CardTitle>
+   673→                </CardHeader>
+   674→                <CardContent className="space-y-2">
+   675→                  {/* In-document search bar */}
+   676→                  <div className="flex items-center gap-1.5">
+   677→                    <div className="relative flex-1">
+   678→                      <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
+   679→                      <input
+   680→                        type="text"
+   681→                        value={docSearch}
+   682→                        onChange={(e) => setDocSearch(e.target.value)}
+   683→                        placeholder="Поиск в тексте документа..."
+   684→                        className="w-full h-8 pl-7 pr-7 text-xs rounded-lg border bg-background/60 focus:outline-none focus:ring-2 focus:ring-amber-500/40 focus:border-amber-500/50 transition-all"
+   685→                      />
+   686→                      {docSearch && (
+   687→                        <button
+   688→                          onClick={() => setDocSearch('')}
+   689→                          className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+   690→                          aria-label="Очистить поиск"
+   691→                        >
+   692→                          <X className="w-3.5 h-3.5" />
+   693→                        </button>
+   694→                      )}
+   695→                    </div>
+   696→                    <Button
+   697→                      size="sm"
+   698→                      variant={docSearchCaseSensitive ? 'default' : 'outline'}
+   699→                      className="h-8 px-2 text-xs font-mono"
+   700→                      onClick={() => setDocSearchCaseSensitive(!docSearchCaseSensitive)}
+   701→                      title="Учитывать регистр"
+   702→                    >
+   703→                      Aa
+   704→                    </Button>
+   705→                  </div>
+   706→                  {docSearch.trim() && (
+   707→                    <div className="flex items-center gap-2 text-xs">
+   708→                      <Badge className={countMatches(selectedDoc.extractedText, docSearch, docSearchCaseSensitive) > 0 ? 'bg-emerald-700 text-white' : 'bg-stone-500 text-white'}>
+   709→                        Найдено: {countMatches(selectedDoc.extractedText, docSearch, docSearchCaseSensitive)}
+   710→                      </Badge>
+   711→                      {countMatches(selectedDoc.extractedText, docSearch, docSearchCaseSensitive) === 0 && (
+   712→                        <span className="text-muted-foreground italic">Совпадений не найдено</span>
+   713→                      )}
+   714→                    </div>
+   715→                  )}
+   716→                  <ScrollArea className="max-h-64 w-full rounded-lg border bg-muted/30 p-3">
+   717→                    <p className="text-xs whitespace-pre-wrap leading-relaxed">
+   718→                      {docSearch.trim()
+   719→                        ? highlightText(selectedDoc.extractedText, docSearch, docSearchCaseSensitive)
+   720→                        : selectedDoc.extractedText}
+   721→                    </p>
+   722→                  </ScrollArea>
+   723→                </CardContent>
+   724→              </Card>
+   725→            )}
+   726→
+   727→            {/* Annotations / Comments */}
+   728→            <Card className="rounded-xl shadow-sm border-t-2 border-t-amber-500">
+   729→              <CardHeader className="pb-2">
+   730→                <CardTitle className="text-sm flex items-center gap-2">
+   731→                  <MessageSquare className="w-4 h-4 text-amber-600" /> Комментарии и заметки
+   732→                  <Badge variant="outline" className="text-xs ml-auto">
+   733→                    {selectedDoc ? (annotations[selectedDoc.id]?.length ?? 0) : 0}
+   734→                  </Badge>
+   735→                </CardTitle>
+   736→              </CardHeader>
+   737→              <CardContent className="space-y-3">
+   738→                {selectedDoc && (annotations[selectedDoc.id]?.length ?? 0) === 0 ? (
+   739→                  <div className="text-center py-6 px-2">
+   740→                    <div className="flex items-center justify-center w-12 h-12 rounded-full bg-amber-500/10 mx-auto mb-2 ring-4 ring-amber-500/5">
+   741→                      <MessageSquare className="w-6 h-6 text-amber-600/70" />
+   742→                    </div>
+   743→                    <p className="text-xs text-muted-foreground">Пока нет комментариев. Добавьте первый.</p>
+   744→                  </div>
+   745→                ) : (
+   746→                  <div className="space-y-2">
+   747→                    {selectedDoc && (annotations[selectedDoc.id] ?? []).map(an => (
+   748→                      <div key={an.id} className="border-l-4 border-l-amber-500 bg-muted/30 rounded-r-lg p-2.5">
+   749→                        <div className="flex items-start gap-2">
+   750→                          <Avatar className="w-7 h-7 shrink-0">
+   751→                            <AvatarFallback className="text-[10px] font-bold bg-amber-100 text-amber-800">АП</AvatarFallback>
+   752→                          </Avatar>
+   753→                          <div className="flex-1 min-w-0">
+   754→                            <div className="flex items-center justify-between gap-2">
+   755→                              <p className="text-xs font-semibold flex items-center gap-1 truncate">
+   756→                                <User className="w-2.5 h-2.5 text-muted-foreground shrink-0" />
+   757→                                {an.author}
+   758→                              </p>
+   759→                              <button
+   760→                                type="button"
+   761→                                onClick={() => handleDeleteAnnotation(selectedDoc.id, an.id)}
+   762→                                className="text-muted-foreground hover:text-red-700 transition-colors p-1 -m-1 rounded hover:bg-red-500/10"
+   763→                                aria-label="Удалить комментарий"
+   764→                              >
+   765→                                <Trash2 className="w-3 h-3" />
+   766→                              </button>
+   767→                            </div>
+   768→                            <p className="text-xs mt-1 break-words">{an.text}</p>
+   769→                            <p className="text-[10px] text-muted-foreground mt-1.5 flex items-center gap-1">
+   770→                              <Calendar className="w-2.5 h-2.5" />
+   771→                              {formatRussianDateTime(an.timestamp)}
+   772→                            </p>
+   773→                          </div>
+   774→                        </div>
+   775→                      </div>
+   776→                    ))}
+   777→                  </div>
+   778→                )}
+   779→
+   780→                {/* Add annotation form */}
+   781→                <div className="space-y-2 pt-3 border-t">
+   782→                  <Textarea
+   783→                    value={newAnnotation}
+   784→                    onChange={(e) => setNewAnnotation(e.target.value)}
+   785→                    placeholder="Введите ваш комментарий или заметку..."
+   786→                    className="min-h-[80px] text-sm resize-none"
+   787→                    maxLength={1000}
+   788→                  />
+   789→                  <Button
+   790→                    size="sm"
+   791→                    className="w-full rounded-xl bg-gradient-to-r from-amber-600 to-amber-700 text-white hover:from-amber-700 hover:to-amber-800"
+   792→                    disabled={!newAnnotation.trim()}
+   793→                    onClick={() => selectedDoc && handleAddAnnotation(selectedDoc.id)}
+   794→                  >
+   795→                    <Plus className="w-3 h-3 mr-1" /> Добавить комментарий
+   796→                  </Button>
+   797→                </div>
+   798→              </CardContent>
+   799→            </Card>
+   800→
+   801→            {/* Actions */}
+   802→            <Card className="rounded-xl shadow-sm">
+   803→              <CardHeader className="pb-2"><CardTitle className="text-sm">Действия</CardTitle></CardHeader>
+   804→              <CardContent className="flex flex-wrap gap-2">
+   805→                <Button
+   806→                  size="sm"
+   807→                  variant="outline"
+   808→                  className="rounded-xl"
+   809→                  onClick={() => shadcnToast({ title: 'Экспорт', description: 'Подготовка экспорта документа...' })}
+   810→                >
+   811→                  <Download className="w-3 h-3 mr-1" /> Экспорт
+   812→                </Button>
+   813→                <Button
+   814→                  size="sm"
+   815→                  variant="outline"
+   816→                  className="rounded-xl"
+   817→                  onClick={() => {
+   818→                    shadcnToast({ title: 'Переобработка', description: 'Запущена повторная обработка документа.' })
+   819→                    if (selectedDoc) handleAnalyze(selectedDoc.id)
+   820→                  }}
+   821→                >
+   822→                  <RefreshCw className="w-3 h-3 mr-1" /> Переобработать
+   823→                </Button>
+   824→                <Button
+   825→                  size="sm"
+   826→                  variant="outline"
+   827→                  className="rounded-xl text-red-700 hover:bg-red-500/10 hover:text-red-800 border-red-300"
+   828→                  onClick={() => {
+   829→                    if (selectedDoc) {
+   830→                      handleDelete(selectedDoc.id)
+   831→                      setSelectedDoc(null)
+   832→                      setNewAnnotation('')
+   833→                    }
+   834→                  }}
+   835→                >
+   836→                  <Trash2 className="w-3 h-3 mr-1" /> Удалить
+   837→                </Button>
+   838→              </CardContent>
+   839→            </Card>
+   840→          </div>
+   841→        </SheetContent>
+   842→      </Sheet>
+   843→
+   844→      {/* Document Comparison Dialog */}
+   845→      {compareDocs && (<DocumentCompareDialog doc1={compareDocs[0]} doc2={compareDocs[1]} onClose={() => setCompareDocs(null)} />)}
+   846→    </div>
+   847→  )
+   848→}
+   849→

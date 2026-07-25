@@ -150,6 +150,39 @@ export async function getProcessingQueue(): Promise<ProcessingQueueData[]> {
   return fetchApi<ProcessingQueueData[]>('/queue')
 }
 
+// Get processing status from the doc-processor microservice
+export interface ProcessingStatusItem {
+  id: string
+  documentId: string
+  documentName: string
+  queuePosition: number
+  status: string
+  startedAt: string | null
+  completedAt: string | null
+  error: string | null
+  processingStatus: string
+  isCurrentlyProcessing: boolean
+}
+
+export interface ProcessingStatusResponse {
+  caseId: string
+  total: number
+  completed: number
+  failed: number
+  processing: number
+  queued: number
+  progressPercent: number
+  items: ProcessingStatusItem[]
+}
+
+export async function getProcessingStatus(caseId: string): Promise<ProcessingStatusResponse> {
+  const response = await fetch(`/api/case/processing-status?XTransformPort=3005&caseId=${encodeURIComponent(caseId)}`)
+  if (!response.ok) {
+    throw new Error('Ошибка получения статуса обработки')
+  }
+  return response.json()
+}
+
 // Get a single document detail
 export async function getDocument(id: string): Promise<DocumentData> {
   return fetchApi<DocumentData>(`/documents/${id}`)
