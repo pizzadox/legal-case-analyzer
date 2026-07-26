@@ -2,10 +2,12 @@
 
 ## Current Project Status
 
-- **App is running** on port 3000 (Next.js 16 standalone server, `--max-old-space-size=256` to avoid OOM)
-- **Version**: 3.4.0
+- **App version**: 3.5.0
 - **GitHub repo**: https://github.com/pizzadox/LAW (private, pushed successfully)
+- **GitVerse**: Not yet pushed (no SSH tools available in sandbox, need user to provide GitVerse credentials)
 - **Build**: Production standalone mode (bun build + node/bun start)
+- **Server**: Next.js 16 standalone, `--max-old-space-size=128` (reduced from 256 to prevent OOM)
+- **Key recent changes**: Mock data removed, case deletion added, evidence chain by caseId, dynamic AI insights, side panel overflow fix
 
 ## Session 2026-07-26: Fix crash, optimize, push to GitHub
 
@@ -208,3 +210,39 @@
 - The delete option is placed after a separator in the dropdown to avoid accidental clicks
 - The confirmation dialog prevents accidental deletion by requiring explicit user confirmation
 - All related query caches are invalidated after deletion to ensure UI consistency
+
+---
+Task ID: 3
+Agent: main
+Task: Fix documents tab buttons, remove mock data, add case deletion, fix side panel, push to GitHub/GitVerse
+
+Work Log:
+- Analyzed all case-documents.tsx code (1027 lines), case-api.ts, case-store.ts, evidence-chain route
+- Identified 6 major issues: hardcoded AI Insights, mock evidence chain data, side panel overflow, no case deletion, mock data fallbacks, API errors
+- Delegated Task ID 1 to subagent: Fixed side panel overflow, removed hardcoded AI Insights data, added dynamic insights from documents, fixed evidence chain to filter by caseId, updated getEvidenceChain to accept caseId, replaced evidence-chain API route with DB-based implementation, removed ALL 15 mock data fallbacks from case-api.ts
+- Delegated Task ID 2 to subagent: Added case deletion button, confirmation dialog, handleDeleteCase function in page.tsx
+- Fixed delete case API route to return 404 instead of 500 for non-existent cases
+- Bumped version from 3.4.0 to 3.5.0
+- Changed dev script memory from 768MB to 128MB (--max-old-space-size)
+- Rebuilt project, lint passed
+- Pushed to GitHub: v3.5.0 (2 commits)
+- API verification: 3 cases loaded, evidence chain returns 1 item for case 111, documents return 3 docs, delete returns proper 404
+- Agent-browser verified: page loads correctly, Documents tab shows empty state properly (no mock data), navigation works
+- Could not push to GitVerse: no SSH tools available in sandbox, needs user credentials
+
+Stage Summary:
+- All mock data removed from Documents tab (AI Insights, evidence chain, entities)
+- Case deletion feature added with confirmation dialog
+- Side panel overflow fixed with ScrollArea
+- Evidence chain now uses real DB data filtered by caseId
+- Delete API returns 404 instead of 500
+- Version bumped to 3.5.0
+- Pushed to GitHub
+- Server OOM issue persists (process gets killed after ~20-30 seconds)
+- GitVerse push pending (needs SSH setup)
+
+Unresolved Issues:
+- OOM kills the server after ~20-30 seconds (need more RAM or smaller app)
+- GitVerse push not possible without SSH tools or HTTPS credentials
+- Some sections (Defense, Timeline, Analytics, etc.) may still show mock data in their own component files
+- Footer sticky position verified working
