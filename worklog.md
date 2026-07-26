@@ -4,7 +4,7 @@
 - Application is running on Turbopack dev server with `--max-old-space-size=512` Node flag
 - Server restarts automatically via `setsid bash -c 'while true; do ...; done'` loop
 - Doc-processor microservice running on port 3005 with auto-restart
-- Pushed to GitHub (commit `0d183ae`): https://github.com/pizzadox/LAW.git
+- Pushed to GitHub (commits `0d183ae`, `8e530a8`): https://github.com/pizzadox/LAW.git
 - Gitverse push failed (SSH not available, no token configured)
 - Version: 3.9.0
 
@@ -40,6 +40,7 @@
 - Used `SectionRenderer` component that dynamically imports via `COMPONENT_REGISTRY`
 - Eliminated `ssr: false` `dynamic()` imports (removed 17 import closures from module scope)
 - Reduced initial page bundle size significantly
+- Fixed lint error: replaced synchronous setState in useEffect with queueMicrotask
 
 ### 5. Server Configuration
 - Dev script: `next dev --turbopack -p 3000` (Turbopack for memory efficiency)
