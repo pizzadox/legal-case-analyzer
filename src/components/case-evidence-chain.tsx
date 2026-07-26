@@ -1,13 +1,16 @@
 'use client'
 
 import { useState, useMemo, useCallback } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { Separator } from '@/components/ui/separator'
-import { FileText, Shield, Swords, Scale, Link2, AlertTriangle, TrendingUp, Eye, Filter, CheckCircle2, XCircle, Activity, Zap, ChevronRight } from 'lucide-react'
-import { sevBadge, sideBadge, sideHex, GRID2, GRID3, GRID4 } from '@/lib/shared-ui'
+import { FileText, Shield, Swords, Scale, Link2, AlertTriangle, TrendingUp, Eye, Filter, CheckCircle2, XCircle, Activity, Zap, Loader2 } from 'lucide-react'
+import { sevBadge, sideBadge, sideHex, GRID4 } from '@/lib/shared-ui'
+import * as caseApi from '@/lib/case-api'
+import type { DocumentData, PersonData, EvidenceChainData, EpisodeData } from '@/lib/case-store'
 
 // ─── Types ───
 type ESide = 'prosecution'|'defense'
@@ -28,48 +31,231 @@ const strBadge=(s:number,side:ESide)=>s>=70?(side==='prosecution'?'bg-red-700':'
 const strHex=(s:number,side:ESide)=>s>=70?(side==='prosecution'?'#b91c1c':'#047857'):s>=40?'#d97706':'#78716c'
 const strLabel=(s:number)=>s>=70?'Сильное':s>=40?'Умеренное':'Слабое'
 
-// ─── Mock data (compact) ───
-const P_E: EItem[] = [
-  {id:'pe-1',name:'Обвинительное заключение',shortName:'Обвин. заключение',date:'2024-04-25',type:'документ',side:'prosecution',strength:78,source:'СК России по г. Москве',summary:'Сводный документ с обвинением по ст. 159 ч.3, ст. 160 ч.2. Систематизированы все эпизоды, 4 экспертизы, 45 томов.',strengths:['Систематизированы эпизоды','Подкреплено 4 экспертизами','45 томов дела'],weaknesses:['Не учтены показания Козлова','Экспертиза по копиям','Не отражена хронология обысков']},
-  {id:'pe-2',name:'Показания Петрова И.В.',shortName:'Петров',date:'2024-02-05',type:'показание',side:'prosecution',strength:55,source:'Протокол допроса от 05.02.2024',summary:'Бывший сотрудник ООО «ТехноПром» дал показания о причастности Колесниченко к хищению.',strengths:['Участник операций','Согласуется с документами'],weaknesses:['Противоречия с Козловым','Изменение показаний','Личная заинтересованность']},
-  {id:'pe-3',name:'Протокол обыска от 20.02.2024',shortName:'Протокол обыска',date:'2024-02-20',type:'протокол',side:'prosecution',strength:62,source:'Протокол № 14/2024',summary:'Обыск в офисе ООО «ТехноПром». Изъяты 45 листов, ноутбук, 3 флеш-накопителя.',strengths:['2 понятых','Документы опечатаны'],weaknesses:['Без адвоката','Нет видеофиксации','Задержка передачи']},
-  {id:'pe-4',name:'Заключение фин.-экон. экспертизы',shortName:'Экспертиза',date:'2024-04-10',type:'экспертиза',side:'prosecution',strength:72,source:'Заключение № 128-Э от 10.04.2024',summary:'Эксперт Кузнецова установила хищение 4,7 млн руб. через фиктивные договоры.',strengths:['12-летний стаж','Стандартные методики','Согласуется с документами'],weaknesses:['По копиям документов','Не исследована оборотная сторона','Не давала показаний в суде']},
-  {id:'pe-5',name:'Финансовые документы ООО',shortName:'Фин. документы',date:'2024-03-05',type:'документ',side:'prosecution',strength:68,source:'Изъято при обыске',summary:'Договоры, счета, платёжные поручения, акты. Подтверждают операции с подставными контрагентами.',strengths:['Подлинность подписей подтверждена','Непрерывная цепочка'],weaknesses:['Часть утрачена','Нет оригиналов поручений','Не все контрагенты идентифицированы']},
-  {id:'pe-6',name:'Показания Ивановой А.С.',shortName:'Иванова',date:'2024-03-20',type:'показание',side:'prosecution',strength:48,source:'Протокол от 20.03.2024',summary:'Главный бухгалтер о порядке согласования операций с Колесниченко. Подтвердила подписи.',strengths:['Подписывала документы','Согласуется с экспертизой'],weaknesses:['Собственный интерес','На слухах','Не помнит детали']},
-]
-const D_E: EItem[] = [
-  {id:'de-1',name:'Показания Козлова В.Н. — алиби',shortName:'Козлов — алиби',date:'2024-02-28',type:'показание',side:'defense',strength:74,source:'Протокол от 28.02.2024',summary:'Сосед подтвердил: в день обыска Колесниченко был у него дома (14:00–18:00).',strengths:['Не связан служебными отношениями','Согласуется с видео','Подтверждено 3 лицом'],weaknesses:['Давний знакомый','Не помнит точное время']},
-  {id:'de-2',name:'Видеозапись с камер ТЦ «Город»',shortName:'Видео камер',date:'2024-03-12',type:'документ',side:'defense',strength:81,source:'DVD от администратора ТЦ',summary:'Видео за 20.02.2024: Колесниченко в ТЦ 14:30–17:45, противоречит версии следствия.',strengths:['Непрерывная запись без монтажа','Подлинность подтверждена','Синхронизировано с сервером'],weaknesses:['Получено вне процессуального порядка','Часть перекрыта конструкцией']},
-  {id:'de-3',name:'Билеты на поезд Мск—Казань',shortName:'Билеты',date:'2024-02-15',type:'документ',side:'defense',strength:65,source:'Электронные билеты РЖД',summary:'Билеты на 19.02.2024 вечерний рейс — обвиняемый покинул Москву накануне обыска.',strengths:['Официальная система РЖД','Подтверждены бронированием','Согласуются с Козловым'],weaknesses:['Не подтверждено использование','Нет посадочного талона']},
-  {id:'de-4',name:'Характеристика с работы',shortName:'Характеристика',date:'2024-04-05',type:'документ',side:'defense',strength:45,source:'ООО «ТехноПром» от 05.04.2024',summary:'Положительная производственная характеристика Колесниченко.',strengths:['Подписана руководителем','Конкретные достижения'],weaknesses:['Не независимый подписант','К личности, не к делу']},
-  {id:'de-5',name:'Справка об отсутствии судимости',shortName:'Справка',date:'2024-04-22',type:'документ',side:'defense',strength:38,source:'МВД России № 77-АА-123456',summary:'Официальная справка об отсутствии судимости на момент возбуждения УД.',strengths:['Государственный орган','Неопровержимый характер'],weaknesses:['К личности, не к делу','Не опровергает деяние']},
-]
-const LINKS: ELink[] = [
-  {id:'l1',sourceId:'pe-3',targetId:'de-1',type:'contradiction',strength:'strong',description:'Обыск фиксирует Колесниченко в офисе 14-18ч, Козлов — дома. Прямое противоречие.'},
-  {id:'l2',sourceId:'pe-2',targetId:'de-1',type:'contradiction',strength:'strong',description:'Петров видел Колесниченко в офисе, Козлов — дома. Взаимоисключающие показания.'},
-  {id:'l3',sourceId:'pe-4',targetId:'de-2',type:'contradiction',strength:'moderate',description:'Экспертиза предполагает сделки в офисе, видео фиксирует в ТЦ. Альтернативный сценарий.'},
-  {id:'l4',sourceId:'pe-2',targetId:'de-2',type:'contradiction',strength:'moderate',description:'Петров опровергается видео с камер ТЦ «Город».'},
-  {id:'l5',sourceId:'pe-1',targetId:'de-5',type:'corroboration',strength:'weak',description:'Обвин. заключение и справка характеризуют личность, но справка не опровергает обвинение.'},
-  {id:'l6',sourceId:'pe-6',targetId:'de-4',type:'partial',strength:'weak',description:'Иванова о деловых качествах частично согласуется с характеристикой.'},
-  {id:'l7',sourceId:'pe-3',targetId:'de-3',type:'contradiction',strength:'strong',description:'Обыск предполагает нахождение в Москве, билеты подтверждают отъезд 19.02.'},
-]
+// ─── Helpers: determine side and type from real data ───
 
-// ─── SVG layout constants ───
-const SW=1400,SH=460,NW=132,NH=92,PX=80,PROS_Y=100,DEF_Y=380,AX_Y=230
-const ALL=[...P_E,...D_E],ALL_MAP=Object.fromEntries(ALL.map(e=>[e.id,e]))
-const dtX=(d:string)=>{const dates=ALL.map(e=>+new Date(e.date)),mn=Math.min(...dates),mx=Math.max(...dates);return PX+((+new Date(d)-mn)/(mx-mn||1))*(SW-2*PX)}
+// Map document types to prosecution/defense side
+function docSide(doc: DocumentData): ESide {
+  const t = (doc.documentType || '').toLowerCase()
+  // Prosecution-sided document types
+  if (t.includes('обвинительное') || t.includes('заключение') || t.includes('постановление о возбуждении') ||
+      t.includes('протокол обыска') || t.includes('протокол выемки') || t.includes('протокол допроса свидетеля обвинения') ||
+      t.includes('экспертиза') || t.includes('заключение эксперта') || t.includes('финансовый') ||
+      t.includes('обвинительный') || t.includes('допрос')) return 'prosecution'
+  // Defense-sided document types
+  if (t.includes('характеристика') || t.includes('справка') || t.includes('алиби') ||
+      t.includes('видеозапись') || t.includes('билеты') || t.includes('независимая экспертиза') ||
+      t.includes('ходатайство') || t.includes('защита') || t.includes('показания защиты')) return 'defense'
+  // Default: check summary for hints
+  const s = (doc.summary || '').toLowerCase()
+  if (s.includes('обвинение') || s.includes('хищение') || s.includes('мошенничество')) return 'prosecution'
+  if (s.includes('защита') || s.includes('алиби') || s.includes('характеристика')) return 'defense'
+  // Fallback: neutral → prosecution (most documents are prosecution-sided)
+  return 'prosecution'
+}
 
-const nodePos:(()=>Record<string,{x:number;y:number}>)=()=>{const p:Record<string,{x:number;y:number}>={};const sp=NW+24;const dodge=(arr:EItem[],y:number)=>{const cs=arr.map(e=>({id:e.id,x:dtX(e.date)}));for(let i=1;i<cs.length;i++)if(cs[i].x-cs[i-1].x<sp)cs[i].x=cs[i-1].x+sp;const mx=SW-PX;for(let i=cs.length-1;i>=0;i--)if(cs[i].x>mx)cs[i].x=mx;cs.forEach(c=>p[c.id]={x:c.x,y})};dodge([...P_E].sort((a,b)=>+new Date(a.date)-+new Date(b.date)),PROS_Y);dodge([...D_E].sort((a,b)=>+new Date(a.date)-+new Date(b.date)),DEF_Y);return p}
-const POS=nodePos()
-const GAPS=(()=>{const linked=new Set(LINKS.flatMap(l=>l.sourceId.startsWith('pe-')?[l.sourceId]:l.targetId.startsWith('pe-')?[l.targetId]:[]));return P_E.filter(e=>!linked.has(e.id)).map(e=>e.id)})()
+// Map document type string to EType
+function docEType(doc: DocumentData): EType {
+  const t = (doc.documentType || '').toLowerCase()
+  if (t.includes('экспертиза') || t.includes('заключение эксперта')) return 'экспертиза'
+  if (t.includes('протокол')) return 'протокол'
+  if (t.includes('показание') || t.includes('допрос')) return 'показание'
+  return 'документ'
+}
+
+// Map person role to side
+function personSide(person: PersonData): ESide {
+  if (person.isKolesnichenko) return 'defense' // defendant
+  const r = (person.role || '').toLowerCase()
+  if (r.includes('обвиняемый') || r.includes('подозреваемый') || r.includes('подсудимый')) return 'defense'
+  if (r.includes('свидетель защиты') || r.includes('защита') || r.includes('адвокат')) return 'defense'
+  if (r.includes('свидетель') || r.includes('потерпевший') || r.includes('обвинение')) return 'prosecution'
+  // Default: if role is not clearly defense → prosecution witness
+  return 'prosecution'
+}
+
+// Compute strength score for a document
+function docStrength(doc: DocumentData, side: ESide): number {
+  let s = 50 // baseline
+  // Has extracted text → stronger
+  if (doc.extractedText && doc.extractedText.length > 100) s += 10
+  if (doc.extractedText && doc.extractedText.length > 500) s += 5
+  // Has summary → stronger
+  if (doc.summary) s += 10
+  // Has source reference → stronger
+  if (doc.sourceReference) s += 5
+  // Document type affects strength
+  const t = (doc.documentType || '').toLowerCase()
+  if (t.includes('экспертиза')) s += 10
+  if (t.includes('протокол')) s += 5
+  if (t.includes('обвинительное заключение')) s += 15
+  if (t.includes('характеристика') || t.includes('справка')) s -= 15
+  // Clamp between 20 and 95
+  return Math.max(20, Math.min(95, s))
+}
+
+// Compute strength score for a person
+function personStrength(person: PersonData, side: ESide): number {
+  let s = 50
+  const r = (person.role || '').toLowerCase()
+  if (person.isKolesnichenko) s = 30 // defendant's own statements are weak evidence for defense
+  if (r.includes('свидетель')) s += 10
+  if (r.includes('обвиняемый') || r.includes('подозреваемый')) s -= 10
+  if (person.description) s += 5
+  return Math.max(20, Math.min(90, s))
+}
+
+// ─── Build evidence items and links from real data ───
+
+function buildItems(docs: DocumentData[], persons: PersonData[]): EItem[] {
+  const items: EItem[] = []
+
+  // Documents become evidence items
+  docs.forEach(doc => {
+    if (doc.processingStatus !== 'completed') return
+    const side = docSide(doc)
+    const type = docEType(doc)
+    const strength = docStrength(doc, side)
+    const name = doc.originalName || doc.fileName
+    const shortName = name.length > 30 ? name.slice(0, 28) + '…' : name
+    const date = doc.documentDate || doc.uploadedAt
+
+    // Build strengths/weaknesses from summary
+    const strengths: string[] = []
+    const weaknesses: string[] = []
+    if (doc.summary) {
+      // Simple heuristic: split summary into sentences, classify
+      const sentences = doc.summary.split(/[.!?]/).filter(s => s.trim().length > 5)
+      sentences.forEach(sent => {
+        const lower = sent.toLowerCase()
+        if (lower.includes('подтверждает') || lower.includes('согласуется') || lower.includes('подлинность') ||
+            lower.includes('установлено') || lower.includes('доказано')) strengths.push(sent.trim())
+        if (lower.includes('противоречие') || lower.includes('нарушение') || lower.includes('отсутствие') ||
+            lower.includes('не подтверждено') || lower.includes('копия') || lower.includes('сомнение')) weaknesses.push(sent.trim())
+      })
+    }
+    // Add default if empty
+    if (strengths.length === 0) strengths.push('Документ приобщён к материалам дела')
+    if (weaknesses.length === 0) weaknesses.push('Требуется дополнительный анализ')
+
+    items.push({
+      id: `doc-${doc.id}`,
+      name, shortName, date, type, side, strength,
+      source: doc.sourceReference || 'Загружено в систему',
+      summary: doc.summary || 'Документ обработан, описание отсутствует',
+      strengths, weaknesses,
+    })
+  })
+
+  // Persons become evidence items (testimony type)
+  persons.forEach(person => {
+    const side = personSide(person)
+    const strength = personStrength(person, side)
+    const name = person.fullName
+    const shortName = person.shortName || (name.length > 20 ? name.slice(0, 18) + '…' : name)
+    const date = person.birthDate || ''
+
+    const strengths: string[] = []
+    const weaknesses: string[] = []
+    if (person.description) {
+      strengths.push(person.description.slice(0, 80))
+    }
+    if (person.role) {
+      if (person.isKolesnichenko) {
+        strengths.push('Обвиняемый — знает обстоятельства дела')
+        weaknesses.push('Заинтересованное лицо')
+      } else if (person.role.toLowerCase().includes('свидетель')) {
+        strengths.push('Независимый свидетель')
+        if (person.role.toLowerCase().includes('обвинения')) weaknesses.push('Может быть заинтересован')
+      }
+    }
+    if (strengths.length === 0) strengths.push('Участник уголовного дела')
+    if (weaknesses.length === 0) weaknesses.push('Оценка показаний требует анализа')
+
+    items.push({
+      id: `pers-${person.id}`,
+      name, shortName, date, type: 'показание', side, strength,
+      source: person.role || 'Участник производства',
+      summary: person.description || `Показания ${person.fullName} по делу`,
+      strengths, weaknesses,
+    })
+  })
+
+  return items
+}
+
+function buildLinks(items: EItem[], docs: DocumentData[], persons: PersonData[], chainData: EvidenceChainData[]): ELink[] {
+  const links: ELink[] = []
+
+  // Strategy: connect prosecution items to defense items they contradict
+  const prosecution = items.filter(i => i.side === 'prosecution')
+  const defense = items.filter(i => i.side === 'defense')
+
+  // Create links between prosecution and defense items that share similar topics
+  // Simple heuristic: link items with overlapping keywords in summaries
+  prosecution.forEach(pItem => {
+    defense.forEach(dItem => {
+      const pSummary = pItem.summary.toLowerCase()
+      const dSummary = dItem.summary.toLowerCase()
+      // Check for keyword overlap indicating contradiction or corroboration
+      const commonWords = ['алиби', 'обыск', 'экспертиза', 'показания', 'документ', 'подпись', 'договор', 'хищение']
+      const overlap = commonWords.filter(w => pSummary.includes(w) && dSummary.includes(w))
+      if (overlap.length > 0) {
+        // Determine link type based on content
+        let lType: LType = 'contradiction'
+        let lStr: LStr = 'moderate'
+        if (dSummary.includes('алиби') && pSummary.includes('обыск') || pSummary.includes('допрос')) {
+          lType = 'contradiction'; lStr = 'strong'
+        } else if (dSummary.includes('характеристика') && pSummary.includes('подпись')) {
+          lType = 'partial'; lStr = 'weak'
+        } else if (overlap.length >= 2) {
+          lStr = 'strong'
+        }
+        links.push({
+          id: `link-${pItem.id}-${dItem.id}`,
+          sourceId: pItem.id,
+          targetId: dItem.id,
+          type: lType,
+          strength: lStr,
+          description: `Связь: ${pItem.shortName} ↔ ${dItem.shortName} (${overlap.join(', ')})`,
+        })
+      }
+    })
+  })
+
+  // Also add corroboration links between items on the same side that reference similar content
+  const allBySide = { prosecution, defense }
+  Object.entries(allBySide).forEach(([side, sideItems]) => {
+    for (let i = 0; i < sideItems.length; i++) {
+      for (let j = i + 1; j < sideItems.length; j++) {
+        const a = sideItems[i], b = sideItems[j]
+        const aSum = a.summary.toLowerCase(), bSum = b.summary.toLowerCase()
+        const overlap = ['договор', 'подпись', 'подтверждает', 'согласуется', 'экспертиза', 'финансовый'].filter(w => aSum.includes(w) && bSum.includes(w))
+        if (overlap.length >= 2 && links.length < 30) { // Limit total links
+          links.push({
+            id: `corr-${a.id}-${b.id}`,
+            sourceId: a.id,
+            targetId: b.id,
+            type: 'corroboration',
+            strength: overlap.length >= 3 ? 'strong' : 'moderate',
+            description: `Подтверждение: ${a.shortName} ↔ ${b.shortName} (${overlap.join(', ')})`,
+          })
+        }
+      }
+    }
+  })
+
+  // Limit to max 20 links for readability
+  return links.slice(0, 20)
+}
 
 // ─── Detail Sheet ───
 
-function DetailSheet({item,open,onOpenChange}:{item:EItem|null;open:boolean;onOpenChange:(o:boolean)=>void}) {
+function DetailSheet({item,allItems,links,open,onOpenChange}:{item:EItem|null;allItems:EItem[];links:ELink[];open:boolean;onOpenChange:(o:boolean)=>void}) {
   if(!item)return <Sheet open={open} onOpenChange={onOpenChange}><SheetContent side="right" className="w-full sm:max-w-lg"/></Sheet>
   const tc=T_CFG[item.type],TIcon=tc.icon,sC=item.side==='prosecution'?'#b91c1c':'#047857'
   const sideBg=item.side==='prosecution'?'from-red-900/30 border-l-red-700':'from-emerald-900/30 border-l-emerald-700'
-  const related=LINKS.filter(l=>l.sourceId===item.id||l.targetId===item.id)
+  const allMap=Object.fromEntries(allItems.map(e=>[e.id,e]))
+  const related=links.filter(l=>l.sourceId===item.id||l.targetId===item.id)
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent side="right" className="w-full sm:max-w-lg overflow-y-auto">
@@ -92,7 +278,7 @@ function DetailSheet({item,open,onOpenChange}:{item:EItem|null;open:boolean;onOp
           <div className="p-3 rounded-lg bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200/60"><p className="text-xs font-semibold text-emerald-700 dark:text-emerald-400 mb-1.5"><CheckCircle2 className="w-3 h-3 mr-1"/>Сильные стороны</p><ul className="space-y-0.5">{item.strengths.map((s,i)=><li key={i} className="text-xs">• {s}</li>)}</ul></div>
           <div className="p-3 rounded-lg bg-red-50 dark:bg-red-950/20 border border-red-200/60"><p className="text-xs font-semibold text-red-700 dark:text-red-400 mb-1.5"><XCircle className="w-3 h-3 mr-1"/>Слабые стороны</p><ul className="space-y-0.5">{item.weaknesses.map((s,i)=><li key={i} className="text-xs">• {s}</li>)}</ul></div>
           {related.length>0 && <div className="space-y-2"><p className="text-xs font-semibold text-muted-foreground flex items-center gap-1"><Link2 className="w-3 h-3"/>Связи ({related.length})</p>
-            {related.map(l=>{const lc=L_CFG[l.type],otherId=l.sourceId===item.id?l.targetId:l.sourceId,other=ALL_MAP[otherId];return <div key={l.id} className="flex items-center gap-2 text-xs p-2 rounded-md bg-muted/40 border"><span className="w-2 h-2 rounded-full" style={{backgroundColor:lc.color}}/><Badge className={`${lc.color==='#b91c1c'?'bg-red-700':lc.color==='#047857'?'bg-emerald-700':'bg-amber-600'} text-white text-[10px]`}>{lc.label}</Badge><span className="truncate">{other?.shortName??otherId}</span><span className="text-muted-foreground truncate ml-auto">{l.description.slice(0,60)}…</span></div>})}
+            {related.map(l=>{const lc=L_CFG[l.type],otherId=l.sourceId===item.id?l.targetId:l.sourceId,other=allMap[otherId];return <div key={l.id} className="flex items-center gap-2 text-xs p-2 rounded-md bg-muted/40 border"><span className="w-2 h-2 rounded-full" style={{backgroundColor:lc.color}}/><Badge className={`${lc.color==='#b91c1c'?'bg-red-700':lc.color==='#047857'?'bg-emerald-700':'bg-amber-600'} text-white text-[10px]`}>{lc.label}</Badge><span className="truncate">{other?.shortName??otherId}</span><span className="text-muted-foreground truncate ml-auto">{l.description.slice(0,60)}…</span></div>})}
           </div>}
           <div className="p-2 rounded-md bg-muted/40 border text-xs"><span className="text-muted-foreground">Источник: </span>{item.source}</div>
         </div>
@@ -103,20 +289,123 @@ function DetailSheet({item,open,onOpenChange}:{item:EItem|null;open:boolean;onOp
 
 // ─── Main ───
 
-export function CaseEvidenceChain() {
+export function CaseEvidenceChain({ caseId }: { caseId?: string }) {
   const [filter,setFilter]=useState<FKey>('all')
   const [hovId,setHovId]=useState<string|null>(null)
   const [selId,setSelId]=useState<string|null>(null)
   const [sheetOpen,setSheetOpen]=useState(false)
 
-  const visible=useMemo(()=>{let arr=ALL;if(filter==='prosecution')arr=arr.filter(e=>e.side==='prosecution');if(filter==='defense')arr=arr.filter(e=>e.side==='defense');if(filter==='strong')arr=arr.filter(e=>LINKS.some(l=>(l.sourceId===e.id||l.targetId===e.id)&&l.strength==='strong'));return arr},[filter])
-  const linkedIds=useMemo(()=>new Set(LINKS.flatMap(l=>[l.sourceId,l.targetId])),[])
-  const connectedTo=useCallback((id:string)=>new Set(LINKS.filter(l=>l.sourceId===id||l.targetId===id).flatMap(l=>[l.sourceId,l.targetId])),[])
+  // Fetch real data from API
+  const { data: docs = [], isLoading: isLoadingDocs } = useQuery({
+    queryKey: ['documents', caseId],
+    queryFn: () => caseApi.getDocuments(caseId),
+    enabled: !!caseId,
+  })
+
+  const { data: persons = [], isLoading: isLoadingPersons } = useQuery({
+    queryKey: ['persons', caseId],
+    queryFn: () => caseApi.getPersons(caseId),
+    enabled: !!caseId,
+  })
+
+  const { data: chainData = [] } = useQuery({
+    queryKey: ['evidence-chain', caseId],
+    queryFn: () => caseApi.getEvidenceChain(caseId),
+    enabled: !!caseId,
+  })
+
+  const { data: episodes = [] } = useQuery({
+    queryKey: ['episodes', caseId],
+    queryFn: () => caseApi.getEpisodes(caseId),
+    enabled: !!caseId,
+  })
+
+  const isLoading = isLoadingDocs || isLoadingPersons
+
+  // Build items and links from real data
+  const allItems = useMemo(() => buildItems(docs, persons), [docs, persons])
+  const links = useMemo(() => buildLinks(allItems, docs, persons, chainData), [allItems, docs, persons, chainData])
+
+  // Filter logic
+  const visible=useMemo(()=>{let arr=allItems;if(filter==='prosecution')arr=arr.filter(e=>e.side==='prosecution');if(filter==='defense')arr=arr.filter(e=>e.side==='defense');if(filter==='strong')arr=arr.filter(e=>links.some(l=>(l.sourceId===e.id||l.targetId===e.id)&&l.strength==='strong'));return arr},[filter,allItems,links])
+
+  const prosecutionItems = useMemo(() => allItems.filter(i => i.side === 'prosecution'), [allItems])
+  const defenseItems = useMemo(() => allItems.filter(i => i.side === 'defense'), [allItems])
+
+  // Gaps: prosecution items not linked to any defense item
+  const gaps = useMemo(() => {
+    const linkedProsIds = new Set(links.flatMap(l => l.sourceId))
+    return prosecutionItems.filter(e => !linkedProsIds.has(e.id)).map(e => e.id)
+  }, [prosecutionItems, links])
+
+  const linkedIds=useMemo(()=>new Set(links.flatMap(l=>[l.sourceId,l.targetId])),[links])
+  const connectedTo=useCallback((id:string)=>new Set(links.filter(l=>l.sourceId===id||l.targetId===id).flatMap(l=>[l.sourceId,l.targetId])),[links])
 
   const handleClick=useCallback((id:string)=>{setSelId(id);setSheetOpen(true)},[])
   const handleHov=useCallback((id:string|null)=>setHovId(id),[])
 
   const connSet=useMemo(()=>hovId?connectedTo(hovId):null,[hovId,connectedTo])
+
+  // ─── SVG layout ───
+  const SW=1400,SH=460,NW=132,NH=92,PX=80,PROS_Y=100,DEF_Y=380,AX_Y=230
+
+  // Compute node positions dynamically
+  const posMap = useMemo(() => {
+    const p: Record<string, {x:number;y:number}> = {}
+    const sp = NW + 24
+
+    const dodge = (arr: EItem[], y: number) => {
+      const sorted = [...arr].sort((a, b) => +new Date(a.date) - +new Date(b.date))
+      const dates = allItems.map(e => +new Date(e.date))
+      const mn = Math.min(...dates), mx = Math.max(...dates)
+      const range = mx - mn || 1
+
+      const cs = sorted.map(e => ({
+        id: e.id,
+        x: PX + ((+new Date(e.date) - mn) / range) * (SW - 2 * PX)
+      }))
+      // Dodge overlapping nodes
+      for (let i = 1; i < cs.length; i++) {
+        if (cs[i].x - cs[i-1].x < sp) cs[i].x = cs[i-1].x + sp
+      }
+      const mxX = SW - PX
+      for (let i = cs.length - 1; i >= 0; i--) {
+        if (cs[i].x > mxX) cs[i].x = mxX
+      }
+      cs.forEach(c => { p[c.id] = ({ x: c.x, y }) })
+    }
+
+    dodge(prosecutionItems, PROS_Y)
+    dodge(defenseItems, DEF_Y)
+    return p
+  }, [prosecutionItems, defenseItems, allItems])
+
+  // Empty state
+  if (!caseId) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <p className="text-muted-foreground">Выберите дело для просмотра цепочки доказательств</p>
+      </div>
+    )
+  }
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+      </div>
+    )
+  }
+
+  if (allItems.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center h-64 gap-4">
+        <Link2 className="w-12 h-12 text-muted-foreground" />
+        <p className="text-muted-foreground">Нет данных по цепочке доказательств для данного дела</p>
+        <p className="text-xs text-muted-foreground">Загрузите и обработайте документы для формирования цепочки доказательств</p>
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-6 pb-8">
@@ -127,7 +416,7 @@ export function CaseEvidenceChain() {
             <div className="w-14 h-14 rounded-xl bg-red-700/20 flex items-center justify-center shrink-0 ring-1 ring-red-700/30"><Link2 className="w-7 h-7 text-red-700 dark:text-red-400"/></div>
             <div className="min-w-0">
               <div className="flex items-center gap-2 mb-1"><h2 className="text-xl font-bold tracking-tight">Цепочка доказательств</h2><Badge className="bg-red-700 text-white gap-1"><Swords className="w-3 h-3"/>Обвинение</Badge><Badge className="bg-emerald-700 text-white gap-1"><Shield className="w-3 h-3"/>Защита</Badge></div>
-              <p className="text-sm text-muted-foreground">Визуализация связей между доказательствами обвинения и защиты по делу № 2024-00145</p>
+              <p className="text-sm text-muted-foreground">Визуализация связей между доказательствами обвинения и защиты ({prosecutionItems.length} обвинение, {defenseItems.length} защита, {links.length} связей)</p>
             </div>
           </div>
         </CardContent>
@@ -135,10 +424,10 @@ export function CaseEvidenceChain() {
 
       {/* Stats */}
       <div className={GRID4}>
-        <Card className="rounded-xl shadow-sm"><CardContent className="p-3 flex flex-col items-center"><p className="text-2xl font-bold">{P_E.length}</p><p className="text-xs text-muted-foreground">Обвинение</p></CardContent></Card>
-        <Card className="rounded-xl shadow-sm"><CardContent className="p-3 flex flex-col items-center"><p className="text-2xl font-bold">{D_E.length}</p><p className="text-xs text-muted-foreground">Защита</p></CardContent></Card>
-        <Card className="rounded-xl shadow-sm"><CardContent className="p-3 flex flex-col items-center"><p className="text-2xl font-bold">{LINKS.length}</p><p className="text-xs text-muted-foreground">Связей</p></CardContent></Card>
-        <Card className="rounded-xl shadow-sm"><CardContent className="p-3 flex flex-col items-center"><p className="text-2xl font-bold">{GAPS.length}</p><p className="text-xs text-muted-foreground">Разрывов цепи</p></CardContent></Card>
+        <Card className="rounded-xl shadow-sm"><CardContent className="p-3 flex flex-col items-center"><p className="text-2xl font-bold">{prosecutionItems.length}</p><p className="text-xs text-muted-foreground">Обвинение</p></CardContent></Card>
+        <Card className="rounded-xl shadow-sm"><CardContent className="p-3 flex flex-col items-center"><p className="text-2xl font-bold">{defenseItems.length}</p><p className="text-xs text-muted-foreground">Защита</p></CardContent></Card>
+        <Card className="rounded-xl shadow-sm"><CardContent className="p-3 flex flex-col items-center"><p className="text-2xl font-bold">{links.length}</p><p className="text-xs text-muted-foreground">Связей</p></CardContent></Card>
+        <Card className="rounded-xl shadow-sm"><CardContent className="p-3 flex flex-col items-center"><p className="text-2xl font-bold">{gaps.length}</p><p className="text-xs text-muted-foreground">Разрывов цепи</p></CardContent></Card>
       </div>
 
       {/* Filter */}
@@ -161,8 +450,8 @@ export function CaseEvidenceChain() {
               {/* Axis */}
               <div className="absolute left-[80px] right-[80px] top-[230px] h-0.5 bg-stone-300 dark:bg-stone-700 z-0"/>
               {/* Links */}
-              {LINKS.map(l=>{
-                const src=POS[l.sourceId],tgt=POS[l.targetId];if(!src||!tgt)return null
+              {links.map(l=>{
+                const src=posMap[l.sourceId],tgt=posMap[l.targetId];if(!src||!tgt)return null
                 const lc=L_CFG[l.type],lsc=LS_CFG[l.strength],hl=hovId&&(l.sourceId===hovId||l.targetId===hovId),dm=hovId&&!hl
                 return <div key={l.id} className={`absolute z-5 transition-opacity duration-200 ${dm?'opacity-20':'opacity-100'}`} style={{top:0,left:0,width:SW+'px',height:SH+'px',pointerEvents:'none'}}>
                   <svg viewBox={`0 0 ${SW} ${SH}`} className="w-full h-auto" style={{position:'absolute',top:0,left:0}}>
@@ -172,9 +461,9 @@ export function CaseEvidenceChain() {
               })}
               {/* Nodes */}
               {visible.map(item=>{
-                const pos=POS[item.id];if(!pos)return null
+                const pos=posMap[item.id];if(!pos)return null
                 const tc=T_CFG[item.type],TIcon=tc.icon
-                const isHov=hovId===item.id,isHL=connSet?.has(item.id),isDim=hovId&&!isHov&&!isHL,isGap=GAPS.includes(item.id)
+                const isHov=hovId===item.id,isHL=connSet?.has(item.id),isDim=hovId&&!isHov&&!isHL,isGap=gaps.includes(item.id)
                 const sideBg=item.side==='prosecution'?'from-card via-card to-red-500/5':'from-card via-card to-emerald-500/5'
                 const topBdr=item.side==='prosecution'?'border-t-red-700':'border-t-emerald-700'
                 return (
@@ -184,7 +473,7 @@ export function CaseEvidenceChain() {
                     <div className="p-2 space-y-1">
                       <div className="flex items-center justify-between gap-1"><Badge className={`${tc.tone} text-[10px] gap-0.5 px-1.5 py-0`}><TIcon className="w-2.5 h-2.5"/>{tc.label}</Badge><Badge className={`${strBadge(item.strength,item.side)} text-[10px]`}>{item.strength}</Badge></div>
                       <p className="text-xs font-semibold leading-tight line-clamp-2">{item.shortName}</p>
-                      <p className="text-[10px] text-muted-foreground">{new Date(item.date).toLocaleDateString('ru-RU',{day:'2-digit',month:'2-digit',year:'2-digit'})}</p>
+                      <p className="text-[10px] text-muted-foreground">{item.date ? new Date(item.date).toLocaleDateString('ru-RU',{day:'2-digit',month:'2-digit',year:'2-digit'}) : '—'}</p>
                     </div>
                   </button>
                 )
@@ -203,7 +492,7 @@ export function CaseEvidenceChain() {
         </CardContent>
       </Card>
 
-      <DetailSheet item={selId?ALL_MAP[selId]:null} open={sheetOpen} onOpenChange={setSheetOpen}/>
+      <DetailSheet item={selId?allItems.find(i=>i.id===selId):null} allItems={allItems} links={links} open={sheetOpen} onOpenChange={setSheetOpen}/>
     </div>
   )
 }

@@ -163,6 +163,7 @@ export async function askQuestion(params: {
   question: string
   contextType?: string | null
   contextId?: string | null
+  caseId?: string | null
 }): Promise<ChatMessageData> {
   return fetchApi<ChatMessageData>('/qa', {
     method: 'POST',
@@ -363,10 +364,11 @@ export async function getEvidenceTimeline(caseId?: string): Promise<EvidenceTime
   }
 }
 
-// Get person relationships
-export async function getPersonRelationships(): Promise<PersonRelationship[]> {
+// Get person relationships for a specific case
+export async function getPersonRelationships(caseId?: string): Promise<PersonRelationship[]> {
+  const query = caseId ? `?caseId=${encodeURIComponent(caseId)}` : ''
   try {
-    return await fetchApi<PersonRelationship[]>('/relationships')
+    return await fetchApi<PersonRelationship[]>(`/relationships${query}`)
   } catch {
     return []
   }
@@ -506,10 +508,11 @@ export async function getBookmarks(caseId?: string): Promise<BookmarkData[]> {
   }
 }
 
-// === NEW: Get Witness Statements ===
-export async function getWitnessStatements(): Promise<WitnessStatementData[]> {
+// === NEW: Get Witness Statements for a specific case ===
+export async function getWitnessStatements(caseId?: string): Promise<WitnessStatementData[]> {
+  const query = caseId ? `?caseId=${encodeURIComponent(caseId)}` : ''
   try {
-    return await fetchApi<WitnessStatementData[]>('/witness-statements')
+    return await fetchApi<WitnessStatementData[]>(`/witness-statements${query}`)
   } catch {
     return []
   }

@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Separator } from '@/components/ui/separator'
 import { toast } from 'sonner'
 import { MessageSquare, Send, Loader2, Sparkles, Download, Cpu, FileText, Scale, Bot, Clock, Gavel, Shield, Users, TrendingUp, Percent } from 'lucide-react'
-import { mockChatMessages } from '@/lib/mock-data'
+
 import * as caseApi from '@/lib/case-api'
 import type { ChatMessageData } from '@/lib/case-store'
 
@@ -51,14 +51,14 @@ function AiConfidence({ confidence }: { confidence: number }) {
   )
 }
 
-export function CaseQa() {
-  const [messages, setMessages] = useState<ChatMessageData[]>(mockChatMessages)
+export function CaseQa({ caseId }: { caseId?: string }) {
+  const [messages, setMessages] = useState<ChatMessageData[]>([])
   const [question, setQuestion] = useState('')
   const [contextType, setContextType] = useState('general')
   const scrollRef = useRef<HTMLDivElement>(null)
 
   const askMutation = useMutation({
-    mutationFn: () => caseApi.askQuestion({ question, contextType }),
+    mutationFn: () => caseApi.askQuestion({ question, contextType, caseId }),
     onSuccess: (data) => { setMessages(prev => [...prev, data]) },
     onError: () => {
       const mock: ChatMessageData = {
@@ -277,7 +277,7 @@ export function CaseQa() {
       </div>
 
       <Separator />
-      <p className="text-xs text-muted-foreground">ИИ-аналитик по уголовному делу № 2024-00145 • Ответы основаны на материалах дела</p>
+      <p className="text-xs text-muted-foreground">ИИ-аналитик • Ответы основаны на материалах дела{caseId ? ` (Дело ${caseId})` : ''}</p>
     </div>
   )
 }

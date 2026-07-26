@@ -15,7 +15,7 @@ import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from '@/
 import { Input } from '@/components/ui/input'
 import { Users, Shield, Star, ChevronDown, ChevronUp, AlertTriangle, Gavel, Download, FileText, Link2, MessageSquare, Target, ArrowRight, MapPin, Cake, CheckCircle, XCircle, GitCompare, Plus, X, RefreshCw, Share2, Network, Minus, RotateCcw, ZoomIn, ZoomOut, Eye, Heart, Search } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
-import { mockPersons, mockPersonRelationships, mockWitnessStatements, mockGuiltAssessments, mockDefenseLines, mockEpisodes } from '@/lib/mock-data'
+// Mock data removed — all data comes from real API filtered by caseId
 import { getPersons, getPersonRelationships, getWitnessStatements } from '@/lib/case-api'
 import type { PersonData, PersonRelationship, WitnessStatementData } from '@/lib/case-store'
 import { toast } from 'sonner'
@@ -48,26 +48,9 @@ const REL_B: Record<string, string> = { high:'bg-emerald-700 text-white',moderat
 const RADAR_DIMS = ['Доказательства','Процес.','Защита','Свидетели','Соотв.']
 const RADAR_V: Record<string, number[]> = { high:[80,30,40,50,60], moderate:[60,50,60,60,70], low:[40,70,70,70,80], none:[20,90,90,80,90] }
 
-// Graph role type & data
-type GRole = 'обвиняемый'|'соучастник'|'свидетель'|'потерпевшая'|'следователь'
-interface GNode { id:string; name:string; role:GRole; status:string; occupation:string; desc:string; isKol?:boolean }
+// Graph role type & data (derived from real API data)
+interface GNode { id:string; name:string; role:string; status:string; occupation:string; desc:string; isPrimary?:boolean }
 interface GEdge { source:string; target:string; label:string }
-
-const G_NODES: GNode[] = [
-  { id:'kolesnichenko', name:'Колесниченко Д.А.', role:'обвиняемый', status:'задержанный', occupation:'Бывший директор ООО "ТехноПром"', desc:'Главный обвиняемый', isKol:true },
-  { id:'sidorov', name:'Сидоров А.П.', role:'соучастник', status:'под подпиской', occupation:'Бухгалтер ООО', desc:'Соучастник, финансовое оформление' },
-  { id:'petrov', name:'Петров И.С.', role:'свидетель', status:'допрошен', occupation:'Бывший менеджер', desc:'Свидетель обвинения' },
-  { id:'kozlova', name:'Козлова Е.М.', role:'свидетель', status:'допрошена', occupation:'Коллега', desc:'Свидетель защиты, алиби' },
-  { id:'morozova', name:'Морозова А.В.', role:'потерпевшая', status:'признана', occupation:'Представитель ООО', desc:'Представитель потерпевшей организации' },
-]
-const G_EDGES: GEdge[] = [
-  { source:'kolesnichenko', target:'sidorov', label:'соучастники' },
-  { source:'kolesnichenko', target:'petrov', label:'давал показания' },
-  { source:'kolesnichenko', target:'kozlova', label:'алиби-свидетель' },
-  { source:'kolesnichenko', target:'morozova', label:'потерпевшая сторона' },
-  { source:'kozlova', target:'petrov', label:'коллеги' },
-  { source:'morozova', target:'sidorov', label:'финансовая связь' },
-]
 
 const REL_EDGE: Record<string,string> = { 'соучастники':'#ea580c','обвиняемый-потерпевшая':'#dc2626','обвиняемый-свидетель':'#dc2626','соучастник-потерпевшая':'#dc2626','организатор-соучастник':'#ea580c','алиби-свидетель':'#ca8a04','давал показания':'#dc2626','потерпевшая сторона':'#dc2626','коллеги':'#047857','финансовая связь':'#78716c' }
 const REL_CAT: Record<string,'conflict'|'cooperation'|'family'|'professional'> = { 'соучастники':'cooperation','обвиняемый-потерпевшая':'conflict','обвиняемый-свидетель':'conflict','соучастник-потерпевшая':'conflict','организатор-соучастник':'cooperation','алиби-свидетель':'cooperation','давал показания':'conflict','потерпевшая сторона':'conflict','коллеги':'professional','финансовая связь':'professional' }
@@ -224,11 +207,35 @@ function RelationshipMap({ relationships, persons }: { relationships: PersonRela
   )
 }
 
-// ─── PersonRelationshipGraph (SVG) ───
+// ─── PersonRelationshipGraph (SVG) — dynamic from API data ───
 
 const GW=600, GH=500, GCX=GW/2, GCY=GH/2, GR=175
 
-function PersonRelationshipGraph() {
+function PersonRelationshipGraph({ persons, relationships }: { persons: PersonData[]; relationships: PersonRelationship[] }) {
+  // Derive graph nodes from persons data
+  const gNodes = useMemo<GNode[]>(() =>
+    persons.map(p => ({
+      id: p.id,
+      name: p.shortName ?? p.fullName,
+      role: p.role ?? '',
+      status: p.status ?? '',
+      occupation: p.occupation ?? '',
+      desc: p.description ?? '',
+      isPrimary: p.isKolesnichenko || p.role === 'обвиняемый',
+    })),
+    [persons]
+  )
+
+  // Derive graph edges from relationships data
+  const gEdges = useMemo<GEdge[]>(() =>
+    relationships.map(r => ({
+      source: r.sourcePersonId,
+      target: r.targetPersonId,
+      label: r.relationshipType,
+    })),
+    [relationships]
+  )
+
   const [hovNode, setHovNode] = useState<string|null>(null)
   const [selNode, setSelNode] = useState<string|null>(null)
   const [collapsed, setCollapsed] = useState(false)
@@ -238,30 +245,47 @@ function PersonRelationshipGraph() {
 
   const positions = useMemo(() => {
     const pos: Record<string,{x:number;y:number}> = {}
-    const outer = G_NODES.filter(n=>!n.isKol)
-    G_NODES.forEach(n => {
-      if(n.isKol) pos[n.id]={x:GCX,y:GCY}
-      else { const i=outer.findIndex(o=>o.id===n.id), a=(-90+i*(360/outer.length))*Math.PI/180; pos[n.id]={x:GCX+GR*Math.cos(a),y:GCY+GR*Math.sin(a)} }
+    if (gNodes.length === 0) return pos
+    const center = gNodes.find(n=>n.isPrimary) ?? gNodes[0]
+    const outer = gNodes.filter(n=>n.id !== center.id)
+    pos[center.id] = {x:GCX,y:GCY}
+    outer.forEach((n,i) => {
+      const a=(-90+i*(360/Math.max(1,outer.length)))*Math.PI/180
+      pos[n.id]={x:GCX+GR*Math.cos(a),y:GCY+GR*Math.sin(a)}
     })
     return pos
-  },[])
+  },[gNodes])
 
   const hovConn = useMemo(() => {
-    if(!hovNode) return null; const ids=new Set<string>(); G_EDGES.forEach(e=>{if(e.source===hovNode)ids.add(e.target);if(e.target===hovNode)ids.add(e.source)}); return ids
-  },[hovNode])
+    if(!hovNode) return null; const ids=new Set<string>(); gEdges.forEach(e=>{if(e.source===hovNode)ids.add(e.target);if(e.target===hovNode)ids.add(e.source)}); return ids
+  },[hovNode,gEdges])
 
   const isDim = (id:string) => hovNode ? id!==hovNode && !hovConn?.has(id) : false
   const zoomIn = () => setVb(v => {const nw=Math.max(200,v.w/1.25),nh=Math.max(200*(GH/GW),v.h/1.25);return{x:v.x+(v.w-nw)/2,y:v.y+(v.h-nh)/2,w:nw,h:nh}})
   const zoomOut = () => setVb(v => {const nw=Math.min(1500,v.w*1.25),nh=Math.min(1500*(GH/GW),v.h*1.25);return{x:v.x-(nw-v.w)/2,y:v.y-(nh-v.h)/2,w:nw,h:nh}})
   const resetZoom = () => setVb(DVB)
 
-  const selected = selNode ? G_NODES.find(n=>n.id===selNode) ?? null : null
+  const selected = selNode ? gNodes.find(n=>n.id===selNode) ?? null : null
+
+  // Empty state when no persons data
+  if (gNodes.length === 0) {
+    return (
+      <Card className="rounded-xl shadow-sm border-l-4 border-amber-600">
+        <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2"><Share2 className="w-4 h-4 text-amber-600" />Граф связей</CardTitle></CardHeader>
+        <CardContent className="p-8 text-center">
+          <div className="flex items-center justify-center w-16 h-16 rounded-full bg-muted/30 mx-auto mb-3"><Share2 className="w-8 h-8 text-muted-foreground"/></div>
+          <p className="text-sm font-semibold text-muted-foreground">Нет данных для графа</p>
+          <p className="text-xs text-muted-foreground mt-1">Добавьте документы для анализа участников и их связей</p>
+        </CardContent>
+      </Card>
+    )
+  }
 
   return (
     <Card className="rounded-xl shadow-sm border-l-4 border-amber-600">
       <CardHeader className="pb-2">
         <div className="flex items-center justify-between gap-2 flex-wrap">
-          <CardTitle className="text-sm flex items-center gap-2"><Share2 className="w-4 h-4 text-amber-600" />Граф связей <Badge variant="outline" className="text-xs">{G_NODES.length} узлов · {G_EDGES.length} связей</Badge></CardTitle>
+          <CardTitle className="text-sm flex items-center gap-2"><Share2 className="w-4 h-4 text-amber-600" />Граф связей <Badge variant="outline" className="text-xs">{gNodes.length} узлов · {gEdges.length} связей</Badge></CardTitle>
           <Button size="sm" variant="ghost" className="h-7 rounded-lg gap-1" onClick={()=>setCollapsed(c=>!c)}>{collapsed?<ChevronDown className="w-4 h-4"/>:<ChevronUp className="w-4 h-4"/>}{collapsed?'Развернуть':'Свернуть'}</Button>
         </div>
       </CardHeader>
@@ -282,11 +306,11 @@ function PersonRelationshipGraph() {
               <marker id="arr-a" viewBox="0 0 10 10" refX={9} refY={5} markerWidth={6} markerHeight={6} orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10z" fill="#ea580c"/></marker>
               {Object.entries(REL_EDGE).map(([t,c]) => <marker key={t} id={`arr-${t}`} viewBox="0 0 10 10" refX={9} refY={5} markerWidth={6} markerHeight={6} orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10z" fill={c}/></marker>)}
             </defs>
-            {G_EDGES.map((e,i) => {
+            {gEdges.map((e,i) => {
               const src=positions[e.source], tgt=positions[e.target]; if(!src||!tgt) return null
               const hl = hovNode && (e.source===hovNode||e.target===hovNode), dm = hovNode && !hl
               const dx=tgt.x-src.x, dy=tgt.y-src.y, d=Math.max(1,Math.sqrt(dx*dx+dy*dy))
-              const sR=G_NODES.find(n=>n.id===e.source)?.isKol?30:24, tR=G_NODES.find(n=>n.id===e.target)?.isKol?30:24
+              const sR=gNodes.find(n=>n.id===e.source)?.isPrimary?30:24, tR=gNodes.find(n=>n.id===e.target)?.isPrimary?30:24
               const x1=src.x+(dx/d)*sR, y1=src.y+(dy/d)*sR, x2=tgt.x-(dx/d)*(tR+6), y2=tgt.y-(dy/d)*(tR+6)
               const mx=(x1+x2)/2, my=(y1+y2)/2
               const ec=hl?'#ea580c':REL_EDGE[e.label]??'#a8a29e', mid=`arr-${e.label}`??'arr-d'
@@ -299,17 +323,18 @@ function PersonRelationshipGraph() {
                 </g>
               )
             })}
-            {G_NODES.map(n => {
-              const pos=positions[n.id], dim=isDim(n.id), sel=selNode===n.id, hov=hovNode===n.id
+            {gNodes.map(n => {
+              const pos=positions[n.id]; if(!pos) return null
+              const dim=isDim(n.id), sel=selNode===n.id, hov=hovNode===n.id
               const rc=ROLE[n.role]?.color??'#78716c', rl=ROLE[n.role]?.label??n.role
-              const r=n.isKol?30:24
+              const r=n.isPrimary?30:24
               return (
                 <g key={n.id} style={{opacity:dim?0.3:1,transition:'opacity 200ms'}} onMouseEnter={()=>setHovNode(n.id)} onMouseLeave={()=>setHovNode(null)} onClick={()=>setSelNode(sel?null:n.id)} className="cursor-pointer">
                   <circle cx={pos.x} cy={pos.y} r={r+4} fill={sel?'#fef3c7':hov?'#f5f5f4':'transparent'} opacity={0.5}/>
                   <circle cx={pos.x} cy={pos.y} r={r} fill={rc} stroke={sel?'#ea580c':'#ffffff'} strokeWidth={sel?3:2}/>
                   <text x={pos.x} y={pos.y-r-8} fontSize={10} fontWeight={700} fill="#1c1917" textAnchor="middle">{n.name.split(' ')[0]}</text>
                   <text x={pos.x} y={pos.y+r+14} fontSize={9} fill="#57534e" textAnchor="middle">{rl}</text>
-                  {n.isKol && <circle cx={pos.x} cy={pos.y} r={r+8} fill="none" stroke="#ca8a04" strokeWidth={1.5} strokeDasharray="3 3"/>}
+                  {n.isPrimary && <circle cx={pos.x} cy={pos.y} r={r+8} fill="none" stroke="#ca8a04" strokeWidth={1.5} strokeDasharray="3 3"/>}
                 </g>
               )
             })}
@@ -344,8 +369,8 @@ export function CasePersons({ caseId }: { caseId: string }) {
   const [compareIds, setCompareIds] = useState<string[]>([])
 
   const { data: persons = [], isLoading } = useQuery({ queryKey: ['persons', caseId], queryFn: () => getPersons(caseId), enabled: !!caseId, refetchInterval: 30000 })
-  const { data: relationships = [] } = useQuery({ queryKey: ['personRelationships', caseId], queryFn: getPersonRelationships, enabled: !!caseId, refetchInterval: 30000 })
-  const { data: statements = [] } = useQuery({ queryKey: ['witnessStatements', caseId], queryFn: getWitnessStatements, enabled: !!caseId, refetchInterval: 30000 })
+  const { data: relationships = [] } = useQuery({ queryKey: ['personRelationships', caseId], queryFn: () => getPersonRelationships(caseId), enabled: !!caseId, refetchInterval: 30000 })
+  const { data: statements = [] } = useQuery({ queryKey: ['witnessStatements', caseId], queryFn: () => getWitnessStatements(caseId), enabled: !!caseId, refetchInterval: 30000 })
 
   const filtered = useMemo(() => {
     let result = persons
@@ -377,7 +402,7 @@ export function CasePersons({ caseId }: { caseId: string }) {
       </CardContent></Card>
 
       <RelationshipMap relationships={relationships} persons={persons} />
-      <PersonRelationshipGraph />
+      <PersonRelationshipGraph persons={persons} relationships={relationships} />
 
       {/* Person cards */}
       <div className={GRID2}>
@@ -510,7 +535,7 @@ function ComparisonView({ persons, compareIds, setCompareIds }: { persons: Perso
     return res
   })()
 
-  const epCounts = useMemo(() => { const c:Record<string,number>={}; persons.forEach(p=>{c[p.id]=0}); mockEpisodes.forEach(ep=>ep.persons.forEach(pe=>{c[pe.personId]=(c[pe.personId]??0)+1})); return c },[persons])
+  const epCounts = useMemo(() => { const c:Record<string,number>={}; persons.forEach(p=>{c[p.id]=p.episodes?.length??0}); return c },[persons])
 
   return (
     <Card className="rounded-xl shadow-sm border-l-4 border-red-700">

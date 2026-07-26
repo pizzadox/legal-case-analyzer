@@ -14,7 +14,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { toast } from 'sonner'
 import { Scale, CheckCircle, AlertTriangle, Info, XCircle, Loader2, Zap, Shield, BarChart3, Download, FileText, Clock, History, Flame, TrendingUp, Search, Filter, ArrowUpDown, BookOpen, Eye, Gavel, FileCheck, AlertOctagon, Target, ListChecks, ArrowRight, Sparkles, ChevronDown, ChevronUp } from 'lucide-react'
-import { mockComplianceChecks, mockDocuments, mockAuditLog } from '@/lib/mock-data'
+
 import { checkCompliance, getComplianceResults, getDocuments, getAuditLog } from '@/lib/case-api'
 import type { LegalComplianceData, AuditLogEntry } from '@/lib/case-store'
 
@@ -37,7 +37,7 @@ function AuditPanel({ entries }: { entries: AuditLogEntry[] }) {
   return (<Card className="rounded-xl shadow-sm bg-gradient-to-br from-card via-card to-muted/20 border-t-2 border-t-emerald-500 hover:shadow-md transition-shadow"><CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2"><History className="w-4 h-4 text-emerald-700" /> Журнал аудита<Badge variant="outline" className="text-xs ml-auto">{entries.length} записей</Badge></CardTitle></CardHeader><CardContent className="p-4"><div className="space-y-2 max-h-96 overflow-y-auto scrollbar-thin">{entries.slice(0, 10).map((e, i) => <div key={e.id} className={`flex items-start gap-2.5 p-2.5 rounded-lg bg-muted/40 hover:bg-muted/70 transition-all ${i===0?'ring-1 ring-emerald-500/30':''}`}><div className={`flex items-center justify-center w-7 h-7 rounded-lg shrink-0 ${CAT_SEV[e.category] ?? CAT_SEV.system}`}><Scale className="w-3 h-3 text-emerald-700" /></div><div className="flex-1 min-w-0"><div className="flex items-center gap-1.5 mb-0.5"><p className="text-xs font-semibold truncate">{e.action}</p><Badge className={`text-[9px] px-1.5 py-0 shrink-0 ${SEV_B[e.severity] ?? SEV_B.info}`}>{e.severity === 'critical' ? 'Критич.' : e.severity === 'warning' ? 'Вним.' : 'Инфо'}</Badge></div><p className="text-xs text-muted-foreground line-clamp-1">{e.details}</p><p className="text-[10px] text-muted-foreground mt-0.5">{fmtT(e.timestamp)} · {e.actor}</p></div></div>)}</div></CardContent></Card>)
 }
 
-export function CaseLegalCheck() {
+export function CaseLegalCheck({ caseId }: { caseId?: string }) {
   const [activeTab, setActiveTab] = useState('results')
   const [checkFilter, setCheckFilter] = useState<string>('all')
   const [selectedDoc, setSelectedDoc] = useState<string>('')
@@ -45,12 +45,12 @@ export function CaseLegalCheck() {
 
   const checkMutation = useMutation({ mutationFn: (params: { documentId?: string; articleId?: string }) => checkCompliance(params.documentId, params.articleId), onSuccess: () => toast.success('Проверка завершена'), onError: () => toast.error('Ошибка проверки') })
   const { data: compData } = useQuery({ queryKey: ['compliance-results'], queryFn: getComplianceResults, retry: 1, refetchInterval: 10000 })
-  const { data: docData } = useQuery({ queryKey: ['documents'], queryFn: getDocuments, retry: 1, refetchInterval: 10000 })
-  const { data: auditData } = useQuery({ queryKey: ['audit-log'], queryFn: () => getAuditLog(20), retry: 1, refetchInterval: 10000 })
+  const { data: docData } = useQuery({ queryKey: ['documents', caseId], queryFn: () => getDocuments(caseId), retry: 1, refetchInterval: 10000 })
+  const { data: auditData } = useQuery({ queryKey: ['audit-log', caseId], queryFn: () => getAuditLog(caseId, 20), retry: 1, refetchInterval: 10000 })
 
-  const checks = compData ?? mockComplianceChecks
-  const documents = docData ?? mockDocuments
-  const auditLog = auditData ?? mockAuditLog
+  const checks = compData ?? []
+  const documents = docData ?? []
+  const auditLog = auditData ?? []
 
   const filteredChecks = useMemo(() => {
     let fc = [...checks]
@@ -102,6 +102,6 @@ export function CaseLegalCheck() {
       </TabsContent>
     </Tabs>
 
-    <Separator /><p className="text-xs text-muted-foreground">Правовая проверка • Дело № 2024-00145 • Нормы УК и УПК РФ</p>
+    <Separator /><p className="text-xs text-muted-foreground">Правовая проверка • {caseId ? `Дело ${caseId}` : 'Дело № ...'} • Нормы УК и УПК РФ</p>
   </div>)
 }

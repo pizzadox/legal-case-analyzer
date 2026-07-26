@@ -6,12 +6,13 @@ interface QARequest {
   question: string;
   contextType?: string;
   contextId?: string;
+  caseId?: string;
 }
 
 export async function POST(request: NextRequest) {
   try {
     const body: QARequest = await request.json();
-    const { question, contextType, contextId } = body;
+    const { question, contextType, contextId, caseId } = body;
 
     if (!question) {
       return NextResponse.json(
@@ -23,9 +24,11 @@ export async function POST(request: NextRequest) {
     // Gather context from the database
     let contextData = '';
 
-    // Get all processed documents
+    const caseFilter = caseId ? { caseId } : {};
+
+    // Get all processed documents (filtered by caseId if provided)
     const documents = await db.document.findMany({
-      where: { processingStatus: 'completed' },
+      where: { processingStatus: 'completed', ...caseFilter },
       select: {
         id: true,
         originalName: true,
@@ -38,8 +41,9 @@ export async function POST(request: NextRequest) {
       take: 10,
     });
 
-    // Get persons
+    // Get persons (filtered by caseId if provided)
     const persons = await db.person.findMany({
+      where: caseFilter,
       select: {
         id: true,
         fullName: true,
@@ -50,8 +54,9 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    // Get episodes
+    // Get episodes (filtered by caseId if provided)
     const episodes = await db.episode.findMany({
+      where: caseFilter,
       select: {
         id: true,
         title: true,
@@ -62,26 +67,52 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    // Get articles
-    const articles = await db.article.findMany({
-      select: {
-        id: true,
-        code: true,
-        description: true,
-        category: true,
-        punishmentMin: true,
-        punishmentMax: true,
-      },
-    });
+    // Get articles related to documents in this case
+    const caseDocIds = documents.map(d => d.id);
+    const articles = caseId && caseDocIds.length > 0
+      ? await db.article.findMany({
+          where: {
+            documents: { some: { documentId: { in: caseDocIds } } },
+          },
+          select: {
+            id: true,
+            code: true,
+            description: true,
+            category: true,
+            punishmentMin: true,
+            punishmentMax: true,
+          },
+        })
+      : await db.article.findMany({
+          select: {
+            id: true,
+            code: true,
+            description: true,
+            category: true,
+            punishmentMin: true,
+            punishmentMax: true,
+          },
+        });
 
-    // Get cross-references
-    const crossRefs = await db.crossReference.findMany({
-      include: {
-        sourceDocument: { select: { originalName: true } },
-        targetDocument: { select: { originalName: true } },
-      },
-      take: 20,
-    });
+    // Get cross-references (filtered by source documents in this case)
+    const crossRefs = caseId && caseDocIds.length > 0
+      ? await db.crossReference.findMany({
+          where: {
+            sourceDocumentId: { in: caseDocIds },
+          },
+          include: {
+            sourceDocument: { select: { originalName: true } },
+            targetDocument: { select: { originalName: true } },
+          },
+          take: 20,
+        })
+      : await db.crossReference.findMany({
+          include: {
+            sourceDocument: { select: { originalName: true } },
+            targetDocument: { select: { originalName: true } },
+          },
+          take: 20,
+        });
 
     // If contextType is specific, focus on that entity
     if (contextType === 'person_specific' && contextId) {

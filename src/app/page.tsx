@@ -126,7 +126,7 @@ function SectionRenderer({ sectionId, caseId }: { sectionId: SectionId; caseId: 
   }
   if (!Component) return null
 
-  const needsCaseId = ['dashboard', 'documents', 'persons', 'episodes', 'export-center']
+  const needsCaseId = ['dashboard', 'documents', 'persons', 'episodes', 'export-center', 'qa', 'legal-check', 'evidence-chain', 'battle-plan']
   if (needsCaseId.includes(sectionId)) {
     return <Component caseId={caseId} />
   }
