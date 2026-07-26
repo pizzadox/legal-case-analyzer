@@ -74,28 +74,41 @@ function ThemeToggle() {
 // Dynamic section renderer that loads components on demand
 function SectionRenderer({ sectionId, caseId }: { sectionId: SectionId; caseId: string }) {
   const [Component, setComponent] = useState<React.ComponentType<any> | null>(null)
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(sectionId !== 'dashboard') // Start loading only for non-dashboard sections
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    setLoading(true)
-    setError(null)
+    let cancelled = false
     const loader = COMPONENT_REGISTRY[sectionId]
     if (!loader) {
-      setError('Секция не найдена')
-      setLoading(false)
+      // Section not found - set error outside of synchronous effect
+      queueMicrotask(() => {
+        if (!cancelled) {
+          setError('Секция не найдена')
+        }
+      })
       return
     }
+    // Use microtask to avoid synchronous setState in effect
+    queueMicrotask(() => {
+      if (!cancelled && !Component) setLoading(true)
+    })
     loader()
       .then(mod => {
-        setComponent(() => mod.default)
-        setLoading(false)
+        if (!cancelled) {
+          setComponent(() => mod.default)
+          setLoading(false)
+          setError(null)
+        }
       })
       .catch(err => {
-        setError(`Ошибка загрузки: ${String(err)}`)
-        setLoading(false)
+        if (!cancelled) {
+          setError(`Ошибка загрузки: ${String(err)}`)
+          setLoading(false)
+        }
       })
-  }, [sectionId])
+    return () => { cancelled = true }
+  }, [sectionId, Component])
 
   if (loading) {
     return (
