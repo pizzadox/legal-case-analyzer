@@ -161,6 +161,8 @@ model ProcessingQueue {
   completedAt       DateTime?
   error             String?
   priority          Int      @default(5)
+  progressPercent   Int      @default(0)
+  progressStep      String?
 
   document          Document @relation(fields: [documentId], references: [id])
 }

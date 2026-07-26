@@ -29,6 +29,38 @@ interface AnalysisResult {
   }>
 }
 
+// Progress step labels in Russian for display
+const PROGRESS_STEPS: Record<string, { percent: number; label: string }> = {
+  'starting':           { percent: 5,  label: 'Запуск обработки' },
+  'extracting_text':    { percent: 20, label: 'Распознавание текста' },
+  'text_extracted':     { percent: 35, label: 'Текст распознан' },
+  'analyzing':          { percent: 50, label: 'ИИ-анализ документа' },
+  'analysis_complete':  { percent: 70, label: 'Анализ завершён' },
+  'creating_persons':   { percent: 80, label: 'Заполнение участников' },
+  'creating_episodes':  { percent: 85, label: 'Заполнение эпизодов' },
+  'creating_articles':  { percent: 90, label: 'Заполнение статей' },
+  'finalizing':         { percent: 95, label: 'Сохранение результатов' },
+  'completed':          { percent: 100, label: 'Обработка завершена' },
+}
+
+/**
+ * Update the processing queue entry with progress
+ */
+async function updateProgress(queueId: string, step: string): Promise<void> {
+  const stepInfo = PROGRESS_STEPS[step]
+  if (!stepInfo) return
+  
+  await db.processingQueue.update({
+    where: { id: queueId },
+    data: {
+      progressPercent: stepInfo.percent,
+      progressStep: stepInfo.label,
+    },
+  })
+  
+  console.log(`[Processor] Progress: ${stepInfo.percent}% - ${stepInfo.label}`)
+}
+
 /**
  * System prompt for LLM document analysis
  */
@@ -124,7 +156,7 @@ function parseAnalysisResponse(rawResponse: string): AnalysisResult {
 }
 
 /**
- * Process a single document through the full pipeline
+ * Process a single document through the full pipeline with per-step progress reporting
  */
 export async function processDocument(queueId: string, documentId: string): Promise<void> {
   console.log(`[Processor] Starting processing: queueId=${queueId}, documentId=${documentId}`)
@@ -134,6 +166,7 @@ export async function processDocument(queueId: string, documentId: string): Prom
     where: { id: queueId },
     data: { status: 'processing', startedAt: new Date() },
   })
+  await updateProgress(queueId, 'starting')
 
   // Step 2: Update Document processingStatus to processing
   await db.document.update({
@@ -154,21 +187,24 @@ export async function processDocument(queueId: string, documentId: string): Prom
     console.log(`[Processor] Processing file: ${document.originalName} (${document.filePath}, ${document.mimeType}, ${document.fileSize} bytes)`)
 
     // Step 4: Extract text from the file
+    await updateProgress(queueId, 'extracting_text')
     let extractedText: string
     try {
       extractedText = await extractText(document.filePath, document.mimeType)
       console.log(`[Processor] Extracted ${extractedText.length} characters of text`)
     } catch (extractionError) {
-      throw new Error(`Text extraction failed: ${String(extractionError)}`)
+      throw new Error(`Распознавание текста не удалось: ${String(extractionError)}`)
     }
 
     // Save extracted text to document immediately
+    await updateProgress(queueId, 'text_extracted')
     await db.document.update({
       where: { id: documentId },
       data: { extractedText },
     })
 
     // Step 5: Use LLM to analyze the extracted text
+    await updateProgress(queueId, 'analyzing')
     console.log('[Processor] Sending text to LLM for analysis...')
     let analysisResult: AnalysisResult
     try {
@@ -182,12 +218,15 @@ export async function processDocument(queueId: string, documentId: string): Prom
         articles: analysisResult.articles.length,
       })
     } catch (analysisError) {
-      throw new Error(`LLM analysis failed: ${String(analysisError)}`)
+      throw new Error(`ИИ-анализ не удалось: ${String(analysisError)}`)
     }
+
+    await updateProgress(queueId, 'analysis_complete')
 
     // Step 6: Create database records from analysis results
 
     // 6a: Create Person records and PersonDocument links
+    await updateProgress(queueId, 'creating_persons')
     const personLinks: Array<{ personId: string; role: string | null }> = []
     for (const personData of analysisResult.persons) {
       if (!personData.fullName || personData.fullName.trim().length === 0) continue
@@ -206,6 +245,7 @@ export async function processDocument(queueId: string, documentId: string): Prom
             shortName: personData.shortName || existingPerson.shortName,
             role: personData.role || existingPerson.role,
             isKolesnichenko: personData.fullName.toLowerCase().includes('колесниченко'),
+            caseId: document.caseId || existingPerson.caseId,
           },
         })
         personId = existingPerson.id
@@ -217,6 +257,7 @@ export async function processDocument(queueId: string, documentId: string): Prom
             shortName: personData.shortName,
             role: personData.role,
             isKolesnichenko: personData.fullName.toLowerCase().includes('колесниченко'),
+            caseId: document.caseId,
           },
         })
         personId = newPerson.id
@@ -236,6 +277,7 @@ export async function processDocument(queueId: string, documentId: string): Prom
     }
 
     // 6b: Create Episode records and EpisodeDocument links
+    await updateProgress(queueId, 'creating_episodes')
     const episodeLinks: Array<{ episodeId: string }> = []
     for (const episodeData of analysisResult.episodes) {
       if (!episodeData.title || episodeData.title.trim().length === 0) continue
@@ -284,12 +326,6 @@ export async function processDocument(queueId: string, documentId: string): Prom
 
       // Link persons to episodes
       for (const personLink of personLinks) {
-        // Check if this person is involved in this episode
-        const isInvolved = episodeData.personsInvolved?.some(name =>
-          name.toLowerCase().includes(personLink.role?.toLowerCase() || '') ||
-          true // All persons in the document are potentially involved
-        )
-
         // Check if PersonEpisode link already exists
         const existingLink = await db.personEpisode.findFirst({
           where: {
@@ -311,6 +347,7 @@ export async function processDocument(queueId: string, documentId: string): Prom
     }
 
     // 6c: Create Article records and DocumentArticle links
+    await updateProgress(queueId, 'creating_articles')
     const articleLinks: Array<{ articleId: string }> = []
     for (const articleData of analysisResult.articles) {
       if (!articleData.code || articleData.code.trim().length === 0) continue
@@ -396,6 +433,7 @@ export async function processDocument(queueId: string, documentId: string): Prom
     }
 
     // Step 7: Update Document with final results
+    await updateProgress(queueId, 'finalizing')
     await db.document.update({
       where: { id: documentId },
       data: {
@@ -410,11 +448,14 @@ export async function processDocument(queueId: string, documentId: string): Prom
     })
 
     // Step 8: Update ProcessingQueue to completed
+    await updateProgress(queueId, 'completed')
     await db.processingQueue.update({
       where: { id: queueId },
       data: {
         status: 'completed',
         completedAt: new Date(),
+        progressPercent: 100,
+        progressStep: 'Обработка завершена',
       },
     })
 
@@ -426,12 +467,26 @@ export async function processDocument(queueId: string, documentId: string): Prom
   } catch (error) {
     console.error(`[Processor] Processing failed for document ${documentId}:`, error)
 
+    // Clean up the error message for display (remove raw stack traces)
+    const rawError = String(error)
+    let cleanError = rawError
+    // Extract the most meaningful part of the error
+    if (rawError.includes(': ')) {
+      // Take the first meaningful error message, not the full chain
+      const parts = rawError.split(': ')
+      cleanError = parts.filter(p => !p.includes('Error') && p.length > 5).join(': ') || parts[parts.length - 1]
+    }
+    // Limit length for display
+    if (cleanError.length > 200) {
+      cleanError = cleanError.substring(0, 200) + '...'
+    }
+
     // Update Document with error
     await db.document.update({
       where: { id: documentId },
       data: {
         processingStatus: 'failed',
-        processingError: String(error),
+        processingError: cleanError,
       },
     })
 
@@ -440,8 +495,10 @@ export async function processDocument(queueId: string, documentId: string): Prom
       where: { id: queueId },
       data: {
         status: 'failed',
-        error: String(error),
+        error: cleanError,
         completedAt: new Date(),
+        progressPercent: 0,
+        progressStep: `Ошибка: ${cleanError}`,
       },
     })
 

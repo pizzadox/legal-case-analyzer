@@ -159,6 +159,8 @@ export interface ProcessingStatusItem {
   error: string | null
   processingStatus: string
   isCurrentlyProcessing: boolean
+  progressPercent: number
+  progressStep: string | null
 }
 
 export interface ProcessingStatusResponse {

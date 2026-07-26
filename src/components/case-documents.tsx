@@ -472,7 +472,7 @@ export function CaseDocuments({ caseId }: { caseId: string }) {
         </CardContent>
       </Card>
 
-      {/* Processing Status Panel */}
+      {/* Processing Status Panel — per-file progress with percentage and error details */}
       {processingStatus && processingStatus.total > 0 && (
         <Card className="rounded-xl shadow-sm border-t-2 border-t-amber-500 bg-gradient-to-br from-card via-card to-amber-500/5">
           <CardContent className="p-4">
@@ -486,27 +486,74 @@ export function CaseDocuments({ caseId }: { caseId: string }) {
                     : 'Все документы обработаны'}
                 </span>
               </div>
-              <Badge className={processingStatus.processing > 0 ? 'bg-amber-600 text-white' : processingStatus.failed > 0 ? 'bg-red-700 text-white' : 'bg-emerald-600 text-white'}>
-                {processingStatus.progressPercent}%
-              </Badge>
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-muted-foreground">
+                  {processingStatus.completed + processingStatus.failed}/{processingStatus.total}
+                </span>
+                <Badge className={processingStatus.processing > 0 ? 'bg-amber-600 text-white' : processingStatus.failed > 0 ? 'bg-red-700 text-white' : 'bg-emerald-600 text-white'}>
+                  {processingStatus.progressPercent}%
+                </Badge>
+              </div>
             </div>
             <Progress value={processingStatus.progressPercent} className="h-2 rounded-full mb-3" />
-            <div className="space-y-1.5 max-h-40 overflow-y-auto">
-              {processingStatus.items.map(item => (
-                <div key={item.id} className="flex items-center gap-2 text-xs">
-                  {item.status === 'queued' && <Clock className="w-3 h-3 text-stone-500" />}
-                  {item.status === 'processing' && <Loader2 className="w-3 h-3 animate-spin text-amber-600" />}
-                  {(item.status === 'completed') && <CheckCircle className="w-3 h-3 text-emerald-600" />}
-                  {item.status === 'failed' && <XCircle className="w-3 h-3 text-red-700" />}
-                  <span className="truncate flex-1">{item.documentName}</span>
-                  <span className="text-muted-foreground shrink-0">
-                    {item.status === 'queued' ? 'в очереди' 
-                      : item.status === 'processing' ? 'обработка...' 
-                      : item.status === 'completed' ? 'готово' 
-                      : 'ошибка'}
-                  </span>
-                </div>
-              ))}
+            <div className="space-y-2 max-h-64 overflow-y-auto scrollbar-thin">
+              {processingStatus.items.map(item => {
+                // Determine per-file progress percentage
+                const filePercent = item.status === 'completed' ? 100 
+                  : item.status === 'failed' ? 100 
+                  : item.status === 'queued' ? 0 
+                  : item.progressPercent || 0
+                
+                // Determine color for progress bar
+                const barColor = item.status === 'completed' ? 'emerald' 
+                  : item.status === 'failed' ? 'red' 
+                  : 'amber'
+
+                return (
+                  <div key={item.id} className="border rounded-lg p-2.5 bg-muted/20">
+                    <div className="flex items-center gap-2">
+                      {item.status === 'queued' && <Clock className="w-3.5 h-3.5 text-stone-500" />}
+                      {item.status === 'processing' && <Loader2 className="w-3.5 h-3.5 animate-spin text-amber-600" />}
+                      {item.status === 'completed' && <CheckCircle className="w-3.5 h-3.5 text-emerald-600" />}
+                      {item.status === 'failed' && <XCircle className="w-3.5 h-3.5 text-red-700" />}
+                      <span className="text-xs font-medium truncate flex-1 min-w-0">{item.documentName}</span>
+                      <span className={`text-xs font-semibold shrink-0 ${
+                        item.status === 'completed' ? 'text-emerald-600' 
+                        : item.status === 'failed' ? 'text-red-700' 
+                        : item.status === 'processing' ? 'text-amber-600' 
+                        : 'text-stone-500'
+                      }`}>
+                        {item.status === 'completed' ? '✓ Готово' 
+                          : item.status === 'failed' ? '✗ Ошибка' 
+                          : item.status === 'processing' && item.progressStep ? item.progressStep
+                          : item.status === 'queued' ? 'В очереди'
+                          : 'Обработка...'}
+                      </span>
+                      <span className={`text-xs font-bold shrink-0 ${
+                        item.status === 'completed' ? 'text-emerald-600' 
+                        : item.status === 'failed' ? 'text-red-700' 
+                        : 'text-amber-600'
+                      }`}>{filePercent}%</span>
+                    </div>
+                    {/* Per-file progress bar */}
+                    {(item.status === 'processing' || item.status === 'queued') && (
+                      <Progress 
+                        value={filePercent} 
+                        className={`h-1.5 rounded-full mt-1.5 ${barColor === 'emerald' ? '[&>div]:bg-emerald-600' : barColor === 'red' ? '[&>div]:bg-red-700' : '[&>div]:bg-amber-600'}`}
+                      />
+                    )}
+                    {/* Error detail for failed items */}
+                    {item.status === 'failed' && item.error && (
+                      <div className="mt-1.5 p-2 rounded-md bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800">
+                        <div className="flex items-start gap-1.5">
+                          <AlertTriangle className="w-3 h-3 text-red-700 shrink-0 mt-0.5" />
+                          <p className="text-xs text-red-700 dark:text-red-400 leading-relaxed break-all">{item.error}</p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
             </div>
           </CardContent>
         </Card>

@@ -282,7 +282,7 @@ export function CaseExportCenter({ caseId }: { caseId: string }) {
   })
 
   const exportData = { documents, persons, episodes, dashboard }
-  const caseNumber = dashboard?.summary?.totalDocuments ?? caseId
+  const caseNumber = dashboard?.caseInfo?.caseNumber ?? caseId
 
   const estSize=useMemo(()=>estimate(selItems,selFmt,opt),[selItems,selFmt,opt])
   const toggle=useCallback((id:string)=>setSelItems(p=>{const n=new Set(p);if(n.has(id))n.delete(id);else n.add(id);return n}),[])

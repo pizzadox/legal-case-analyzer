@@ -29,6 +29,7 @@ export async function GET(request: NextRequest) {
             originalName: true,
             processingStatus: true,
             fileName: true,
+            processingError: true,
           },
         },
       },
@@ -43,7 +44,15 @@ export async function GET(request: NextRequest) {
     const processingDocs = queueEntries.filter(e => e.status === 'processing').length;
     const queuedDocs = queueEntries.filter(e => e.status === 'queued').length;
 
-    const progressPercent = totalDocs > 0 ? Math.round((completedDocs / totalDocs) * 100) : 0;
+    // Calculate overall progress: completed=100%, failed=100% (done), processing=use its progressPercent, queued=0%
+    const overallProgress = totalDocs > 0 
+      ? Math.round(queueEntries.reduce((sum, e) => {
+          if (e.status === 'completed') return sum + 100
+          if (e.status === 'failed') return sum + 100 // failed is also "done"
+          if (e.status === 'processing') return sum + (e.progressPercent || 0)
+          return sum + 0 // queued
+        }, 0) / totalDocs)
+      : 0;
 
     const items = queueEntries.map(entry => ({
       id: entry.id,
@@ -53,9 +62,11 @@ export async function GET(request: NextRequest) {
       status: entry.status,
       startedAt: entry.startedAt?.toISOString() || null,
       completedAt: entry.completedAt?.toISOString() || null,
-      error: entry.error || null,
+      error: entry.error || entry.document.processingError || null,
       processingStatus: entry.document.processingStatus,
       isCurrentlyProcessing: entry.status === 'processing',
+      progressPercent: entry.progressPercent || 0,
+      progressStep: entry.progressStep || null,
     }));
 
     return NextResponse.json({
@@ -65,7 +76,7 @@ export async function GET(request: NextRequest) {
       failed: failedDocs,
       processing: processingDocs,
       queued: queuedDocs,
-      progressPercent,
+      progressPercent: overallProgress,
       items,
     });
   } catch (error) {

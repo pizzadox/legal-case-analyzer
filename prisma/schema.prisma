@@ -162,6 +162,8 @@ model ProcessingQueue {
   completedAt       DateTime?
   error             String?
   priority          Int      @default(5) // 1-10 priority level
+  progressPercent   Int      @default(0) // 0-100 progress percentage for this document
+  progressStep      String?  // Current step description (e.g. "extracting_text", "analyzing", "creating_records")
   
   document          Document @relation(fields: [documentId], references: [id])
 }
