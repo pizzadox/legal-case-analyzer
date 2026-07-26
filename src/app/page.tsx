@@ -46,7 +46,7 @@ const NAV_ITEMS: { id: SectionId; label: string; icon: React.ReactNode; descript
   { id: 'dashboard', label: 'Главная', icon: <LayoutDashboard className="h-4 w-4" />, description: 'Обзор дела и статистика', shortcut: '1' },
   { id: 'documents', label: 'Документы', icon: <FileText className="h-4 w-4" />, description: 'Загрузка и просмотр PDF', shortcut: '2' },
   { id: 'persons', label: 'Участники', icon: <Users className="h-4 w-4" />, description: 'Участники дела и виновность', shortcut: '3' },
-  { id: 'episodes', label: 'Эпизоды', icon: <BookOpen className="h-4 w-4" />, description: 'Преступные эпизоды', shortcut: '4' },
+  { id: 'episodes', label: 'Этапы производства', icon: <BookOpen className="h-4 w-4" />, description: 'Этапы производства по делу', shortcut: '4' },
   { id: 'search', label: 'Поиск', icon: <Search className="h-4 w-4" />, description: 'Поиск по материалам дела', shortcut: '5' },
   { id: 'qa', label: 'Вопросы ИИ', icon: <MessageSquare className="h-4 w-4" />, description: 'ИИ-аналитик дела', shortcut: '6' },
   { id: 'defense', label: 'Линия защиты', icon: <Shield className="h-4 w-4" />, description: 'Стратегии защиты Колесниченко', shortcut: '7' },
@@ -93,7 +93,7 @@ export default function CasePage() {
   const { data: cases = [], isLoading: isLoadingCases } = useQuery<CriminalCaseData[]>({
     queryKey: ['criminal-cases'],
     queryFn: () => caseApi.getCases(),
-    refetchInterval: 10000,
+    refetchInterval: 30000,
   })
 
   // Compute the currently active case
@@ -257,7 +257,7 @@ export default function CasePage() {
           </SidebarGroup>
         </SidebarContent>
         <SidebarFooter>
-          <SidebarMenu><SidebarMenuItem><SidebarMenuButton size="lg"><div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-stone-700 text-white"><Gauge className="size-4" /></div><div className="grid flex-1 text-left text-sm leading-tight"><span className="truncate font-semibold text-xs">Система</span><span className="truncate text-xs text-muted-foreground">v3.5</span></div></SidebarMenuButton></SidebarMenuItem></SidebarMenu>
+          <SidebarMenu><SidebarMenuItem><SidebarMenuButton size="lg"><div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-stone-700 text-white"><Gauge className="size-4" /></div><div className="grid flex-1 text-left text-sm leading-tight"><span className="truncate font-semibold text-xs">Система</span><span className="truncate text-xs text-muted-foreground">v3.6</span></div></SidebarMenuButton></SidebarMenuItem></SidebarMenu>
         </SidebarFooter>
         <SidebarRail />
       </Sidebar>

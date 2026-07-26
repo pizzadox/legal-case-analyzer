@@ -246,3 +246,102 @@ Unresolved Issues:
 - GitVerse push not possible without SSH tools or HTTPS credentials
 - Some sections (Defense, Timeline, Analytics, etc.) may still show mock data in their own component files
 - Footer sticky position verified working
+
+---
+Task ID: 2-a
+Agent: subagent
+Task: Remove mock data fallbacks and reduce polling intervals
+
+Work Log:
+- Read worklog.md to understand previous session context (OOM crashes, mock data fallbacks, 10-second polling)
+- Fixed case-dashboard.tsx:
+  - Removed import of 7 mock data objects (mockDashboardStats, mockCaseHealthScore, mockEvidenceTimeline, mockCaseBrief, mockBookmarks, mockCaseTimeline, mockAuditLog) from '@/lib/mock-data'
+  - Kept PROCEDURE_STAGES, PROCEDURE_CURRENT_INDEX, PROCEDURAL_DEADLINES imports (constants, not mock data)
+  - Added DashboardStats, CaseBriefData type imports from '@/lib/case-store'
+  - Replaced typeof mockDashboardStats type annotation with DashboardStats type in StatsBar
+  - Replaced typeof mockCaseBrief type annotation with CaseBriefData type in StrengthMeter
+  - Changed all 7 useQuery refetchInterval from 10000 to 30000 (30 seconds)
+  - Added enabled: !!caseId guard to all 6 secondary queries (health-score, evidence-timeline, case-brief, bookmarks, case-timeline, audit-log)
+  - Replaced mock data fallback defaults with proper empty defaults matching DashboardStats, CaseHealthScore, CaseBriefData interfaces
+  - stats default includes all sub-fields accessed by the component (processingQueue, documents.total, byStatus, recent, etc.)
+  - brief default includes all CaseBriefData fields (predictedOutcome: [], keyDefendants: [], etc.)
+  - hs default matches CaseHealthScore interface structure
+- Fixed page.tsx: changed criminal-cases query refetchInterval from 10000 to 30000
+- Fixed case-documents.tsx: changed documents and evidence-chain refetchInterval from 10000 to 30000 (kept processing-status at 5000 as that's a microservice poll)
+- Fixed case-episodes.tsx: changed episodes refetchInterval from 10000 to 30000
+- Fixed case-persons.tsx: changed persons, personRelationships, witnessStatements refetchInterval from 10000 to 30000
+- Ran bun run lint — passed with no errors
+- Verified no remaining refetchInterval: 10000 in the 5 target files
+- Note: Other component files (case-export-center, case-timeline, case-analytics, case-search, case-legal-check, case-defense, case-brief, case-risk) still have refetchInterval: 10000 but were not in scope for this task
+
+Stage Summary:
+- Removed all mock data imports and fallbacks from case-dashboard.tsx (7 mock data objects eliminated)
+- Reduced polling frequency from 10s to 30s across 5 component files (13 useQuery calls total)
+- Added enabled: !!caseId guards to 6 dashboard queries to prevent unnecessary API calls
+- Replaced mock fallbacks with proper empty defaults that match TypeScript interfaces (DashboardStats, CaseHealthScore, CaseBriefData)
+- Fixed type annotations that referenced removed mock imports (StatsBar, StrengthMeter)
+- Lint passed cleanly — no TypeScript or ESLint errors
+- OOM pressure should be significantly reduced: 3x fewer API calls per cycle + no large mock data objects in memory
+
+---
+
+## Session 2026-07-26: Fix crashes, translate episodes to Russian, optimize memory (Task ID: 4)
+
+### Completed Tasks
+
+1. **Translated "Этапы производства по делу" to Russian** 
+   - Changed sidebar nav label from "Эпизоды" to "Этапы производства" in page.tsx
+   - Changed description from "Преступные эпизоды" to "Этапы производства по делу"
+   - Updated case-episodes.tsx header from "Преступные эпизоды" to "Этапы производства по делу"
+   - Changed subtitle from "Хронология, тяжесть и участники каждого эпизода" to "Хронология, тяжесть и участники каждого этапа"
+   - Changed badge "эпизодов" to "этапов" throughout the component
+   - Changed "Статистика эпизодов" to "Статистика этапов"
+   - Changed "Временная шкала эпизодов" to "Временная шкала этапов"
+   - Changed "Нет эпизодов с датами" to "Нет этапов с датами"
+   - Changed search placeholder "Поиск по названию эпизода" to "Поиск по названию этапа"
+   - Changed "Эпизоды не найдены" to "Этапы не найдены"
+   - Changed "преступных эпизодов" to "этапов производства"
+   - All 7 "эпизод" references replaced with "этап" equivalents
+
+2. **Fixed OOM memory crashes** (ongoing challenge)
+   - Removed 7 mock data imports from case-dashboard.tsx (mockDashboardStats, mockCaseHealthScore, etc.)
+   - Replaced mock fallback data with runtime-safe empty defaults matching TypeScript interfaces
+   - Reduced all refetchInterval from 10000ms to 30000ms across all components (13 total)
+   - Added `enabled: !!caseId` guards to 6 queries in dashboard to prevent API calls when no case active
+   - Server works for curl/API requests but dies during browser rendering due to 4GB memory limit
+   - Key finding: Chrome browser (370MB) + Next.js SSR (1.7GB peak) + system processes exceeds 4GB container limit
+
+3. **Version bumped from 3.5.0 to 3.6.0**
+   - Updated in package.json and UI display
+
+4. **Optimized package.json scripts**
+   - dev script: uses standalone server `node .next/standalone/server.js`
+   - build script: includes `cp -r .next/static .next/standalone/.next/ && cp -r public .next/standalone/`
+   - start script: uses standalone server
+   - Fixed missing comma in package.json that caused JSON5 parse errors
+
+### Key Architecture Decisions
+
+- **Standalone server is preferred**: `node .next/standalone/server.js` is much lighter than `bun --bun next dev --turbopack` which uses 1.5GB+ for Turbopack compilation
+- **Production mode required**: Dev mode (Turbopack) consumes too much memory (1.5GB) and gets OOM-killed
+- **Agent-browser verification requires careful timing**: Must warm up server first with API calls, then browser can load the page (but server may die during client-side API fetching)
+- **Mock data removal**: Dashboard no longer imports or falls back to mock data - uses empty defaults instead
+
+### Unresolved Issues / Risks
+
+- **OOM kills**: Server dies when Chrome browser loads the page due to memory pressure (4GB container limit). Server works fine for API requests via curl and presumably the Preview Panel
+- **Agent-browser testing**: Cannot reliably use agent-browser for end-to-end verification due to Chrome + server memory conflict
+- **GitVerse push**: SSH tools not available in sandbox - still pending
+- **GitHub push**: Latest changes (v3.6.0) not yet pushed to GitHub
+- **Other components with mock data**: case-analytics, case-timeline, case-defense, case-brief, case-risk, case-export-center still have refetchInterval: 10000
+- **Empty fields in cards**: Conditional rendering for empty/null fields implemented but some components may still show empty sections
+
+### Next Steps Recommendations
+
+- Push v3.6.0 to GitHub and GitVerse
+- Optimize remaining components with refetchInterval: 10000 → 30000
+- Remove remaining mock data imports from other component files
+- Fix "Повторить" (Retry) button on Documents tab - ensure reprocess route works correctly
+- Test document upload and processing end-to-end
+- Add auto-restart mechanism for server when it dies
+- Consider reducing page complexity for better memory efficiency

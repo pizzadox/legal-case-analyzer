@@ -12,11 +12,11 @@ import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from '@/comp
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from '@/components/ui/chart'
 import { Pie, PieChart, Cell, Bar, BarChart, XAxis, YAxis } from 'recharts'
 import { FileText, Users, BookOpen, AlertTriangle, Clock, CheckCircle, CheckCircle2, Circle, Zap, Shield, Scale, ArrowRight, RefreshCw, XCircle, Gavel, Activity, MapPin, UploadCloud, FileSearch, Bookmark, Swords, History, CalendarClock, TrendingUp, FileUp, MessageCircle, ShieldCheck, Download, BrainCircuit, Eye, PenLine } from 'lucide-react'
-import { mockDashboardStats, mockCaseHealthScore, mockEvidenceTimeline, mockCaseBrief, mockBookmarks, mockCaseTimeline, mockAuditLog, PROCEDURE_STAGES, PROCEDURE_CURRENT_INDEX, PROCEDURAL_DEADLINES } from '@/lib/mock-data'
+import { PROCEDURE_STAGES, PROCEDURE_CURRENT_INDEX, PROCEDURAL_DEADLINES } from '@/lib/mock-data'
 import { getDashboardStats, getCaseHealthScore, getEvidenceTimeline, getCaseBrief, getBookmarks, getCaseTimeline, getAuditLog } from '@/lib/case-api'
 import { useCaseStore } from '@/lib/case-store'
 import { toast } from '@/hooks/use-toast'
-import type { CaseHealthScore, EvidenceTimelineEvent, BookmarkData, CaseTimelineEvent, SectionId, AuditLogEntry } from '@/lib/case-store'
+import type { DashboardStats, CaseBriefData, CaseHealthScore, EvidenceTimelineEvent, BookmarkData, CaseTimelineEvent, SectionId, AuditLogEntry } from '@/lib/case-store'
 
 const BK_BORDER: Record<string, string> = { red: 'border-l-red-700', amber: 'border-l-amber-600', emerald: 'border-l-emerald-700', stone: 'border-l-stone-500' }
 const BK_BADGE: Record<string, string> = { red: 'bg-red-700 text-white', amber: 'bg-amber-600 text-white', emerald: 'bg-emerald-700 text-white', stone: 'bg-stone-500 text-white' }
@@ -92,7 +92,7 @@ function EvidenceTimeline({ events }: { events: EvidenceTimelineEvent[] }) {
   </Card>)
 }
 
-function StrengthMeter({ brief }: { brief: typeof mockCaseBrief }) {
+function StrengthMeter({ brief }: { brief: CaseBriefData }) {
   const pPct = brief.predictedOutcome.slice(0, 2).reduce((s, o) => s + o.probability, 0), dPct = Math.max(0, 100 - pPct)
   return (<Card className="rounded-xl shadow-sm border-l-4 border-amber-600 bg-gradient-to-br from-card via-card to-muted/20 transition-shadow hover:shadow-md">
     <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2"><Swords className="w-4 h-4 text-amber-600" /> Баланс сил дела</CardTitle></CardHeader>
@@ -211,7 +211,7 @@ function AnimStat({ label, value, delta, deltaType, icon: Ic, iconBg, iconColor,
   </Card>)
 }
 
-function StatsBar({ stats, onNavigate }: { stats: typeof mockDashboardStats; onNavigate: (s: SectionId) => void }) {
+function StatsBar({ stats, onNavigate }: { stats: DashboardStats; onNavigate: (s: SectionId) => void }) {
   const s = stats.summary
   const compR = stats.complianceChecks.total > 0 ? Math.round(((stats.complianceChecks.byStatus.compliant ?? 0) / stats.complianceChecks.total) * 100) : 0
   const procR = stats.documents.total > 0 ? Math.round(((stats.documents.byStatus.completed ?? 0) / stats.documents.total) * 100) : 0
@@ -239,14 +239,20 @@ function MiniTimeline({ events, onNavigate }: { events: CaseTimelineEvent[]; onN
 
 export function CaseDashboard({ caseId }: { caseId: string }) {
   const { setActiveSection } = useCaseStore()
-  const { data, isLoading } = useQuery({ queryKey: ['dashboard', caseId], queryFn: () => getDashboardStats(caseId), retry: 1, enabled: !!caseId, refetchInterval: 10000 })
-  const { data: healthData } = useQuery({ queryKey: ['health-score'], queryFn: getCaseHealthScore, retry: 1, refetchInterval: 10000 })
-  const { data: tlData } = useQuery({ queryKey: ['evidence-timeline'], queryFn: getEvidenceTimeline, retry: 1, refetchInterval: 10000 })
-  const { data: briefData } = useQuery({ queryKey: ['case-brief'], queryFn: getCaseBrief, retry: 1, refetchInterval: 10000 })
-  const { data: bkData } = useQuery({ queryKey: ['bookmarks'], queryFn: getBookmarks, retry: 1, refetchInterval: 10000 })
-  const { data: ctData } = useQuery({ queryKey: ['case-timeline'], queryFn: getCaseTimeline, retry: 1, refetchInterval: 10000 })
-  const { data: auData } = useQuery({ queryKey: ['audit-log'], queryFn: () => getAuditLog(10), retry: 1, refetchInterval: 10000 })
-  const stats = data ?? mockDashboardStats, hs = healthData ?? mockCaseHealthScore, evs = tlData ?? mockEvidenceTimeline, brief = briefData ?? mockCaseBrief, bks = bkData ?? mockBookmarks, ct = ctData ?? mockCaseTimeline, au = auData ?? mockAuditLog
+  const { data, isLoading } = useQuery({ queryKey: ['dashboard', caseId], queryFn: () => getDashboardStats(caseId), retry: 1, enabled: !!caseId, refetchInterval: 30000 })
+  const { data: healthData } = useQuery({ queryKey: ['health-score'], queryFn: getCaseHealthScore, retry: 1, enabled: !!caseId, refetchInterval: 30000 })
+  const { data: tlData } = useQuery({ queryKey: ['evidence-timeline'], queryFn: getEvidenceTimeline, retry: 1, enabled: !!caseId, refetchInterval: 30000 })
+  const { data: briefData } = useQuery({ queryKey: ['case-brief'], queryFn: getCaseBrief, retry: 1, enabled: !!caseId, refetchInterval: 30000 })
+  const { data: bkData } = useQuery({ queryKey: ['bookmarks'], queryFn: getBookmarks, retry: 1, enabled: !!caseId, refetchInterval: 30000 })
+  const { data: ctData } = useQuery({ queryKey: ['case-timeline'], queryFn: getCaseTimeline, retry: 1, enabled: !!caseId, refetchInterval: 30000 })
+  const { data: auData } = useQuery({ queryKey: ['audit-log'], queryFn: () => getAuditLog(10), retry: 1, enabled: !!caseId, refetchInterval: 30000 })
+  const stats = data ?? { caseInfo: null, summary: { totalDocuments: 0, totalPersons: 0, totalEpisodes: 0, totalArticles: 0, totalLocations: 0, totalCrossReferences: 0, totalChatMessages: 0, totalComplianceChecks: 0, totalDefenseLines: 0, totalGuiltAssessments: 0 }, documents: { total: 0, byType: {}, byStatus: {}, recent: [] }, persons: { total: 0, kolesnichenko: null, byRole: {} }, episodes: { total: 0, bySeverity: {}, byStatus: {} }, processingQueue: { inProgress: [], byStatus: {} }, guiltAssessments: { total: 0, byGuiltLevel: {}, byEvidenceStrength: {}, details: [] }, defenseLines: { total: 0, byType: {}, byStrength: {}, details: [] }, complianceChecks: { total: 0, byStatus: {}, byType: {}, details: [] } } as DashboardStats
+  const hs = healthData ?? { score: 0, factors: { documentProcessing: { label: '', value: 0, status: 'neutral' }, complianceRate: { label: '', value: 0, status: 'neutral' }, evidenceStrength: { label: '', value: 0, status: 'neutral' }, defenseCoverage: { label: '', value: 0, status: 'neutral' } } } as CaseHealthScore
+  const evs = tlData ?? []
+  const brief = briefData ?? { aiConfidence: 0, predictedOutcome: [], keyDefendants: [], keyEpisodes: [], keyEvidence: [], keyViolations: [], prosecutionSummary: '', defenseSummary: '', caseNumber: '', caseTitle: '', summary: '', generatedAt: '' } as CaseBriefData
+  const bks = bkData ?? []
+  const ct = ctData ?? []
+  const au = auData ?? []
   if (isLoading) return <div className="grid grid-cols-2 md:grid-cols-4 gap-4">{[0,1,2,3].map(i => <Skeleton key={i} className="h-24" />)}</div>
 
   const guiltCD = Object.entries(stats.guiltAssessments.byGuiltLevel).map(([l, c]) => ({ level: GUILT_L[l] ?? l, count: c, fill: GUILT_C[l] ?? '#525252' }))

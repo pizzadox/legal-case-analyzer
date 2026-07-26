@@ -343,9 +343,9 @@ export function CasePersons({ caseId }: { caseId: string }) {
   const [expandedId, setExpandedId] = useState<string|null>(null)
   const [compareIds, setCompareIds] = useState<string[]>([])
 
-  const { data: persons = [], isLoading } = useQuery({ queryKey: ['persons', caseId], queryFn: () => getPersons(caseId), enabled: !!caseId, refetchInterval: 10000 })
-  const { data: relationships = [] } = useQuery({ queryKey: ['personRelationships', caseId], queryFn: getPersonRelationships, enabled: !!caseId, refetchInterval: 10000 })
-  const { data: statements = [] } = useQuery({ queryKey: ['witnessStatements', caseId], queryFn: getWitnessStatements, enabled: !!caseId, refetchInterval: 10000 })
+  const { data: persons = [], isLoading } = useQuery({ queryKey: ['persons', caseId], queryFn: () => getPersons(caseId), enabled: !!caseId, refetchInterval: 30000 })
+  const { data: relationships = [] } = useQuery({ queryKey: ['personRelationships', caseId], queryFn: getPersonRelationships, enabled: !!caseId, refetchInterval: 30000 })
+  const { data: statements = [] } = useQuery({ queryKey: ['witnessStatements', caseId], queryFn: getWitnessStatements, enabled: !!caseId, refetchInterval: 30000 })
 
   const filtered = useMemo(() => {
     let result = persons

@@ -138,7 +138,7 @@ export function CaseEpisodes({ caseId }: { caseId: string }) {
   const [statusFilter, setStatusFilter] = useState('all')
   const [searchQuery, setSearchQuery] = useState('')
   const [expandedEpisodes, setExpandedEpisodes] = useState<Set<string>>(new Set())
-  const { data, isLoading } = useQuery({ queryKey: ['episodes', caseId], queryFn: () => getEpisodes(caseId), enabled: !!caseId, retry: 1, refetchInterval: 10000 })
+  const { data, isLoading } = useQuery({ queryKey: ['episodes', caseId], queryFn: () => getEpisodes(caseId), enabled: !!caseId, retry: 1, refetchInterval: 30000 })
   const episodes = data ?? []
 
   // ─── Filtered episodes ────────────────────────────────────────────────────
@@ -227,10 +227,10 @@ export function CaseEpisodes({ caseId }: { caseId: string }) {
                 <BookOpen className="w-5 h-5 text-amber-600" />
               </div>
               <div className="flex-1 min-w-0">
-                <p className="font-semibold text-sm">Преступные эпизоды</p>
-                <p className="text-xs text-muted-foreground">Хронология, тяжесть и участники каждого эпизода</p>
+                <p className="font-semibold text-sm">Этапы производства по делу</p>
+                <p className="text-xs text-muted-foreground">Хронология, тяжесть и участники каждого этапа</p>
               </div>
-              <Badge className="bg-stone-600 text-white text-xs font-semibold">{episodes.length} эпизодов</Badge>
+              <Badge className="bg-stone-600 text-white text-xs font-semibold">{episodes.length} этапов</Badge>
             </div>
           </CardContent>
         </Card>
@@ -242,7 +242,7 @@ export function CaseEpisodes({ caseId }: { caseId: string }) {
           <CardContent className="p-4">
             <div className="flex items-center gap-2 mb-3">
               <BarChart3 className="w-4 h-4 text-amber-600" />
-              <p className="text-sm font-semibold">Статистика эпизодов</p>
+              <p className="text-sm font-semibold">Статистика этапов</p>
             </div>
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3">
               {/* Total */}
@@ -388,12 +388,12 @@ export function CaseEpisodes({ caseId }: { caseId: string }) {
           <CardHeader className="pb-2 px-4 pt-4">
             <CardTitle className="text-sm font-semibold flex items-center gap-2">
               <Calendar className="w-4 h-4 text-amber-600" />
-              Временная шкала эпизодов
+              Временная шкала этапов
             </CardTitle>
           </CardHeader>
           <CardContent className="px-4 pb-4 pt-2">
             {timelineEpisodes.length === 0 ? (
-              <p className="text-xs text-muted-foreground text-center py-4">Нет эпизодов с датами для отображения на шкале</p>
+              <p className="text-xs text-muted-foreground text-center py-4">Нет этапов с датами для отображения на шкале</p>
             ) : (
               <div className="relative">
                 {/* Baseline */}
@@ -452,7 +452,7 @@ export function CaseEpisodes({ caseId }: { caseId: string }) {
           <div className="relative flex-1 min-w-[200px] max-w-[300px]">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
             <Input
-              placeholder="Поиск по названию эпизода..."
+              placeholder="Поиск по названию этапа..."
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
               className="pl-8 rounded-xl h-8 text-sm"
@@ -479,7 +479,7 @@ export function CaseEpisodes({ caseId }: { caseId: string }) {
               <SelectItem value="сомнительно">Сомнительно</SelectItem>
             </SelectContent>
           </Select>
-          <Badge className="bg-stone-600 text-white text-xs font-semibold">{filtered.length} эпизодов</Badge>
+          <Badge className="bg-stone-600 text-white text-xs font-semibold">{filtered.length} этапов</Badge>
           <Separator orientation="vertical" className="h-4 mx-1" />
           <Button size="sm" variant="outline" className="rounded-xl gap-1 h-8" onClick={() => exportEpisodesCSV(episodes)}>
             <Download className="w-3 h-3" />CSV
@@ -503,8 +503,8 @@ export function CaseEpisodes({ caseId }: { caseId: string }) {
               <div className="flex items-center justify-center w-20 h-20 rounded-full bg-amber-500/10 mx-auto mb-4 ring-4 ring-amber-500/5">
                 <BookOpen className="w-10 h-10 text-amber-600" />
               </div>
-              <p className="text-base font-semibold">Эпизоды не найдены</p>
-              <p className="text-sm text-muted-foreground mt-1 max-w-md mx-auto">Попробуйте изменить фильтры или сбросить их, чтобы увидеть все эпизоды дела.</p>
+              <p className="text-base font-semibold">Этапы не найдены</p>
+              <p className="text-sm text-muted-foreground mt-1 max-w-md mx-auto">Попробуйте изменить фильтры или сбросить их, чтобы увидеть все этапы дела.</p>
               <Button size="sm" variant="outline" className="mt-4 rounded-xl" onClick={() => { setSeverityFilter('all'); setStatusFilter('all'); setSearchQuery('') }}>
                 <RefreshCw className="w-3 h-3 mr-1" />Сбросить фильтры
               </Button>
@@ -792,7 +792,7 @@ export function CaseEpisodes({ caseId }: { caseId: string }) {
         </div>
 
         <Separator />
-        <p className="text-xs text-muted-foreground">Показано {filtered.length} из {episodes.length} преступных эпизодов</p>
+        <p className="text-xs text-muted-foreground">Показано {filtered.length} из {episodes.length} этапов производства</p>
       </div>
     </TooltipProvider>
   )

@@ -278,9 +278,9 @@ export function CaseDocuments({ caseId }: { caseId: string }) {
     queryKey: ['documents', caseId],
     queryFn: () => caseApi.getDocuments(caseId),
     retry: 1,
-    refetchInterval: 10000,
+    refetchInterval: 30000,
   })
-  const { data: evidenceChainData } = useQuery({ queryKey: ['evidence-chain', caseId], queryFn: () => caseApi.getEvidenceChain(caseId), retry: 1, refetchInterval: 10000, enabled: !!caseId })
+  const { data: evidenceChainData } = useQuery({ queryKey: ['evidence-chain', caseId], queryFn: () => caseApi.getEvidenceChain(caseId), retry: 1, refetchInterval: 30000, enabled: !!caseId })
   
   // Poll processing status from the microservice every 5 seconds
   const { data: processingStatus } = useQuery<ProcessingStatusResponse>({ 
