@@ -1,8 +1,8 @@
 'use client'
 
-import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Sidebar, SidebarContent, SidebarFooter, SidebarGroup, SidebarGroupContent, SidebarGroupLabel, SidebarHeader, SidebarInset, SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarProvider, SidebarRail, SidebarTrigger } from '@/components/ui/sidebar'
+import { Sidebar, SidebarContent, SidebarFooter, SidebarGroup, SidebarGroupContent, SidebarGroupLabel, SidebarHeader, SidebarInset, SidebarMenu, SidebarMenuItem, SidebarMenuButton, SidebarProvider, SidebarRail, SidebarTrigger } from '@/components/ui/sidebar'
 import { Separator } from '@/components/ui/separator'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -17,8 +17,7 @@ import { useCaseStore } from '@/lib/case-store'
 import * as caseApi from '@/lib/case-api'
 import { ErrorBoundary } from '@/components/error-boundary'
 
-// Component registry: components are loaded ONLY when the section is activated
-// This reduces initial memory consumption dramatically
+// Only essential sections - reduces memory footprint dramatically
 const COMPONENT_REGISTRY: Record<string, () => Promise<{ default: React.ComponentType<any> }>> = {
   'dashboard': () => import('@/components/case-dashboard').then(m => ({ default: m.CaseDashboard })),
   'documents': () => import('@/components/case-documents').then(m => ({ default: m.CaseDocuments })),
@@ -28,18 +27,9 @@ const COMPONENT_REGISTRY: Record<string, () => Promise<{ default: React.Componen
   'qa': () => import('@/components/case-qa').then(m => ({ default: m.CaseQa })),
   'defense': () => import('@/components/case-defense').then(m => ({ default: m.CaseDefense })),
   'legal-check': () => import('@/components/case-legal-check').then(m => ({ default: m.CaseLegalCheck })),
-  'timeline': () => import('@/components/case-timeline').then(m => ({ default: m.CaseTimeline })),
-  'evidence-chain': () => import('@/components/case-evidence-chain').then(m => ({ default: m.CaseEvidenceChain })),
-  'risk': () => import('@/components/case-risk').then(m => ({ default: m.CaseRisk })),
-  'witness-matrix': () => import('@/components/case-witness-matrix').then(m => ({ default: m.CaseWitnessMatrix })),
-  'brief': () => import('@/components/case-brief').then(m => ({ default: m.CaseBrief })),
-  'analytics': () => import('@/components/case-analytics').then(m => ({ default: m.CaseAnalytics })),
-  'export-center': () => import('@/components/case-export-center').then(m => ({ default: m.CaseExportCenter })),
-  'battle-plan': () => import('@/components/case-battle-plan').then(m => ({ default: m.CaseBattlePlan })),
-  'violations': () => import('@/components/case-violations').then(m => ({ default: m.CaseViolations })),
 }
 
-// Simplified nav items
+// Simplified nav items - only essential tabs
 const NAV_ITEMS: { id: SectionId; label: string; icon: React.ReactNode }[] = [
   { id: 'dashboard', label: 'Главная', icon: <LayoutDashboard className="h-4 w-4" /> },
   { id: 'documents', label: 'Документы', icon: <FileText className="h-4 w-4" /> },
@@ -49,15 +39,6 @@ const NAV_ITEMS: { id: SectionId; label: string; icon: React.ReactNode }[] = [
   { id: 'qa', label: 'Вопросы ИИ', icon: <span className="text-sm">💬</span> },
   { id: 'defense', label: 'Линия защиты', icon: <span className="text-sm">🛡️</span> },
   { id: 'legal-check', label: 'Правовая проверка', icon: <Scale className="h-4 w-4" /> },
-  { id: 'timeline', label: 'Хронология', icon: <span className="text-sm">📅</span> },
-  { id: 'evidence-chain', label: 'Цепочка улик', icon: <span className="text-sm">🔗</span> },
-  { id: 'risk', label: 'Риски', icon: <AlertTriangle className="h-4 w-4" /> },
-  { id: 'witness-matrix', label: 'Свидетели', icon: <span className="text-sm">👁️</span> },
-  { id: 'brief', label: 'Бриф', icon: <FileText className="h-4 w-4" /> },
-  { id: 'analytics', label: 'Аналитика', icon: <span className="text-sm">📊</span> },
-  { id: 'export-center', label: 'Экспорт', icon: <span className="text-sm">⚖️</span> },
-  { id: 'battle-plan', label: 'Боевой план', icon: <span className="text-sm">⚔️</span> },
-  { id: 'violations', label: 'Нарушения', icon: <span className="text-sm">❌</span> },
 ]
 
 function ThemeToggle() {
@@ -74,31 +55,25 @@ function ThemeToggle() {
 // Dynamic section renderer that loads components on demand
 function SectionRenderer({ sectionId, caseId }: { sectionId: SectionId; caseId: string }) {
   const [Component, setComponent] = useState<React.ComponentType<any> | null>(null)
-  const [loading, setLoading] = useState(sectionId !== 'dashboard') // Start loading only for non-dashboard sections
+  const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     let cancelled = false
     const loader = COMPONENT_REGISTRY[sectionId]
     if (!loader) {
-      // Section not found - set error outside of synchronous effect
-      queueMicrotask(() => {
-        if (!cancelled) {
-          setError('Секция не найдена')
-        }
-      })
+      setError('Секция не найдена')
+      setLoading(false)
       return
     }
-    // Use microtask to avoid synchronous setState in effect
-    queueMicrotask(() => {
-      if (!cancelled && !Component) setLoading(true)
-    })
+    setLoading(true)
+    setError(null)
+    setComponent(null)
     loader()
       .then(mod => {
         if (!cancelled) {
           setComponent(() => mod.default)
           setLoading(false)
-          setError(null)
         }
       })
       .catch(err => {
@@ -108,7 +83,7 @@ function SectionRenderer({ sectionId, caseId }: { sectionId: SectionId; caseId: 
         }
       })
     return () => { cancelled = true }
-  }, [sectionId, Component])
+  }, [sectionId])
 
   if (loading) {
     return (
@@ -127,8 +102,7 @@ function SectionRenderer({ sectionId, caseId }: { sectionId: SectionId; caseId: 
   }
   if (!Component) return null
 
-  // Sections that need caseId as prop
-  const needsCaseId = ['dashboard', 'documents', 'persons', 'episodes', 'export-center']
+  const needsCaseId = ['dashboard', 'documents', 'persons', 'episodes']
   if (needsCaseId.includes(sectionId)) {
     return <Component caseId={caseId} />
   }
@@ -137,8 +111,6 @@ function SectionRenderer({ sectionId, caseId }: { sectionId: SectionId; caseId: 
 
 export default function CasePage() {
   const [activeSection, setActiveSection] = useState<SectionId>('dashboard')
-
-  // Case switching state
   const [activeCaseId, setActiveCaseId] = useState<string>(() => {
     if (typeof window !== 'undefined') {
       return localStorage.getItem('activeCaseId') || ''
@@ -174,15 +146,11 @@ export default function CasePage() {
 
   // Persist active case to localStorage + store when it changes
   useEffect(() => {
-    if (activeCase && activeCase.id !== activeCaseId) {
-      setActiveCaseId(activeCase.id)
-      localStorage.setItem('activeCaseId', activeCase.id)
-      setActiveCaseIdInStore(activeCase.id)
-    } else if (activeCase) {
+    if (activeCase) {
       localStorage.setItem('activeCaseId', activeCase.id)
       setActiveCaseIdInStore(activeCase.id)
     }
-  }, [activeCase, activeCaseId, setActiveCaseIdInStore])
+  }, [activeCase, setActiveCaseIdInStore])
 
   const handleSelectCase = (caseId: string) => {
     setActiveCaseId(caseId)
@@ -192,7 +160,6 @@ export default function CasePage() {
     queryClient.invalidateQueries({ queryKey: ['persons'] })
     queryClient.invalidateQueries({ queryKey: ['episodes'] })
     queryClient.invalidateQueries({ queryKey: ['dashboard'] })
-    queryClient.invalidateQueries({ queryKey: ['evidence-chain'] })
     const selectedCase = cases.find(c => c.id === caseId)
     toast.success(`Дело переключено: ${selectedCase?.caseNumber || caseId}`)
   }
@@ -225,7 +192,6 @@ export default function CasePage() {
       queryClient.invalidateQueries({ queryKey: ['persons'] })
       queryClient.invalidateQueries({ queryKey: ['episodes'] })
       queryClient.invalidateQueries({ queryKey: ['dashboard'] })
-      queryClient.invalidateQueries({ queryKey: ['evidence-chain'] })
       setDeleteCaseDialogId(null)
       toast.success('Дело удалено')
     } catch (err) {
@@ -338,7 +304,7 @@ export default function CasePage() {
             </div>
           </div>
 
-          {/* Case switching dropdown */}
+          {/* Case switching dropdown - КНОПКА В ШАПКЕ */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="outline" size="sm" className="gap-1.5 h-8 text-xs font-medium">
@@ -394,7 +360,18 @@ export default function CasePage() {
         <main className="flex-1 overflow-auto">
           <div className="p-4 md:p-6 max-w-7xl mx-auto">
             <ErrorBoundary>
-              <SectionRenderer sectionId={activeSection} caseId={activeCase?.id || ''} />
+              {activeCase ? (
+                <SectionRenderer sectionId={activeSection} caseId={activeCase.id} />
+              ) : (
+                <div className="flex flex-col items-center justify-center h-64 gap-4">
+                  <Scale className="w-12 h-12 text-muted-foreground" />
+                  <p className="text-muted-foreground">Создайте дело для начала работы</p>
+                  <Button onClick={() => setNewCaseDialogOpen(true)}>
+                    <Plus className="mr-2 h-4 w-4" />
+                    Новое дело
+                  </Button>
+                </div>
+              )}
             </ErrorBoundary>
           </div>
         </main>
@@ -416,7 +393,7 @@ export default function CasePage() {
               </DialogTitle>
             </DialogHeader>
             <p className="text-sm py-2">
-              Вы уверены, что хотите удалить дело <strong>{deleteCase ? deleteCase.caseNumber : ''}</strong>? Все связанные данные (документы, участники, эпизоды) будут удалены навсегда.
+              Вы уверены, что хотите удалить дело <strong>{deleteCase ? deleteCase.caseNumber : ''}</strong>? Все связанные данные будут удалены навсегда.
             </p>
             <div className="flex justify-end gap-2 pt-2">
               <Button variant="outline" onClick={() => setDeleteCaseDialogId(null)}>Отмена</Button>
