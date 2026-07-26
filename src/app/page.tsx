@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, startTransition } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Sidebar, SidebarContent, SidebarFooter, SidebarGroup, SidebarGroupContent, SidebarGroupLabel, SidebarHeader, SidebarInset, SidebarMenu, SidebarMenuItem, SidebarMenuButton, SidebarProvider, SidebarRail, SidebarTrigger } from '@/components/ui/sidebar'
 import { Separator } from '@/components/ui/separator'
@@ -17,7 +17,6 @@ import { useCaseStore } from '@/lib/case-store'
 import * as caseApi from '@/lib/case-api'
 import { ErrorBoundary } from '@/components/error-boundary'
 
-// Only essential sections - reduces memory footprint dramatically
 const COMPONENT_REGISTRY: Record<string, () => Promise<{ default: React.ComponentType<any> }>> = {
   'dashboard': () => import('@/components/case-dashboard').then(m => ({ default: m.CaseDashboard })),
   'documents': () => import('@/components/case-documents').then(m => ({ default: m.CaseDocuments })),
@@ -27,18 +26,35 @@ const COMPONENT_REGISTRY: Record<string, () => Promise<{ default: React.Componen
   'qa': () => import('@/components/case-qa').then(m => ({ default: m.CaseQa })),
   'defense': () => import('@/components/case-defense').then(m => ({ default: m.CaseDefense })),
   'legal-check': () => import('@/components/case-legal-check').then(m => ({ default: m.CaseLegalCheck })),
+  'timeline': () => import('@/components/case-timeline').then(m => ({ default: m.CaseTimeline })),
+  'evidence-chain': () => import('@/components/case-evidence-chain').then(m => ({ default: m.CaseEvidenceChain })),
+  'risk': () => import('@/components/case-risk').then(m => ({ default: m.CaseRisk })),
+  'witness-matrix': () => import('@/components/case-witness-matrix').then(m => ({ default: m.CaseWitnessMatrix })),
+  'brief': () => import('@/components/case-brief').then(m => ({ default: m.CaseBrief })),
+  'analytics': () => import('@/components/case-analytics').then(m => ({ default: m.CaseAnalytics })),
+  'export-center': () => import('@/components/case-export-center').then(m => ({ default: m.CaseExportCenter })),
+  'battle-plan': () => import('@/components/case-battle-plan').then(m => ({ default: m.CaseBattlePlan })),
+  'violations': () => import('@/components/case-violations').then(m => ({ default: m.CaseViolations })),
 }
 
-// Simplified nav items - only essential tabs
 const NAV_ITEMS: { id: SectionId; label: string; icon: React.ReactNode }[] = [
   { id: 'dashboard', label: 'Главная', icon: <LayoutDashboard className="h-4 w-4" /> },
   { id: 'documents', label: 'Документы', icon: <FileText className="h-4 w-4" /> },
   { id: 'persons', label: 'Участники', icon: <Users className="h-4 w-4" /> },
-  { id: 'episodes', label: 'Этапы', icon: <span className="text-sm">📖</span> },
+  { id: 'episodes', label: 'Этапы производства', icon: <span className="text-sm">📖</span> },
   { id: 'search', label: 'Поиск', icon: <span className="text-sm">🔍</span> },
   { id: 'qa', label: 'Вопросы ИИ', icon: <span className="text-sm">💬</span> },
   { id: 'defense', label: 'Линия защиты', icon: <span className="text-sm">🛡️</span> },
   { id: 'legal-check', label: 'Правовая проверка', icon: <Scale className="h-4 w-4" /> },
+  { id: 'timeline', label: 'Хронология', icon: <span className="text-sm">📅</span> },
+  { id: 'evidence-chain', label: 'Цепочка улик', icon: <span className="text-sm">🔗</span> },
+  { id: 'risk', label: 'Риски', icon: <AlertTriangle className="h-4 w-4" /> },
+  { id: 'witness-matrix', label: 'Свидетели', icon: <span className="text-sm">👁️</span> },
+  { id: 'brief', label: 'Бриф', icon: <FileText className="h-4 w-4" /> },
+  { id: 'analytics', label: 'Аналитика', icon: <span className="text-sm">📊</span> },
+  { id: 'export-center', label: 'Экспорт', icon: <span className="text-sm">⚖️</span> },
+  { id: 'battle-plan', label: 'Боевой план', icon: <span className="text-sm">⚔️</span> },
+  { id: 'violations', label: 'Нарушения', icon: <span className="text-sm">❌</span> },
 ]
 
 function ThemeToggle() {
@@ -62,24 +78,32 @@ function SectionRenderer({ sectionId, caseId }: { sectionId: SectionId; caseId: 
     let cancelled = false
     const loader = COMPONENT_REGISTRY[sectionId]
     if (!loader) {
-      setError('Секция не найдена')
-      setLoading(false)
+      startTransition(() => {
+        setError('Секция не найдена')
+        setLoading(false)
+      })
       return
     }
-    setLoading(true)
-    setError(null)
-    setComponent(null)
+    startTransition(() => {
+      setLoading(true)
+      setError(null)
+      setComponent(null)
+    })
     loader()
       .then(mod => {
         if (!cancelled) {
-          setComponent(() => mod.default)
-          setLoading(false)
+          startTransition(() => {
+            setComponent(() => mod.default)
+            setLoading(false)
+          })
         }
       })
       .catch(err => {
         if (!cancelled) {
-          setError(`Ошибка загрузки: ${String(err)}`)
-          setLoading(false)
+          startTransition(() => {
+            setError(`Ошибка загрузки: ${String(err)}`)
+            setLoading(false)
+          })
         }
       })
     return () => { cancelled = true }
@@ -102,7 +126,7 @@ function SectionRenderer({ sectionId, caseId }: { sectionId: SectionId; caseId: 
   }
   if (!Component) return null
 
-  const needsCaseId = ['dashboard', 'documents', 'persons', 'episodes']
+  const needsCaseId = ['dashboard', 'documents', 'persons', 'episodes', 'export-center']
   if (needsCaseId.includes(sectionId)) {
     return <Component caseId={caseId} />
   }

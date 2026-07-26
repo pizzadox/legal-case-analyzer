@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { writeFile } from 'fs/promises';
+import { writeFile, mkdir } from 'fs/promises';
 import path from 'path';
+
+// 5-minute timeout for large file uploads
+export const maxDuration = 300;
 
 // Increase body size limit for large file uploads (500MB)
 export const dynamic = 'force-dynamic';
@@ -29,7 +32,18 @@ const MAX_FILE_SIZE = 500 * 1024 * 1024; // 500 MB
 
 export async function POST(request: NextRequest) {
   try {
-    const formData = await request.formData();
+    // Parse formData — this can fail for very large files or malformed requests
+    let formData: FormData;
+    try {
+      formData = await request.formData();
+    } catch (formError) {
+      console.error('[Upload] FormData parsing failed:', formError instanceof Error ? formError.message : String(formError));
+      return NextResponse.json(
+        { error: 'Не удалось прочитать данные загрузки. Файл слишком большой или запрос повреждён.', details: formError instanceof Error ? formError.message : String(formError) },
+        { status: 400 }
+      );
+    }
+
     const files = formData.getAll('files') as File[];
     const caseId = formData.get('caseId') as string | null;
 
@@ -60,6 +74,14 @@ export async function POST(request: NextRequest) {
     }
 
     const uploadDir = path.join(process.cwd(), 'upload');
+
+    // Ensure upload directory exists
+    try {
+      await mkdir(uploadDir, { recursive: true });
+    } catch (mkdirErr) {
+      console.error('[Upload] Failed to create upload directory:', mkdirErr);
+      // Continue anyway — writeFile will fail if directory truly doesn't exist
+    }
 
     const createdDocuments: any[] = [];
 

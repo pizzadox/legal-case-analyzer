@@ -48,21 +48,52 @@ async function fetchApi<T>(endpoint: string, options?: RequestInit): Promise<T> 
 
 // Upload documents (multi-file) for a specific case
 export async function uploadDocuments(files: File[], caseId?: string): Promise<DocumentData[]> {
-  const formData = new FormData()
-  files.forEach((file) => formData.append('files', file))
-  if (caseId) formData.append('caseId', caseId)
-
-  const response = await fetch(`${API_BASE}/upload`, {
-    method: 'POST',
-    body: formData,
-  })
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'Ошибка загрузки' }))
-    throw new Error(error.message || 'Ошибка загрузки документов')
+  if (!files || files.length === 0) {
+    throw new Error('Нет файлов для загрузки')
   }
 
-  return response.json()
+  const formData = new FormData()
+  for (const file of files) {
+    formData.append('files', file)
+  }
+  if (caseId) {
+    formData.append('caseId', caseId)
+  }
+
+  console.log(`[UploadAPI] Uploading ${files.length} files for case ${caseId || 'none'}`)
+
+  try {
+    const response = await fetch(`${API_BASE}/upload`, {
+      method: 'POST',
+      body: formData,
+    })
+
+    if (!response.ok) {
+      let errorMessage = 'Ошибка загрузки документов'
+      try {
+        const errorData = await response.json()
+        errorMessage = errorData.error || errorData.message || errorMessage
+        console.error(`[UploadAPI] Upload failed (${response.status}): ${errorMessage}`)
+      } catch {
+        // Response body is not JSON (e.g. HTML error page from proxy)
+        console.error(`[UploadAPI] Upload failed (${response.status}): non-JSON response`)
+        errorMessage = `Ошибка загрузки: сервер вернул ${response.status}`
+      }
+      throw new Error(errorMessage)
+    }
+
+    const result = await response.json()
+    console.log(`[UploadAPI] Successfully uploaded ${Array.isArray(result) ? result.length : 0} documents`)
+    return result
+  } catch (error) {
+    if (error instanceof TypeError && error.message.includes('fetch')) {
+      // Network error — server unreachable or request too large
+      console.error('[UploadAPI] Network/fetch error during upload:', error.message)
+      throw new Error('Ошибка сети при загрузке файлов. Проверьте подключение или попробуйте файл меньшего размера.')
+    }
+    // Re-throw already-processed errors (from the !response.ok block above)
+    throw error
+  }
 }
 
 // Get all documents for a specific case (no mock-data fallback)
