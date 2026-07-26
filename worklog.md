@@ -602,3 +602,26 @@ Stage Summary:
 - Episodes tab fully in Russian
 - Documents tab has working buttons
 - Server is stable with no OOM crashes
+---
+Task ID: 1
+Agent: Main Agent
+Task: Fix processing hangs at 10%, fix extracted text overflow, stabilize the app
+
+Work Log:
+- Investigated processing queue: found stuck entry at 10% with URL格式無效 error (VLM SDK base64 approach failing)
+- Reset stuck ProcessingQueue entry to allow re-processing
+- Rewrote /api/case/process/route.ts to delegate to doc-processor microservice instead of using VLM SDK directly
+- Fixed extracted text overflow in case-documents.tsx side panel: added min-h-0 and overflow-hidden on outer ScrollArea, wrapped inner ScrollArea in constrained div
+- Modified handleAnalyze to trigger processing via reprocess + process route (delegates to microservice)
+- Enhanced processing status auto-refresh to update all related queries when status changes
+- Diagnosed OOM as root cause of app crashes - Next.js server + Chrome + ZAI Python exceeded 4GB RAM
+- Created keep-stable.sh keepalive script for auto-restart
+- Created start-doc-processor.sh for manual doc-processor startup
+- Bumped version from 3.7.0 to 3.8.0
+
+Stage Summary:
+- Processing route now delegates to doc-processor microservice (no more VLM SDK errors)
+- Extracted text overflow fixed with proper flex min-h-0 and overflow-hidden
+- App is stable when agent-browser Chrome is not running (~194MB memory)
+- Keepalive script ensures auto-restart on crashes
+- Doc-processor should be started manually when processing is needed

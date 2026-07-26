@@ -293,13 +293,20 @@ export function CaseDocuments({ caseId }: { caseId: string }) {
     enabled: !!caseId, // Only poll when we have a caseId
   })
   
-  // Auto-refresh document list when processing completes
+  // Auto-refresh document list when processing status changes
   useEffect(() => {
-    if (processingStatus && processingStatus.items.some(item => item.status === 'completed' || item.status === 'failed')) {
+    if (processingStatus) {
+      // Always refresh documents to show latest processingStatus/progress
       queryClient.invalidateQueries({ queryKey: ['documents', caseId] })
-      queryClient.invalidateQueries({ queryKey: ['persons', caseId] })
-      queryClient.invalidateQueries({ queryKey: ['episodes', caseId] })
-      queryClient.invalidateQueries({ queryKey: ['dashboard', caseId] })
+      
+      // When processing completes or fails, refresh all related data
+      if (processingStatus.items.some(item => item.status === 'completed' || item.status === 'failed')) {
+        queryClient.invalidateQueries({ queryKey: ['persons', caseId] })
+        queryClient.invalidateQueries({ queryKey: ['episodes', caseId] })
+        queryClient.invalidateQueries({ queryKey: ['dashboard', caseId] })
+        queryClient.invalidateQueries({ queryKey: ['criminal-cases'] })
+        queryClient.invalidateQueries({ queryKey: ['evidence-chain', caseId] })
+      }
     }
   }, [processingStatus, caseId, queryClient])
   
@@ -348,31 +355,24 @@ export function CaseDocuments({ caseId }: { caseId: string }) {
   const handleAnalyze = async (docId: string) => {
     setAnalyzingId(docId)
     try {
-      // First, reprocess (reset status) if the document was previously processed/failed
-      try {
-        await caseApi.reprocessDocument(docId)
-      } catch {
-        // If reprocess route not available or doc is pending, just continue
-      }
-      // Then, process the document with AI
+      // Reset the document status via reprocess route
+      await caseApi.reprocessDocument(docId)
+      // Trigger processing via the process route (which delegates to doc-processor microservice)
       await caseApi.processDocument(docId)
-      toast.success('Анализ документа завершён')
-      // Invalidate all case-related queries so extracted data appears in all tabs
+      toast.success('Обработка запущена — следите за прогрессом в карточке документа')
+      // Invalidate queries so UI shows updated status immediately
       await queryClient.invalidateQueries({ queryKey: ['documents', caseId] })
       await queryClient.invalidateQueries({ queryKey: ['processing-status', caseId] })
-      await queryClient.invalidateQueries({ queryKey: ['persons', caseId] })
-      await queryClient.invalidateQueries({ queryKey: ['episodes', caseId] })
-      await queryClient.invalidateQueries({ queryKey: ['dashboard', caseId] })
-      await queryClient.invalidateQueries({ queryKey: ['criminal-cases'] })
       refetch()
     } catch (err: any) {
-      const errorMsg = err?.message || 'Ошибка анализа'
+      const errorMsg = err?.message || 'Ошибка запуска обработки'
       toast.error(`Ошибка: ${errorMsg}`)
-      // Still refetch to show updated status (e.g. 'failed')
       refetch()
       await queryClient.invalidateQueries({ queryKey: ['processing-status', caseId] })
     }
-    setAnalyzingId(null)
+    // Don't immediately set analyzingId to null — let the processing status polling show progress
+    // Reset after 3 seconds so the UI can show the processing state
+    setTimeout(() => setAnalyzingId(null), 3000)
   }
 
   const handleDelete = async (docId: string) => {
@@ -856,8 +856,8 @@ export function CaseDocuments({ caseId }: { caseId: string }) {
             </SheetDescription>
           </SheetHeader>
 
-          <ScrollArea className="flex-1 max-h-[calc(100dvh-100px)]">
-            <div className="p-4 space-y-4">
+          <ScrollArea className="flex-1 min-h-0 max-h-[calc(100dvh-100px)] overflow-hidden">
+            <div className="p-4 space-y-4 overflow-hidden">
             {/* Metadata section */}
             <Card className="rounded-xl shadow-sm">
               <CardHeader className="pb-2"><CardTitle className="text-sm">Метаданные документа</CardTitle></CardHeader>
@@ -957,13 +957,15 @@ export function CaseDocuments({ caseId }: { caseId: string }) {
                       )}
                     </div>
                   )}
-                  <ScrollArea className="max-h-64 w-full rounded-lg border bg-muted/30 p-3">
+                  <div className="max-h-64 w-full overflow-hidden rounded-lg border bg-muted/30">
+                  <ScrollArea className="h-64 p-3">
                     <p className="text-xs whitespace-pre-wrap leading-relaxed">
                       {docSearch.trim()
                         ? highlightText(selectedDoc.extractedText, docSearch, docSearchCaseSensitive)
                         : selectedDoc.extractedText}
                     </p>
                   </ScrollArea>
+                  </div>
                 </CardContent>
               </Card>
             )}

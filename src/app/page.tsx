@@ -274,7 +274,7 @@ export default function CasePage() {
                 </div>
                 <div className="grid flex-1 text-left text-sm leading-tight">
                   <span className="truncate font-semibold text-xs">Система</span>
-                  <span className="truncate text-xs text-muted-foreground">v3.6</span>
+                  <span className="truncate text-xs text-muted-foreground">v3.8</span>
                 </div>
               </SidebarMenuButton>
             </SidebarMenuItem>
@@ -367,7 +367,7 @@ export default function CasePage() {
         <footer className="border-t bg-muted/30 px-4 py-3 mt-auto">
           <div className="flex items-center justify-between gap-3 text-xs text-stone-500 dark:text-stone-400">
             <span className="truncate">Система Управления Уголовным Делом • {activeCase ? `Дело ${activeCase.caseNumber}` : 'Дело № ...'} • {activeCase?.defendantName || '...'}</span>
-            <span className="shrink-0 font-medium text-stone-600 dark:text-stone-300">ИИ-аналитик v3.6</span>
+            <span className="shrink-0 font-medium text-stone-600 dark:text-stone-300">ИИ-аналитик v3.8</span>
           </div>
         </footer>
 
