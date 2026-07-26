@@ -856,8 +856,8 @@ export function CaseDocuments({ caseId }: { caseId: string }) {
             </SheetDescription>
           </SheetHeader>
 
-          <ScrollArea className="flex-1 min-h-0 max-h-[calc(100dvh-100px)] overflow-hidden">
-            <div className="p-4 space-y-4 overflow-hidden">
+          <ScrollArea className="flex-1 min-h-0 overflow-hidden">
+            <div className="p-4 space-y-4">
             {/* Metadata section */}
             <Card className="rounded-xl shadow-sm">
               <CardHeader className="pb-2"><CardTitle className="text-sm">Метаданные документа</CardTitle></CardHeader>
@@ -957,13 +957,13 @@ export function CaseDocuments({ caseId }: { caseId: string }) {
                       )}
                     </div>
                   )}
-                  <div className="max-h-64 w-full overflow-hidden rounded-lg border bg-muted/30">
-                  <ScrollArea className="h-64 p-3">
-                    <p className="text-xs whitespace-pre-wrap leading-relaxed">
+                  <div className="max-h-[500px] w-full overflow-y-auto rounded-lg border bg-muted/30">
+                  <ScrollArea className="h-[500px] p-3">
+                    <div className="text-xs whitespace-pre-wrap leading-relaxed break-words overflow-wrap-anywhere">
                       {docSearch.trim()
                         ? highlightText(selectedDoc.extractedText, docSearch, docSearchCaseSensitive)
                         : selectedDoc.extractedText}
-                    </p>
+                    </div>
                   </ScrollArea>
                   </div>
                 </CardContent>

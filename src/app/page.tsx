@@ -1,8 +1,8 @@
 'use client'
 
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Sidebar, SidebarContent, SidebarFooter, SidebarGroup, SidebarGroupContent, SidebarGroupLabel, SidebarHeader, SidebarInset, SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarProvider, SidebarRail, SidebarTrigger, useSidebar } from '@/components/ui/sidebar'
+import { Sidebar, SidebarContent, SidebarFooter, SidebarGroup, SidebarGroupContent, SidebarGroupLabel, SidebarHeader, SidebarInset, SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarProvider, SidebarRail, SidebarTrigger } from '@/components/ui/sidebar'
 import { Separator } from '@/components/ui/separator'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -15,30 +15,31 @@ import { toast } from 'sonner'
 import type { SectionId, CriminalCaseData } from '@/lib/case-store'
 import { useCaseStore } from '@/lib/case-store'
 import * as caseApi from '@/lib/case-api'
-
-import { lazy, Suspense } from 'react'
 import { ErrorBoundary } from '@/components/error-boundary'
 
-// Lazy-load all section components to reduce initial bundle size and memory usage
-const CaseDashboard = lazy(() => import('@/components/case-dashboard').then(m => ({ default: m.CaseDashboard })))
-const CaseDocuments = lazy(() => import('@/components/case-documents').then(m => ({ default: m.CaseDocuments })))
-const CasePersons = lazy(() => import('@/components/case-persons').then(m => ({ default: m.CasePersons })))
-const CaseEpisodes = lazy(() => import('@/components/case-episodes').then(m => ({ default: m.CaseEpisodes })))
-const CaseSearch = lazy(() => import('@/components/case-search').then(m => ({ default: m.CaseSearch })))
-const CaseQa = lazy(() => import('@/components/case-qa').then(m => ({ default: m.CaseQa })))
-const CaseDefense = lazy(() => import('@/components/case-defense').then(m => ({ default: m.CaseDefense })))
-const CaseLegalCheck = lazy(() => import('@/components/case-legal-check').then(m => ({ default: m.CaseLegalCheck })))
-const CaseTimeline = lazy(() => import('@/components/case-timeline').then(m => ({ default: m.CaseTimeline })))
-const CaseEvidenceChain = lazy(() => import('@/components/case-evidence-chain').then(m => ({ default: m.CaseEvidenceChain })))
-const CaseRisk = lazy(() => import('@/components/case-risk').then(m => ({ default: m.CaseRisk })))
-const CaseWitnessMatrix = lazy(() => import('@/components/case-witness-matrix').then(m => ({ default: m.CaseWitnessMatrix })))
-const CaseBrief = lazy(() => import('@/components/case-brief').then(m => ({ default: m.CaseBrief })))
-const CaseAnalytics = lazy(() => import('@/components/case-analytics').then(m => ({ default: m.CaseAnalytics })))
-const CaseExportCenter = lazy(() => import('@/components/case-export-center').then(m => ({ default: m.CaseExportCenter })))
-const CaseBattlePlan = lazy(() => import('@/components/case-battle-plan').then(m => ({ default: m.CaseBattlePlan })))
-const CaseViolations = lazy(() => import('@/components/case-violations').then(m => ({ default: m.CaseViolations })))
+// Component registry: components are loaded ONLY when the section is activated
+// This reduces initial memory consumption dramatically
+const COMPONENT_REGISTRY: Record<string, () => Promise<{ default: React.ComponentType<any> }>> = {
+  'dashboard': () => import('@/components/case-dashboard').then(m => ({ default: m.CaseDashboard })),
+  'documents': () => import('@/components/case-documents').then(m => ({ default: m.CaseDocuments })),
+  'persons': () => import('@/components/case-persons').then(m => ({ default: m.CasePersons })),
+  'episodes': () => import('@/components/case-episodes').then(m => ({ default: m.CaseEpisodes })),
+  'search': () => import('@/components/case-search').then(m => ({ default: m.CaseSearch })),
+  'qa': () => import('@/components/case-qa').then(m => ({ default: m.CaseQa })),
+  'defense': () => import('@/components/case-defense').then(m => ({ default: m.CaseDefense })),
+  'legal-check': () => import('@/components/case-legal-check').then(m => ({ default: m.CaseLegalCheck })),
+  'timeline': () => import('@/components/case-timeline').then(m => ({ default: m.CaseTimeline })),
+  'evidence-chain': () => import('@/components/case-evidence-chain').then(m => ({ default: m.CaseEvidenceChain })),
+  'risk': () => import('@/components/case-risk').then(m => ({ default: m.CaseRisk })),
+  'witness-matrix': () => import('@/components/case-witness-matrix').then(m => ({ default: m.CaseWitnessMatrix })),
+  'brief': () => import('@/components/case-brief').then(m => ({ default: m.CaseBrief })),
+  'analytics': () => import('@/components/case-analytics').then(m => ({ default: m.CaseAnalytics })),
+  'export-center': () => import('@/components/case-export-center').then(m => ({ default: m.CaseExportCenter })),
+  'battle-plan': () => import('@/components/case-battle-plan').then(m => ({ default: m.CaseBattlePlan })),
+  'violations': () => import('@/components/case-violations').then(m => ({ default: m.CaseViolations })),
+}
 
-// Simplified nav items - using emoji for icons not in the kept set to reduce icon imports
+// Simplified nav items
 const NAV_ITEMS: { id: SectionId; label: string; icon: React.ReactNode }[] = [
   { id: 'dashboard', label: 'Главная', icon: <LayoutDashboard className="h-4 w-4" /> },
   { id: 'documents', label: 'Документы', icon: <FileText className="h-4 w-4" /> },
@@ -68,6 +69,57 @@ function ThemeToggle() {
       <span className="sr-only">Переключить тему</span>
     </Button>
   )
+}
+
+// Dynamic section renderer that loads components on demand
+function SectionRenderer({ sectionId, caseId }: { sectionId: SectionId; caseId: string }) {
+  const [Component, setComponent] = useState<React.ComponentType<any> | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    setLoading(true)
+    setError(null)
+    const loader = COMPONENT_REGISTRY[sectionId]
+    if (!loader) {
+      setError('Секция не найдена')
+      setLoading(false)
+      return
+    }
+    loader()
+      .then(mod => {
+        setComponent(() => mod.default)
+        setLoading(false)
+      })
+      .catch(err => {
+        setError(`Ошибка загрузки: ${String(err)}`)
+        setLoading(false)
+      })
+  }, [sectionId])
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+      </div>
+    )
+  }
+  if (error) {
+    return (
+      <div className="flex items-center justify-center h-64 text-sm text-red-700">
+        <AlertTriangle className="w-4 h-4 mr-2" />
+        {error}
+      </div>
+    )
+  }
+  if (!Component) return null
+
+  // Sections that need caseId as prop
+  const needsCaseId = ['dashboard', 'documents', 'persons', 'episodes', 'export-center']
+  if (needsCaseId.includes(sectionId)) {
+    return <Component caseId={caseId} />
+  }
+  return <Component />
 }
 
 export default function CasePage() {
@@ -201,30 +253,6 @@ export default function CasePage() {
     }
   }
 
-  const renderSection = () => {
-    const cid = activeCase?.id || ''
-    switch (activeSection) {
-      case 'dashboard': return <CaseDashboard caseId={cid} />
-      case 'documents': return <CaseDocuments caseId={cid} />
-      case 'persons': return <CasePersons caseId={cid} />
-      case 'episodes': return <CaseEpisodes caseId={cid} />
-      case 'search': return <CaseSearch />
-      case 'qa': return <CaseQa />
-      case 'defense': return <CaseDefense />
-      case 'legal-check': return <CaseLegalCheck />
-      case 'timeline': return <CaseTimeline />
-      case 'evidence-chain': return <CaseEvidenceChain />
-      case 'risk': return <CaseRisk />
-      case 'witness-matrix': return <CaseWitnessMatrix />
-      case 'brief': return <CaseBrief />
-      case 'analytics': return <CaseAnalytics />
-      case 'export-center': return <CaseExportCenter caseId={cid} />
-      case 'battle-plan': return <CaseBattlePlan />
-      case 'violations': return <CaseViolations />
-      default: return <CaseDashboard caseId={cid} />
-    }
-  }
-
   return (
     <SidebarProvider>
       <Sidebar variant="inset" collapsible="icon">
@@ -274,7 +302,7 @@ export default function CasePage() {
                 </div>
                 <div className="grid flex-1 text-left text-sm leading-tight">
                   <span className="truncate font-semibold text-xs">Система</span>
-                  <span className="truncate text-xs text-muted-foreground">v3.8</span>
+                  <span className="truncate text-xs text-muted-foreground">v3.9</span>
                 </div>
               </SidebarMenuButton>
             </SidebarMenuItem>
@@ -353,13 +381,7 @@ export default function CasePage() {
         <main className="flex-1 overflow-auto">
           <div className="p-4 md:p-6 max-w-7xl mx-auto">
             <ErrorBoundary>
-              <Suspense fallback={
-                <div className="flex items-center justify-center h-64">
-                  <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
-                </div>
-              }>
-                {renderSection()}
-              </Suspense>
+              <SectionRenderer sectionId={activeSection} caseId={activeCase?.id || ''} />
             </ErrorBoundary>
           </div>
         </main>
@@ -367,7 +389,7 @@ export default function CasePage() {
         <footer className="border-t bg-muted/30 px-4 py-3 mt-auto">
           <div className="flex items-center justify-between gap-3 text-xs text-stone-500 dark:text-stone-400">
             <span className="truncate">Система Управления Уголовным Делом • {activeCase ? `Дело ${activeCase.caseNumber}` : 'Дело № ...'} • {activeCase?.defendantName || '...'}</span>
-            <span className="shrink-0 font-medium text-stone-600 dark:text-stone-300">ИИ-аналитик v3.8</span>
+            <span className="shrink-0 font-medium text-stone-600 dark:text-stone-300">ИИ-аналитик v3.9</span>
           </div>
         </footer>
 

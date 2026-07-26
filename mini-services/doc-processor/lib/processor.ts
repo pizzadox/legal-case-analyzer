@@ -32,6 +32,7 @@ interface AnalysisResult {
 // Progress step labels in Russian for display
 const PROGRESS_STEPS: Record<string, { percent: number; label: string }> = {
   'starting':           { percent: 5,  label: 'Запуск обработки' },
+  'fetching_document':  { percent: 10, label: 'Загрузка документа' },
   'extracting_text':    { percent: 20, label: 'Распознавание текста' },
   'text_extracted':     { percent: 35, label: 'Текст распознан' },
   'analyzing':          { percent: 50, label: 'ИИ-анализ документа' },
@@ -176,6 +177,7 @@ export async function processDocument(queueId: string, documentId: string): Prom
 
   try {
     // Step 3: Fetch the full document record
+    await updateProgress(queueId, 'fetching_document')
     const document = await db.document.findUnique({
       where: { id: documentId },
     })

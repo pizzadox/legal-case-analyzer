@@ -42,6 +42,8 @@ export async function extractTextFromImageBase64(base64Image: string, mimeType: 
 export async function ocrWithCLI(filePath: string, prompt: string): Promise<string> {
   console.log(`[VLM CLI] Processing image: ${filePath}`)
   
+  const VLM_TIMEOUT = 60000 // 60 seconds timeout for VLM calls
+  
   return new Promise((resolve, reject) => {
     const args = [
       'vision',
@@ -50,7 +52,15 @@ export async function ocrWithCLI(filePath: string, prompt: string): Promise<stri
       '--output', '/tmp/vlm-result.json',
     ]
     
-    const child = execFile('z-ai', args, { timeout: 120000, maxBuffer: 10 * 1024 * 1024 }, (error, stdout, stderr) => {
+    // Set a hard timeout to prevent hanging
+    const timeoutHandle = setTimeout(() => {
+      console.error(`[VLM CLI] Timeout after ${VLM_TIMEOUT}ms for ${filePath}`)
+      reject(new Error(`VLM timeout: processing took longer than ${VLM_TIMEOUT}ms`))
+    }, VLM_TIMEOUT)
+    
+    const child = execFile('z-ai', args, { timeout: VLM_TIMEOUT + 5000, maxBuffer: 10 * 1024 * 1024 }, (error, stdout, stderr) => {
+      clearTimeout(timeoutHandle)
+      
       if (error) {
         console.error(`[VLM CLI] Error: ${error.message}`)
         reject(new Error(`z-ai vision CLI failed: ${error.message}`))
@@ -87,19 +97,29 @@ export async function ocrWithCLI(filePath: string, prompt: string): Promise<stri
  * Uses the SDK for chat completions (smaller payload, more reliable)
  */
 export async function analyzeWithLLM(systemPrompt: string, userPrompt: string): Promise<string> {
+  const LLM_TIMEOUT = 120000 // 120 seconds timeout for LLM calls
+  
   try {
     const ZAI = require('z-ai-web-dev-sdk').default
     if (!zaiInstance) {
       zaiInstance = await ZAI.create()
     }
 
-    const completion = await zaiInstance.chat.completions.create({
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userPrompt }
-      ],
-      thinking: { type: 'disabled' }
+    // Create a timeout promise
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      setTimeout(() => reject(new Error('LLM timeout: analysis took longer than 120 seconds')), LLM_TIMEOUT)
     })
+
+    const completion = await Promise.race([
+      zaiInstance.chat.completions.create({
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt }
+        ],
+        thinking: { type: 'disabled' }
+      }),
+      timeoutPromise
+    ])
 
     return completion?.choices?.[0]?.message?.content || ''
   } catch (error) {
