@@ -1,12 +1,12 @@
 {
   "name": "nextjs_tailwind_shadcn_ts",
-  "version": "3.6.0",
+  "version": "3.7.0",
   "private": true,
   "prisma": {
     "seed": "bun prisma/seed.ts"
   },
   "scripts": {
-    "dev": "node node_modules/.bin/next start --port 3000",
+    "dev": "node ./node_modules/.bin/next start -p 3000",
     "build": "next build && cp -r .next/static .next/standalone/.next/ && cp -r public .next/standalone/",
     "start": "node node_modules/.bin/next start --port 3000",
     "lint": "eslint .",

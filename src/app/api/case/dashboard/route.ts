@@ -74,6 +74,13 @@ export async function GET(request: NextRequest) {
       where: episodeFilter,
     });
 
+    // Episodes with dates for deadlines (only need title, date, severity, status)
+    const episodesWithDates = await db.episode.findMany({
+      where: episodeFilter,
+      select: { id: true, title: true, date: true, severity: true, status: true },
+      orderBy: { date: 'asc' },
+    });
+
     // Aggregate stats - articles (global)
     const totalArticles = await db.article.count();
     const totalLocations = await db.location.count();
@@ -242,6 +249,7 @@ export async function GET(request: NextRequest) {
         total: totalEpisodes,
         bySeverity: episodeSeverityMap,
         byStatus: episodeStatusMap,
+        episodesWithDates: episodesWithDates.map(e => ({ id: e.id, title: e.title, date: e.date, severity: e.severity, status: e.status })),
       },
       processingQueue: {
         byStatus: queueStatusMap,

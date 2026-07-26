@@ -1,16 +1,13 @@
-import { NextResponse } from 'next/server'
-import { mockWitnessStatements } from '@/lib/mock-data'
+import { NextRequest, NextResponse } from 'next/server';
 
-export const dynamic = 'force-dynamic'
+export const dynamic = 'force-dynamic';
 
-export async function GET() {
+// Witness statements feature not yet implemented in database — return empty array
+export async function GET(request: NextRequest) {
   try {
-    return NextResponse.json(mockWitnessStatements)
+    return NextResponse.json([]);
   } catch (error) {
-    console.error('Error fetching witness statements:', error)
-    return NextResponse.json(
-      { error: 'Не удалось получить показания свидетелей' },
-      { status: 500 }
-    )
+    console.error('Witness statements error:', error);
+    return NextResponse.json([]);
   }
 }

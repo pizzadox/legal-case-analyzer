@@ -4,21 +4,40 @@ import { analyzeWithLLM } from '@/lib/zai';
 
 export async function POST(request: NextRequest) {
   try {
-    // Find the person marked as Kolesnichenko
-    const kolesnichenko = await db.person.findFirst({
-      where: { isKolesnichenko: true },
-    });
+    const body = await request.json();
+    const caseId = body.caseId as string | undefined;
+    const personIdFromBody = body.personId as string | undefined;
 
-    if (!kolesnichenko) {
+    // Find the defendant person — prefer explicit personId, then Kolesnichenko, then any defendant
+    let person;
+    if (personIdFromBody) {
+      person = await db.person.findUnique({ where: { id: personIdFromBody } });
+    }
+    if (!person && caseId) {
+      person = await db.person.findFirst({
+        where: { caseId, isKolesnichenko: true },
+      });
+    }
+    if (!person) {
+      person = await db.person.findFirst({ where: { isKolesnichenko: true } });
+    }
+    if (!person && caseId) {
+      // Fallback to any person with обвиняемый/подозреваемый role in this case
+      person = await db.person.findFirst({
+        where: { caseId, role: { in: ['обвиняемый', 'подозреваемый'] } },
+      });
+    }
+
+    if (!person) {
       return NextResponse.json(
-        { error: 'Person marked as Kolesnichenko not found. Please process documents first to identify Kolesnichenko.' },
+        { error: 'Обвиняемый не найден. Обработайте документы для идентификации участников.' },
         { status: 404 }
       );
     }
 
-    // Gather all data related to Kolesnichenko
+    // Gather all data related to the defendant
     const personDocuments = await db.personDocument.findMany({
-      where: { personId: kolesnichenko.id },
+      where: { personId: person.id },
       include: {
         document: {
           select: {
@@ -35,7 +54,7 @@ export async function POST(request: NextRequest) {
     });
 
     const personEpisodes = await db.personEpisode.findMany({
-      where: { personId: kolesnichenko.id },
+      where: { personId: person.id },
       include: {
         episode: {
           select: {
@@ -51,7 +70,7 @@ export async function POST(request: NextRequest) {
     });
 
     const personArticles = await db.personArticle.findMany({
-      where: { personId: kolesnichenko.id },
+      where: { personId: person.id },
       include: {
         article: {
           select: {
@@ -70,7 +89,7 @@ export async function POST(request: NextRequest) {
 
     // Get guilt assessments
     const guiltAssessments = await db.guiltAssessment.findMany({
-      where: { personId: kolesnichenko.id },
+      where: { personId: person.id },
       include: {
         episode: {
           select: { id: true, title: true },
@@ -90,15 +109,15 @@ export async function POST(request: NextRequest) {
     });
 
     // Build context for LLM analysis
-    let defenseContext = `## Данные по обвиняемому Колесниченко:\n`;
-    defenseContext += `ФИО: ${kolesnichenko.fullName}\n`;
-    defenseContext += `Роль: ${kolesnichenko.role}\n`;
-    defenseContext += `Статус: ${kolesnichenko.status}\n`;
-    defenseContext += `Описание: ${kolesnichenko.description || 'нет описания'}\n`;
-    defenseContext += `Дата рождения: ${kolesnichenko.birthDate || 'не указана'}\n`;
-    defenseContext += `Род занятий: ${kolesnichenko.occupation || 'не указан'}\n\n`;
+    let defenseContext = `## Данные по обвиняемому:\n`;
+    defenseContext += `ФИО: ${person.fullName}\n`;
+    defenseContext += `Роль: ${person.role}\n`;
+    defenseContext += `Статус: ${person.status}\n`;
+    defenseContext += `Описание: ${person.description || 'нет описания'}\n`;
+    defenseContext += `Дата рождения: ${person.birthDate || 'не указана'}\n`;
+    defenseContext += `Род занятий: ${person.occupation || 'не указан'}\n\n`;
 
-    defenseContext += `## Документы, mentioning Колесниченко:\n`;
+    defenseContext += `## Документы, связанные с обвиняемым:\n`;
     for (const pd of personDocuments) {
       defenseContext += `- ${pd.document.originalName} (${pd.document.documentType || 'не указан'}, дата: ${pd.document.documentDate || 'не указана'}): ${pd.document.summary || 'нет сводки'}\n`;
       defenseContext += `  Роль в документе: ${pd.role || 'не указана'}, контекст: ${pd.context || 'не указан'}\n`;
@@ -108,7 +127,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    defenseContext += `\n## Эпизоды, связанные с Колесниченко:\n`;
+    defenseContext += `\n## Эпизоды, связанные с обвиняемым:\n`;
     for (const pe of personEpisodes) {
       defenseContext += `- ${pe.episode.title} (дата: ${pe.episode.date || 'не указана'}, тяжесть: ${pe.episode.severity || 'не указана'}, статус: ${pe.episode.status || 'не указан'}): ${pe.episode.description}\n`;
       defenseContext += `  Вовлеченность: ${pe.involvement || 'не указана'}\n`;
@@ -140,7 +159,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Generate defense analysis using LLM
-    const defensePrompt = `На основе следующих материалов уголовного дела, проведите подробный анализ линий защиты для Колесниченко. Определите возможные стратегии защиты, оцените их силу, вероятность успеха и приведите конкретные аргументы.
+    const defensePrompt = `На основе следующих материалов уголовного дела, проведите подробный анализ линий защиты для обвиняемого (${person.fullName}). Определите возможные стратегии защиты, оцените их силу, вероятность успеха и приведите конкретные аргументы.
 
 ДАННЫЕ ДЕЛА:
 ${defenseContext}
@@ -200,7 +219,7 @@ ${defenseContext}
         {
           error: 'Failed to parse defense analysis',
           rawResponse: defenseAnalysis,
-          personId: kolesnichenko.id,
+          personId: person.id,
         },
         { status: 500 }
       );
@@ -214,7 +233,7 @@ ${defenseContext}
     if (primaryStrategy) {
       await db.defenseLine.create({
         data: {
-          personId: kolesnichenko.id,
+          personId: person.id,
           strategyType: primaryStrategy.type as string,
           title: primaryStrategy.title as string,
           description: primaryStrategy.description as string,
@@ -230,7 +249,7 @@ ${defenseContext}
     for (const variant of strategyVariants) {
       await db.defenseLine.create({
         data: {
-          personId: kolesnichenko.id,
+          personId: person.id,
           strategyType: variant.type as string,
           title: variant.title as string,
           description: variant.description as string,
@@ -244,7 +263,7 @@ ${defenseContext}
 
     // Update person defense strategy
     await db.person.update({
-      where: { id: kolesnichenko.id },
+      where: { id: person.id },
       data: {
         defenseStrategy: analysis.overallAssessment as string,
       },
@@ -252,14 +271,14 @@ ${defenseContext}
 
     // Get all saved defense lines for this person
     const savedDefenseLines = await db.defenseLine.findMany({
-      where: { personId: kolesnichenko.id },
+      where: { personId: person.id },
       orderBy: { id: 'desc' },
     });
 
     return NextResponse.json({
       success: true,
-      personId: kolesnichenko.id,
-      personFullName: kolesnichenko.fullName,
+      personId: person.id,
+      personFullName: person.fullName,
       overallAssessment: analysis.overallAssessment,
       primaryStrategy: primaryStrategy,
       strategyVariants,

@@ -12,7 +12,27 @@ import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from '@/comp
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from '@/components/ui/chart'
 import { Pie, PieChart, Cell, Bar, BarChart, XAxis, YAxis } from 'recharts'
 import { FileText, Users, BookOpen, AlertTriangle, Clock, CheckCircle, CheckCircle2, Circle, Zap, Shield, Scale, ArrowRight, RefreshCw, XCircle, Gavel, Activity, MapPin, UploadCloud, FileSearch, Bookmark, Swords, History, CalendarClock, TrendingUp, FileUp, MessageCircle, ShieldCheck, Download, BrainCircuit, Eye, PenLine } from 'lucide-react'
-import { PROCEDURE_STAGES, PROCEDURE_CURRENT_INDEX, PROCEDURAL_DEADLINES } from '@/lib/mock-data'
+// Standard stages of Russian criminal procedure (legal reference constants — not mock data)
+const PROCEDURE_STAGES = [
+  { id: 'investigation', short: 'Следствие', full: 'Предварительное следствие', lawRef: 'ст. 162 УПК РФ', description: 'Срок следствия до 2 месяцев' },
+  { id: 'familiarization', short: 'Ознакомление', full: 'Ознакомление с материалами дела', lawRef: 'ст. 217 УПК РФ', description: 'Право обвиняемого изучить дело' },
+  { id: 'indictment', short: 'Обвинение', full: 'Передача дела в суд', lawRef: 'ст. 222 УПК РФ', description: 'Прокурор утверждает обвинение' },
+  { id: 'pretrial-hearing', short: 'Слушание', full: 'Предварительное слушание', lawRef: 'ст. 234 УПК РФ', description: 'Решение ходатайств до суда' },
+  { id: 'trial', short: 'Суд', full: 'Судебное разбирательство', lawRef: 'ст. 240 УПК РФ', description: 'Основной судебный процесс' },
+  { id: 'verdict', short: 'Приговор', full: 'Вынесение приговора', lawRef: 'ст. 299 УПК РФ', description: 'Решение суда по делу' },
+]
+// Derive current procedure stage from case status
+function getProcedureIndex(status: string | null): number {
+  if (!status) return 0
+  const s = status.toLowerCase()
+  if (s.includes('investigation') || s.includes('следствие') || s.includes('расслед') || s === 'active') return 0
+  if (s.includes('familiariz') || s.includes('ознаком')) return 1
+  if (s.includes('indictment') || s.includes('обвинен') || s.includes('передан') || s.includes('суд')) return 2
+  if (s.includes('pretrial') || s.includes('слушан')) return 3
+  if (s.includes('trial') || s.includes('разбират') || s.includes('судебн')) return 4
+  if (s.includes('verdict') || s.includes('приговор') || s.includes('closed') || s.includes('закрыт') || s.includes('archived') || s.includes('архив')) return 5
+  return 0 // default to first stage
+}
 import { getDashboardStats, getCaseHealthScore, getEvidenceTimeline, getCaseBrief, getBookmarks, getCaseTimeline, getAuditLog } from '@/lib/case-api'
 import { useCaseStore } from '@/lib/case-store'
 import { toast } from '@/hooks/use-toast'
@@ -149,8 +169,8 @@ function ProcDonut({ percent }: { percent: number }) {
   return (<div className="relative shrink-0" aria-label={`Прогресс производства ${percent}%`}><svg width="80" height="80" className="transform -rotate-90"><circle cx="40" cy="40" r={r} stroke="#e7e5e4" strokeWidth="8" fill="none" className="dark:stroke-stone-700" /><circle cx="40" cy="40" r={r} stroke="#9333ea" strokeWidth="8" fill="none" strokeDasharray={c} strokeDashoffset={off} strokeLinecap="round" className="transition-all duration-700" /></svg><div className="absolute inset-0 flex flex-col items-center justify-center"><span className="text-sm font-bold text-purple-600">{percent}%</span></div></div>)
 }
 
-function ProcStages() {
-  const ci = PROCEDURE_CURRENT_INDEX, pct = Math.round((ci / PROCEDURE_STAGES.length) * 100), cur = PROCEDURE_STAGES[ci], next = PROCEDURE_STAGES[ci + 1] ?? PROCEDURE_STAGES[ci]
+function ProcStages({ caseStatus }: { caseStatus: string | null }) {
+  const ci = getProcedureIndex(caseStatus), pct = Math.round((ci / PROCEDURE_STAGES.length) * 100), cur = PROCEDURE_STAGES[ci], next = PROCEDURE_STAGES[ci + 1] ?? PROCEDURE_STAGES[ci]
   return (<Card className="rounded-xl shadow-sm bg-gradient-to-br from-card via-card to-muted/20 border-t-2 border-t-purple-500 transition-shadow hover:shadow-md">
     <CardHeader className="pb-2 relative"><CardTitle className="text-sm flex items-center gap-2"><Scale className="w-4 h-4 text-purple-600" /> Этапы производства по делу</CardTitle><p className="text-xs text-muted-foreground mt-1 pr-24">{cur.full} · {pct}% выполнено</p><div className="absolute top-3 right-4"><ProcDonut percent={pct} /></div></CardHeader>
     <CardContent className="p-4">
@@ -171,22 +191,49 @@ function ProcStages() {
   </Card>)
 }
 
-function Deadlines() {
-  const now = new Date(), sorted = [...PROCEDURAL_DEADLINES].sort((a, b) => new Date(a.deadline).getTime() - new Date(b.deadline).getTime())
-  const upcoming = sorted.filter(d => new Date(d.deadline).getTime() > now.getTime()), overdue = sorted.filter(d => new Date(d.deadline).getTime() <= now.getTime())
-  const next = upcoming[0], daysN = next ? Math.ceil((new Date(next.deadline).getTime() - now.getTime()) / (86400000)) : 0
+function Deadlines({ episodes }: { episodes: Array<{ title: string; date: string | null; severity: string | null; status: string | null }> }) {
+  const now = new Date()
+  // Build deadlines from real episode dates
+  const deadlines = episodes
+    .filter(e => e.date)
+    .map(e => {
+      const days = Math.ceil((new Date(e.date!).getTime() - now.getTime()) / 86400000)
+      const isOv = days < 0
+      const isUr = days >= 0 && days <= 3
+      const sev = e.severity?.toLowerCase() ?? 'medium'
+      let importance: 'critical' | 'high' | 'medium' | 'low' = 'medium'
+      if (sev.includes('тяжкое') || sev.includes('особо')) importance = 'critical'
+      else if (sev.includes('средней')) importance = 'high'
+      else if (sev.includes('небольш')) importance = 'low'
+      let statusStr: 'overdue' | 'urgent' | 'upcoming' | 'warning' = 'upcoming'
+      if (isOv) statusStr = 'overdue'
+      else if (isUr) statusStr = 'urgent'
+      else if (days <= 14) statusStr = 'warning'
+      return { id: `dl-${e.title}`, deadline: e.date!, title: e.title, article: e.status ?? 'Этап производства', status: statusStr, importance, description: e.severity ?? 'Срок этапа производства', days }
+    })
+    .sort((a, b) => Math.abs(a.days) - Math.abs(b.days))
+
+  if (deadlines.length === 0) {
+    return (<Card className="rounded-xl shadow-sm bg-gradient-to-br from-card via-card to-red-500/5 border-t-2 border-t-red-500 transition-shadow hover:shadow-md">
+      <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2"><div className="flex items-center justify-center w-7 h-7 rounded-lg bg-red-700/15"><CalendarClock className="w-3.5 h-3.5 text-red-700" /></div>Процессуальные сроки</CardTitle></CardHeader>
+      <CardContent className="p-4"><p className="text-sm text-muted-foreground text-center py-4">Нет этапов с датами для отображения сроков</p></CardContent>
+    </Card>)
+  }
+
+  const upcoming = deadlines.filter(d => d.days >= 0), overdue = deadlines.filter(d => d.days < 0)
+  const next = upcoming[0], daysN = next?.days ?? 0
   const fmtD = (iso: string) => new Date(iso).toLocaleDateString('ru-RU', { day: '2-digit', month: 'long', year: 'numeric' })
-  const daysTo = (iso: string) => { const d = Math.ceil((new Date(iso).getTime() - now.getTime()) / (86400000)); return d < 0 ? `просрочено на ${Math.abs(d)} дн.` : d === 0 ? 'сегодня' : d === 1 ? 'завтра' : `через ${d} дн.` }
+  const daysTo = (d: number) => d < 0 ? `просрочено на ${Math.abs(d)} дн.` : d === 0 ? 'сегодня' : d === 1 ? 'завтра' : `через ${d} дн.`
   const pulse = (c: string) => <span className="relative flex h-2.5 w-2.5"><span className={`animate-ping absolute inline-flex h-full w-full rounded-full ${c} opacity-75`} /><span className={`relative inline-flex rounded-full h-2.5 w-2.5 ${c.replace('/400', '/600')}`} /></span>
   return (<Card className="rounded-xl shadow-sm bg-gradient-to-br from-card via-card to-red-500/5 border-t-2 border-t-red-500 transition-shadow hover:shadow-md">
-    <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2"><div className="flex items-center justify-center w-7 h-7 rounded-lg bg-red-700/15"><CalendarClock className="w-3.5 h-3.5 text-red-700" /></div>Процессуальные сроки<Badge variant="outline" className="text-xs ml-1">{sorted.length} событий</Badge>{overdue.length > 0 && <Badge className="bg-red-800 text-white text-xs ml-auto gap-1"><AlertTriangle className="w-3 h-3" />{overdue.length} просрочено</Badge>}</CardTitle></CardHeader>
+    <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2"><div className="flex items-center justify-center w-7 h-7 rounded-lg bg-red-700/15"><CalendarClock className="w-3.5 h-3.5 text-red-700" /></div>Процессуальные сроки<Badge variant="outline" className="text-xs ml-1">{deadlines.length} событий</Badge>{overdue.length > 0 && <Badge className="bg-red-800 text-white text-xs ml-auto gap-1"><AlertTriangle className="w-3 h-3" />{overdue.length} просрочено</Badge>}</CardTitle></CardHeader>
     <CardContent className="p-4 space-y-3">
       {next && (<div className={`p-3 rounded-xl border-l-4 ${DL_IMP[next.importance].color} flex items-center gap-3 transition-transform hover:scale-[1.01]`}>
         <div className="flex flex-col items-center justify-center w-14 h-14 rounded-xl bg-background/70 shrink-0"><span className={`text-2xl font-black leading-none ${daysN <= 3 ? 'text-red-700' : daysN <= 14 ? 'text-orange-600' : 'text-stone-700 dark:text-stone-200'}`}>{daysN === 0 ? '!' : daysN}</span><span className="text-[10px] text-muted-foreground mt-0.5">дн.</span></div>
         <div className="flex-1 min-w-0"><div className="flex items-center gap-2 flex-wrap"><p className="text-sm font-semibold leading-tight">{next.title}</p><Badge className={`text-[10px] ${DL_IMP[next.importance].badge}`}>{DL_IMP[next.importance].label}</Badge>{daysN <= 3 && pulse('bg-red-400')}</div>
-          <div className="flex items-center gap-1.5 mt-1"><Badge variant="outline" className="text-[10px] cursor-pointer hover:bg-red-50 dark:hover:bg-red-950/20 transition-colors border-red-300 text-red-700" onClick={() => toast({ title: next.article, description: next.description })}>{next.article}</Badge><span className="text-xs text-muted-foreground">{fmtD(next.deadline)} • {daysTo(next.deadline)}</span></div><p className="text-xs mt-1 text-foreground/80 line-clamp-2">{next.description}</p></div>
+          <div className="flex items-center gap-1.5 mt-1"><Badge variant="outline" className="text-[10px] cursor-pointer hover:bg-red-50 dark:hover:bg-red-950/20 transition-colors border-red-300 text-red-700" onClick={() => toast({ title: next.article, description: next.description })}>{next.article}</Badge><span className="text-xs text-muted-foreground">{fmtD(next.deadline)} • {daysTo(next.days)}</span></div><p className="text-xs mt-1 text-foreground/80 line-clamp-2">{next.description}</p></div>
       </div>)}
-      <div className="grid sm:grid-cols-2 gap-2">{sorted.slice(0, 6).map(d => { const days = Math.ceil((new Date(d.deadline).getTime() - now.getTime()) / (86400000)), isOv = days < 0, isUr = days >= 0 && days <= 3, sConf = DL_STS[d.status]; return (<TooltipProvider key={d.id} delayDuration={150}><Tooltip><TooltipTrigger asChild><div className={`p-2.5 rounded-lg border-l-4 ${DL_IMP[d.importance].color} cursor-help transition-all duration-200 hover:shadow-sm hover:-translate-y-0.5`}><div className="flex items-center justify-between gap-2 mb-1"><div className="flex items-center gap-1.5"><Badge className={`text-[9px] px-1.5 py-0 ${sConf.badge}`}>{sConf.label}</Badge>{isOv && pulse('bg-red-400')}{isUr && !isOv && pulse('bg-amber-400')}</div><span className={`text-[11px] font-bold tabular-nums ${isOv ? 'text-red-700' : isUr ? 'text-orange-600' : 'text-muted-foreground'}`}>{daysTo(d.deadline)}</span></div><p className="text-xs font-medium leading-tight line-clamp-2">{d.title}</p><Badge variant="outline" className="text-[9px] mt-1 cursor-pointer hover:bg-muted transition-colors" onClick={(e) => { e.stopPropagation(); toast({ title: d.article, description: d.description }) }}>{d.article}</Badge></div></TooltipTrigger><TooltipContent side="top" className="text-xs max-w-[260px]"><p className="font-semibold">{d.title}</p><p className="text-muted-foreground mt-0.5">{d.article}</p><p className="mt-1">{fmtD(d.deadline)}</p><Separator className="my-1" /><p className="italic">{d.description}</p></TooltipContent></Tooltip></TooltipProvider>) })}</div>
+      <div className="grid sm:grid-cols-2 gap-2">{deadlines.slice(0, 6).map(d => { const isOv = d.days < 0, isUr = d.days >= 0 && d.days <= 3, sConf = DL_STS[d.status]; return (<TooltipProvider key={d.id} delayDuration={150}><Tooltip><TooltipTrigger asChild><div className={`p-2.5 rounded-lg border-l-4 ${DL_IMP[d.importance].color} cursor-help transition-all duration-200 hover:shadow-sm hover:-translate-y-0.5`}><div className="flex items-center justify-between gap-2 mb-1"><div className="flex items-center gap-1.5"><Badge className={`text-[9px] px-1.5 py-0 ${sConf.badge}`}>{sConf.label}</Badge>{isOv && pulse('bg-red-400')}{isUr && !isOv && pulse('bg-amber-400')}</div><span className={`text-[11px] font-bold tabular-nums ${isOv ? 'text-red-700' : isUr ? 'text-orange-600' : 'text-muted-foreground'}`}>{daysTo(d.days)}</span></div><p className="text-xs font-medium leading-tight line-clamp-2">{d.title}</p><Badge variant="outline" className="text-[9px] mt-1 cursor-pointer hover:bg-muted transition-colors" onClick={(e) => { e.stopPropagation(); toast({ title: d.article, description: d.description }) }}>{d.article}</Badge></div></TooltipTrigger><TooltipContent side="top" className="text-xs max-w-[260px]"><p className="font-semibold">{d.title}</p><p className="text-muted-foreground mt-0.5">{d.article}</p><p className="mt-1">{fmtD(d.deadline)}</p><Separator className="my-1" /><p className="italic">{d.description}</p></TooltipContent></Tooltip></TooltipProvider>) })}</div>
       <Separator /><div className="flex items-center justify-between text-xs text-muted-foreground"><span className="flex items-center gap-1"><History className="w-3 h-3" /> Обновлено {now.toLocaleDateString('ru-RU', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}</span><span className="flex items-center gap-1.5">{pulse('bg-red-400')} просрочено {pulse('bg-amber-400')} срочно <span className="w-2 h-2 rounded-full bg-emerald-700 ml-1" /> запланировано</span></div>
     </CardContent>
   </Card>)
@@ -240,14 +287,14 @@ function MiniTimeline({ events, onNavigate }: { events: CaseTimelineEvent[]; onN
 export function CaseDashboard({ caseId }: { caseId: string }) {
   const { setActiveSection } = useCaseStore()
   const { data, isLoading } = useQuery({ queryKey: ['dashboard', caseId], queryFn: () => getDashboardStats(caseId), retry: 1, enabled: !!caseId, refetchInterval: 30000 })
-  const { data: healthData } = useQuery({ queryKey: ['health-score'], queryFn: getCaseHealthScore, retry: 1, enabled: !!caseId, refetchInterval: 30000 })
-  const { data: tlData } = useQuery({ queryKey: ['evidence-timeline'], queryFn: getEvidenceTimeline, retry: 1, enabled: !!caseId, refetchInterval: 30000 })
-  const { data: briefData } = useQuery({ queryKey: ['case-brief'], queryFn: getCaseBrief, retry: 1, enabled: !!caseId, refetchInterval: 30000 })
-  const { data: bkData } = useQuery({ queryKey: ['bookmarks'], queryFn: getBookmarks, retry: 1, enabled: !!caseId, refetchInterval: 30000 })
-  const { data: ctData } = useQuery({ queryKey: ['case-timeline'], queryFn: getCaseTimeline, retry: 1, enabled: !!caseId, refetchInterval: 30000 })
-  const { data: auData } = useQuery({ queryKey: ['audit-log'], queryFn: () => getAuditLog(10), retry: 1, enabled: !!caseId, refetchInterval: 30000 })
-  const stats = data ?? { caseInfo: null, summary: { totalDocuments: 0, totalPersons: 0, totalEpisodes: 0, totalArticles: 0, totalLocations: 0, totalCrossReferences: 0, totalChatMessages: 0, totalComplianceChecks: 0, totalDefenseLines: 0, totalGuiltAssessments: 0 }, documents: { total: 0, byType: {}, byStatus: {}, recent: [] }, persons: { total: 0, kolesnichenko: null, byRole: {} }, episodes: { total: 0, bySeverity: {}, byStatus: {} }, processingQueue: { inProgress: [], byStatus: {} }, guiltAssessments: { total: 0, byGuiltLevel: {}, byEvidenceStrength: {}, details: [] }, defenseLines: { total: 0, byType: {}, byStrength: {}, details: [] }, complianceChecks: { total: 0, byStatus: {}, byType: {}, details: [] } } as DashboardStats
-  const hs = healthData ?? { score: 0, factors: { documentProcessing: { label: '', value: 0, status: 'neutral' }, complianceRate: { label: '', value: 0, status: 'neutral' }, evidenceStrength: { label: '', value: 0, status: 'neutral' }, defenseCoverage: { label: '', value: 0, status: 'neutral' } } } as CaseHealthScore
+  const { data: healthData } = useQuery({ queryKey: ['health-score', caseId], queryFn: () => getCaseHealthScore(caseId), retry: 1, enabled: !!caseId, refetchInterval: 30000 })
+  const { data: tlData } = useQuery({ queryKey: ['evidence-timeline', caseId], queryFn: () => getEvidenceTimeline(caseId), retry: 1, enabled: !!caseId, refetchInterval: 30000 })
+  const { data: briefData } = useQuery({ queryKey: ['case-brief', caseId], queryFn: () => getCaseBrief(caseId), retry: 1, enabled: !!caseId, refetchInterval: 30000 })
+  const { data: bkData } = useQuery({ queryKey: ['bookmarks', caseId], queryFn: () => getBookmarks(caseId), retry: 1, enabled: !!caseId, refetchInterval: 30000 })
+  const { data: ctData } = useQuery({ queryKey: ['case-timeline', caseId], queryFn: () => getCaseTimeline(caseId), retry: 1, enabled: !!caseId, refetchInterval: 30000 })
+  const { data: auData } = useQuery({ queryKey: ['audit-log', caseId], queryFn: () => getAuditLog(caseId, 10), retry: 1, enabled: !!caseId, refetchInterval: 30000 })
+  const stats = data ?? { caseInfo: null, summary: { totalDocuments: 0, totalPersons: 0, totalEpisodes: 0, totalArticles: 0, totalLocations: 0, totalCrossReferences: 0, totalChatMessages: 0, totalComplianceChecks: 0, totalDefenseLines: 0, totalGuiltAssessments: 0 }, documents: { total: 0, byType: {}, byStatus: {}, recent: [] }, persons: { total: 0, kolesnichenko: null, byRole: {} }, episodes: { total: 0, bySeverity: {}, byStatus: {}, episodesWithDates: [] }, processingQueue: { inProgress: [], byStatus: {} }, guiltAssessments: { total: 0, byGuiltLevel: {}, byEvidenceStrength: {}, details: [] }, defenseLines: { total: 0, byType: {}, byStrength: {}, details: [] }, complianceChecks: { total: 0, byStatus: {}, byType: {}, details: [] } } as DashboardStats
+  const hs = healthData ?? { score: 0, factors: { documentProcessing: { label: '', value: 0, tooltip: 'Нет данных' }, complianceRate: { label: '', value: 0, tooltip: 'Нет данных' }, evidenceStrength: { label: '', value: 0, tooltip: 'Нет данных' }, defenseCoverage: { label: '', value: 0, tooltip: 'Нет данных' } } } as CaseHealthScore
   const evs = tlData ?? []
   const brief = briefData ?? { aiConfidence: 0, predictedOutcome: [], keyDefendants: [], keyEpisodes: [], keyEvidence: [], keyViolations: [], prosecutionSummary: '', defenseSummary: '', caseNumber: '', caseTitle: '', summary: '', generatedAt: '' } as CaseBriefData
   const bks = bkData ?? []
@@ -265,8 +312,8 @@ export function CaseDashboard({ caseId }: { caseId: string }) {
     </Card>)}
     <StatsBar stats={stats} onNavigate={setActiveSection} />
     <QuickActions onNavigate={setActiveSection} />
-    <ProcStages />
-    <Deadlines />
+    <ProcStages caseStatus={stats.caseInfo?.status} />
+    <Deadlines episodes={stats.episodes.episodesWithDates} />
     <div className="grid lg:grid-cols-2 gap-4"><ActivityFeed activities={au} /><StrengthMeter brief={brief} /></div>
     <MiniTimeline events={ct} onNavigate={() => setActiveSection('timeline')} />
     <Card className="rounded-xl shadow-sm bg-gradient-to-br from-card via-card to-muted/20 border-t-2 border-t-amber-500 transition-shadow hover:shadow-md">

@@ -263,6 +263,7 @@ export function CaseDocuments({ caseId }: { caseId: string }) {
   const [isDragOver, setIsDragOver] = useState(false)
   const [selectedDoc, setSelectedDoc] = useState<DocumentData | null>(null)
   const [analyzingId, setAnalyzingId] = useState<string | null>(null)
+  const [deletingId, setDeletingId] = useState<string | null>(null)
   const [compareMode, setCompareMode] = useState(false)
   const [compareDocs, setCompareDocs] = useState<[DocumentData, DocumentData] | null>(null)
   const [selectedForCompare, setSelectedForCompare] = useState<string[]>([])
@@ -279,6 +280,7 @@ export function CaseDocuments({ caseId }: { caseId: string }) {
     queryFn: () => caseApi.getDocuments(caseId),
     retry: 1,
     refetchInterval: 30000,
+    enabled: !!caseId,
   })
   const { data: evidenceChainData } = useQuery({ queryKey: ['evidence-chain', caseId], queryFn: () => caseApi.getEvidenceChain(caseId), retry: 1, refetchInterval: 30000, enabled: !!caseId })
   
@@ -374,6 +376,7 @@ export function CaseDocuments({ caseId }: { caseId: string }) {
   }
 
   const handleDelete = async (docId: string) => {
+    setDeletingId(docId)
     try {
       await caseApi.deleteDocument(docId)
       toast.success('Документ удалён')
@@ -384,11 +387,18 @@ export function CaseDocuments({ caseId }: { caseId: string }) {
       await queryClient.invalidateQueries({ queryKey: ['episodes', caseId] })
       await queryClient.invalidateQueries({ queryKey: ['dashboard', caseId] })
       await queryClient.invalidateQueries({ queryKey: ['criminal-cases'] })
+      await queryClient.invalidateQueries({ queryKey: ['evidence-chain', caseId] })
       refetch()
+      // Close side panel if the deleted doc was selected
+      if (selectedDoc?.id === docId) {
+        setSelectedDoc(null)
+        setNewAnnotation('')
+      }
     } catch (err: any) {
       const errorMsg = err?.message || 'Ошибка удаления'
       toast.error(`Ошибка: ${errorMsg}`)
     }
+    setDeletingId(null)
   }
 
   const handleCompareSelect = (docId: string) => {
@@ -673,11 +683,21 @@ export function CaseDocuments({ caseId }: { caseId: string }) {
                 ) : (
                   <>
                     {doc.processingStatus === 'completed' && (
-                      <Button size="sm" variant="outline" className="rounded-lg" onClick={() => handleOpenDoc(doc)}><Eye className="w-3 h-3 mr-1" />Просмотр</Button>
+                      <>
+                        <Button size="sm" variant="outline" className="rounded-lg" onClick={() => handleOpenDoc(doc)}><Eye className="w-3 h-3 mr-1" />Просмотр</Button>
+                        <Button size="sm" variant="outline" className="rounded-lg" onClick={() => handleAnalyze(doc.id)} disabled={analyzingId === doc.id}>
+                          {analyzingId === doc.id ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : <RefreshCw className="w-3 h-3 mr-1" />}
+                          {analyzingId === doc.id ? 'Обработка...' : 'Повторить'}
+                        </Button>
+                      </>
+                    )}
+                    {doc.processingStatus === 'processing' && (
+                      <Badge className="bg-amber-600 text-white text-xs"><Loader2 className="w-3 h-3 mr-1 animate-spin" />В обработке</Badge>
                     )}
                     {doc.processingStatus === 'pending' && (
                       <Button size="sm" className="rounded-lg bg-gradient-to-r from-red-700 to-red-800 text-white" onClick={() => handleAnalyze(doc.id)} disabled={analyzingId === doc.id}>
-                        {analyzingId === doc.id ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : <Zap className="w-3 h-3 mr-1" />}Анализ
+                        {analyzingId === doc.id ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : <Zap className="w-3 h-3 mr-1" />}
+                        {analyzingId === doc.id ? 'Обработка...' : 'Анализ'}
                       </Button>
                     )}
                     {doc.processingStatus === 'failed' && (
@@ -686,7 +706,9 @@ export function CaseDocuments({ caseId }: { caseId: string }) {
                         {analyzingId === doc.id ? 'Обработка...' : 'Повторить'}
                       </Button>
                     )}
-                    <Button size="sm" variant="ghost" className="rounded-lg" onClick={() => handleDelete(doc.id)}><Trash2 className="w-3 h-3" /></Button>
+                    <Button size="sm" variant="ghost" className="rounded-lg" onClick={() => handleDelete(doc.id)} disabled={deletingId === doc.id}>
+                      {deletingId === doc.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Trash2 className="w-3 h-3" />}
+                    </Button>
                   </>
                 )}
               </div>
@@ -817,7 +839,7 @@ export function CaseDocuments({ caseId }: { caseId: string }) {
         open={!!selectedDoc}
         onOpenChange={(open) => { if (!open) { setSelectedDoc(null); setNewAnnotation('') } }}
       >
-        <SheetContent side="right" className="w-full sm:max-w-xl p-0 gap-0 flex flex-col h-full">
+        <SheetContent side="right" className="w-full sm:max-w-xl p-0 gap-0 flex flex-col h-full max-h-[100dvh]">
           <SheetHeader className="p-4 border-b shrink-0 space-y-1">
             <SheetTitle className="text-base flex items-start gap-2 pr-8">
               <FileText className="w-4 h-4 mt-0.5 shrink-0 text-amber-600" />
@@ -834,7 +856,7 @@ export function CaseDocuments({ caseId }: { caseId: string }) {
             </SheetDescription>
           </SheetHeader>
 
-          <ScrollArea className="flex-1 overflow-y-auto">
+          <ScrollArea className="flex-1 max-h-[calc(100dvh-100px)]">
             <div className="p-4 space-y-4">
             {/* Metadata section */}
             <Card className="rounded-xl shadow-sm">
@@ -1028,34 +1050,45 @@ export function CaseDocuments({ caseId }: { caseId: string }) {
                   size="sm"
                   variant="outline"
                   className="rounded-xl"
-                  onClick={() => shadcnToast({ title: 'Экспорт', description: 'Подготовка экспорта документа...' })}
+                  onClick={() => {
+                    if (selectedDoc) exportDocumentsPDF([selectedDoc])
+                  }}
                 >
-                  <Download className="w-3 h-3 mr-1" /> Экспорт
+                  <Download className="w-3 h-3 mr-1" /> Экспорт PDF
                 </Button>
                 <Button
                   size="sm"
                   variant="outline"
                   className="rounded-xl"
                   onClick={() => {
-                    shadcnToast({ title: 'Переобработка', description: 'Запущена повторная обработка документа.' })
-                    if (selectedDoc) handleAnalyze(selectedDoc.id)
+                    if (selectedDoc) exportDocumentsCSV([selectedDoc])
                   }}
                 >
-                  <RefreshCw className="w-3 h-3 mr-1" /> Переобработать
+                  <FileText className="w-3 h-3 mr-1" /> Экспорт CSV
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="rounded-xl"
+                  onClick={() => {
+                    if (selectedDoc) handleAnalyze(selectedDoc.id)
+                  }}
+                  disabled={analyzingId === selectedDoc?.id}
+                >
+                  {analyzingId === selectedDoc?.id ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : <RefreshCw className="w-3 h-3 mr-1" />}
+                  {analyzingId === selectedDoc?.id ? 'Обработка...' : 'Переобработать'}
                 </Button>
                 <Button
                   size="sm"
                   variant="outline"
                   className="rounded-xl text-red-700 hover:bg-red-500/10 hover:text-red-800 border-red-300"
                   onClick={() => {
-                    if (selectedDoc) {
-                      handleDelete(selectedDoc.id)
-                      setSelectedDoc(null)
-                      setNewAnnotation('')
-                    }
+                    if (selectedDoc) handleDelete(selectedDoc.id)
                   }}
+                  disabled={deletingId === selectedDoc?.id}
                 >
-                  <Trash2 className="w-3 h-3 mr-1" /> Удалить
+                  {deletingId === selectedDoc?.id ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : <Trash2 className="w-3 h-3 mr-1" />}
+                  {deletingId === selectedDoc?.id ? 'Удаление...' : 'Удалить'}
                 </Button>
               </CardContent>
             </Card>

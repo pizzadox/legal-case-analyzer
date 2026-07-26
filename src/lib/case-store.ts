@@ -481,6 +481,7 @@ export interface DashboardStats {
     total: number
     bySeverity: Record<string, number>
     byStatus: Record<string, number>
+    episodesWithDates: Array<{ id: string; title: string; date: string | null; severity: string | null; status: string | null }>
   }
   processingQueue: {
     byStatus: Record<string, number>

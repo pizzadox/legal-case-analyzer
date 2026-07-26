@@ -24,21 +24,21 @@ function hasValue(v: unknown): boolean {
   return v != null && v !== '' && v !== undefined
 }
 function personLabel(p: { shortName?: string | null; fullName?: string | null; person?: { shortName?: string | null; fullName?: string | null } }): string {
-  if (p.person) return p.person.shortName ?? p.person.fullName ?? '—'
-  return (p.shortName ?? p.fullName ?? '—') as string
+  if (p.person) return p.person.shortName ?? p.person.fullName ?? ''
+  return (p.shortName ?? p.fullName ?? '') as string
 }
 function articleCode(a: { code?: string; article?: { code?: string } }): string {
-  return (a.article?.code ?? a.code ?? '—') as string
+  return (a.article?.code ?? a.code ?? '') as string
 }
 function locationName(l: { name?: string | null; location?: { name?: string | null } }): string {
-  return (l.location?.name ?? l.name ?? '—') as string
+  return (l.location?.name ?? l.name ?? '') as string
 }
 function locationAddress(l: { address?: string | null; location?: { address?: string | null } }): string {
-  return (l.location?.address ?? l.address ?? '—') as string
+  return (l.location?.address ?? l.address ?? '') as string
 }
 
 function exportEpisodesCSV(episodes: EpisodeData[]) {
-  const rows = ['Title,Severity,Status,Date,Persons,Articles']
+  const rows = ['Название,Тяжесть,Статус,Дата,Участники,Статьи']
   episodes.forEach(e => {
     const persons = e.persons.map(p => `${personLabel(p)} (${p.involvement ?? ''})`).join('; ')
     const articles = e.articles.map(a => articleCode(a)).join('; ')
@@ -48,7 +48,7 @@ function exportEpisodesCSV(episodes: EpisodeData[]) {
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = url
-  a.download = 'episodes.csv'
+  a.download = 'etapy.csv'
   a.click()
   URL.revokeObjectURL(url)
   toast.success('CSV экспорт выполнен')
@@ -59,39 +59,41 @@ const SEVERITY: Record<string, string> = {
   'особо тяжкое': 'bg-red-700 text-white',
   'тяжкое': 'bg-red-600 text-white',
   'средней тяжести': 'bg-amber-600 text-white',
-  'небольшое': 'bg-stone-400 text-white',
+  'небольшой': 'bg-stone-400 text-white',
 }
 
 const SEVERITY_DOT: Record<string, string> = {
   'особо тяжкое': 'bg-red-700',
   'тяжкое': 'bg-red-600',
   'средней тяжести': 'bg-amber-600',
-  'небольшое': 'bg-stone-400',
+  'небольшой': 'bg-stone-400',
 }
 
 const SEVERITY_BORDER: Record<string, string> = {
   'особо тяжкое': 'border-l-red-800',
   'тяжкое': 'border-l-red-600',
   'средней тяжести': 'border-l-amber-600',
-  'небольшое': 'border-l-stone-400',
+  'небольшой': 'border-l-stone-400',
 }
 
 const SEVERITY_BG: Record<string, string> = {
   'особо тяжкое': 'bg-red-700/10 border-red-700/30',
   'тяжкое': 'bg-red-600/10 border-red-600/30',
   'средней тяжести': 'bg-amber-600/10 border-amber-600/30',
-  'небольшое': 'bg-stone-400/10 border-stone-400/30',
+  'небольшой': 'bg-stone-400/10 border-stone-400/30',
 }
 
 const STATUS_BADGE: Record<string, string> = {
   'расследуется': 'bg-amber-600 text-white',
   'доказано': 'bg-emerald-700 text-white',
+  'не доказано': 'bg-stone-600 text-white',
   'сомнительно': 'bg-red-700 text-white',
 }
 
 const STATUS_ICON: Record<string, typeof CheckCircle> = {
   'доказано': CheckCircle,
   'расследуется': Clock,
+  'не доказано': XCircle,
   'сомнительно': AlertTriangle,
 }
 
@@ -101,20 +103,20 @@ const INVOLVEMENT: Record<string, string> = {
   'исполнитель': 'bg-red-600 text-white',
   'подозреваемый': 'bg-amber-600 text-white',
   'свидетель': 'bg-stone-600 text-white',
-  'потерпевшая': 'bg-emerald-700 text-white',
+  'потерпевший': 'bg-emerald-700 text-white',
 }
 
 const SEVERITY_ORDER: Record<string, number> = {
   'особо тяжкое': 4,
   'тяжкое': 3,
   'средней тяжести': 2,
-  'небольшое': 1,
+  'небольшой': 1,
 }
 
-const SEVERITY_LABELS = ['особо тяжкое', 'тяжкое', 'средней тяжести', 'небольшое'] as const
-const SEVERITY_SHORT = ['Особо тяжкое', 'Тяжкое', 'Средней тяжести', 'Небольшое'] as const
-const STATUS_LABELS = ['доказано', 'расследуется', 'сомнительно'] as const
-const STATUS_SHORT = ['Доказано', 'Расследуется', 'Сомнительно'] as const
+const SEVERITY_LABELS = ['особо тяжкое', 'тяжкое', 'средней тяжести', 'небольшой'] as const
+const SEVERITY_SHORT = ['Особо тяжкое', 'Тяжкое', 'Средней тяжести', 'Небольшой'] as const
+const STATUS_LABELS = ['доказано', 'расследуется', 'не доказано', 'сомнительно'] as const
+const STATUS_SHORT = ['Доказано', 'Расследуется', 'Не доказано', 'Сомнительно'] as const
 
 // Heat map cell color based on count intensity
 function heatColor(count: number, max: number): string {
@@ -165,9 +167,10 @@ export function CaseEpisodes({ caseId }: { caseId: string }) {
     critical: episodes.filter(e => e.severity === 'особо тяжкое').length,
     high: episodes.filter(e => e.severity === 'тяжкое').length,
     medium: episodes.filter(e => e.severity === 'средней тяжести').length,
-    low: episodes.filter(e => e.severity === 'небольшое').length,
+    low: episodes.filter(e => e.severity === 'небольшой').length,
     proven: episodes.filter(e => e.status === 'доказано').length,
     investigating: episodes.filter(e => e.status === 'расследуется').length,
+    disproven: episodes.filter(e => e.status === 'не доказано').length,
     doubtful: episodes.filter(e => e.status === 'сомнительно').length,
     avgScore: episodes.length > 0
       ? (episodes.reduce((sum, e) => sum + severityScore(e.severity), 0) / episodes.length).toFixed(1)
@@ -255,7 +258,7 @@ export function CaseEpisodes({ caseId }: { caseId: string }) {
                 { label: 'Особо тяжкие', value: summary.critical, color: 'text-red-700', bg: 'bg-red-50' },
                 { label: 'Тяжкие', value: summary.high, color: 'text-red-600', bg: 'bg-red-50/50' },
                 { label: 'Средней тяжести', value: summary.medium, color: 'text-amber-600', bg: 'bg-amber-50' },
-                { label: 'Небольшой', value: summary.low, color: 'text-stone-500', bg: 'bg-stone-50' },
+                { label: 'Небольшой тяжести', value: summary.low, color: 'text-stone-500', bg: 'bg-stone-50' },
               ].map(({ label, value, color, bg }) => (
                 <div key={label} className={`flex flex-col items-center p-2 rounded-lg ${bg}`}>
                   <span className={`text-xl font-bold tracking-tight ${color}`}>{value}</span>
@@ -275,6 +278,7 @@ export function CaseEpisodes({ caseId }: { caseId: string }) {
                 {[
                   { label: 'Доказано', value: summary.proven, color: 'bg-emerald-700' },
                   { label: 'Расследуется', value: summary.investigating, color: 'bg-amber-600' },
+                  { label: 'Не доказано', value: summary.disproven, color: 'bg-stone-600' },
                   { label: 'Сомнительно', value: summary.doubtful, color: 'bg-red-700' },
                 ].map(({ label, value, color }) => {
                   const pct = summary.total > 0 ? (value / summary.total) * 100 : 0
@@ -466,7 +470,7 @@ export function CaseEpisodes({ caseId }: { caseId: string }) {
               <SelectItem value="особо тяжкое">Особо тяжкое</SelectItem>
               <SelectItem value="тяжкое">Тяжкое</SelectItem>
               <SelectItem value="средней тяжести">Средней тяжести</SelectItem>
-              <SelectItem value="небольшое">Небольшое</SelectItem>
+              <SelectItem value="небольшой">Небольшой тяжести</SelectItem>
             </SelectContent>
           </Select>
           {/* Status dropdown */}
@@ -476,6 +480,7 @@ export function CaseEpisodes({ caseId }: { caseId: string }) {
               <SelectItem value="all">Все статусы</SelectItem>
               <SelectItem value="доказано">Доказано</SelectItem>
               <SelectItem value="расследуется">Расследуется</SelectItem>
+              <SelectItem value="не доказано">Не доказано</SelectItem>
               <SelectItem value="сомнительно">Сомнительно</SelectItem>
             </SelectContent>
           </Select>
@@ -508,6 +513,21 @@ export function CaseEpisodes({ caseId }: { caseId: string }) {
               <Button size="sm" variant="outline" className="mt-4 rounded-xl" onClick={() => { setSeverityFilter('all'); setStatusFilter('all'); setSearchQuery('') }}>
                 <RefreshCw className="w-3 h-3 mr-1" />Сбросить фильтры
               </Button>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* ═══════════════════════════════════════════════════════════════════════
+            Empty state when no episodes at all
+        ═══════════════════════════════════════════════════════════════════════ */}
+        {episodes.length === 0 && (
+          <Card className="rounded-xl shadow-sm border-t-2 border-t-stone-400 bg-gradient-to-br from-card via-card to-stone-400/5">
+            <CardContent className="p-8 text-center">
+              <div className="flex items-center justify-center w-20 h-20 rounded-full bg-stone-400/10 mx-auto mb-4 ring-4 ring-stone-400/5">
+                <BookOpen className="w-10 h-10 text-stone-400" />
+              </div>
+              <p className="text-base font-semibold">Нет этапов производства</p>
+              <p className="text-sm text-muted-foreground mt-1 max-w-md mx-auto">Для данного дела ещё не созданы этапы производства. Добавьте документы и выполните ИИ-анализ, чтобы система автоматически выделила этапы.</p>
             </CardContent>
           </Card>
         )}
@@ -640,8 +660,10 @@ export function CaseEpisodes({ caseId }: { caseId: string }) {
                                     {p.involvement}
                                   </Badge>
                                 )}
-                                <span className="text-sm font-medium">{personLabel(p)}</span>
-                                {p.person?.role && (
+                                {hasValue(personLabel(p)) && (
+                                  <span className="text-sm font-medium">{personLabel(p)}</span>
+                                )}
+                                {hasValue(p.person?.role) && (
                                   <Badge variant="outline" className="text-xs shrink-0">{p.person.role}</Badge>
                                 )}
                               </div>
@@ -661,10 +683,12 @@ export function CaseEpisodes({ caseId }: { caseId: string }) {
                             {episode.articles.map(a => (
                               <div key={a.articleId} className="p-2 rounded-lg bg-red-50/40 dark:bg-red-950/20 border border-red-200/50 dark:border-red-900/30">
                                 <div className="flex items-center gap-2">
-                                  <Badge className="bg-red-700 text-white text-xs font-semibold shrink-0">{articleCode(a)}</Badge>
+                                  {hasValue(articleCode(a)) && (
+                                    <Badge className="bg-red-700 text-white text-xs font-semibold shrink-0">{articleCode(a)}</Badge>
+                                  )}
                                   {hasValue(a.article?.description) && <span className="text-xs font-medium">{a.article.description}</span>}
                                 </div>
-                                {/* Punishment preview */}
+                                {/* Punishment preview — only shown when data exists */}
                                 {a.article && (hasValue(a.article.punishmentMin) || hasValue(a.article.punishmentMax) || hasValue(a.article.category)) && (
                                   <div className="mt-1.5 text-xs space-y-0.5 ml-1">
                                     {(hasValue(a.article.punishmentMin) || hasValue(a.article.punishmentMax)) && (
@@ -679,13 +703,6 @@ export function CaseEpisodes({ caseId }: { caseId: string }) {
                               </div>
                             ))}
                           </div>
-                          {/* Statute of limitations indicator */}
-                          <div className="flex items-center gap-2 p-2 rounded-lg bg-amber-50/40 dark:bg-amber-950/20 border border-amber-200/40 dark:border-amber-900/30 mt-2">
-                            <Clock className="w-3 h-3 text-amber-600 shrink-0" />
-                            <p className="text-xs text-amber-800 dark:text-amber-400">
-                              <span className="font-medium">Срок давности:</span> истекает через ~7 лет (для тяжких — 10 лет по ст.78 УК РФ)
-                            </p>
-                          </div>
                         </div>
                       )}
 
@@ -697,81 +714,27 @@ export function CaseEpisodes({ caseId }: { caseId: string }) {
                             Места ({episode.locations.length})
                           </p>
                           <div className="space-y-1.5">
-                            {episode.locations.map(l => (
-                              <div key={l.locationId} className="flex items-start gap-2 p-2 rounded-lg bg-stone-50/50 dark:bg-stone-800/20">
-                                <MapPin className="w-3 h-3 text-red-700 shrink-0 mt-0.5" />
-                                <div>
-                                  <p className="text-sm font-medium">{locationName(l)}</p>
-                                  <p className="text-xs text-muted-foreground">{locationAddress(l)}</p>
-                                  {l.context && (
-                                    <Badge variant="outline" className="text-xs mt-0.5 border-red-300/40 text-red-700">{l.context}</Badge>
-                                  )}
+                            {episode.locations.map(l => {
+                              const name = locationName(l)
+                              const address = locationAddress(l)
+                              // Only show location if it has meaningful data
+                              if (!hasValue(name) && !hasValue(address) && !hasValue(l.context)) return null
+                              return (
+                                <div key={l.locationId} className="flex items-start gap-2 p-2 rounded-lg bg-stone-50/50 dark:bg-stone-800/20">
+                                  <MapPin className="w-3 h-3 text-red-700 shrink-0 mt-0.5" />
+                                  <div>
+                                    {hasValue(name) && <p className="text-sm font-medium">{name}</p>}
+                                    {hasValue(address) && <p className="text-xs text-muted-foreground">{address}</p>}
+                                    {hasValue(l.context) && (
+                                      <Badge variant="outline" className="text-xs mt-0.5 border-red-300/40 text-red-700">{l.context}</Badge>
+                                    )}
+                                  </div>
                                 </div>
-                              </div>
-                            ))}
+                              )
+                            })}
                           </div>
                         </div>
                       )}
-
-                      {/* Evidence strength indicator */}
-                      <div>
-                        <p className="font-medium flex items-center gap-1 mb-2 text-xs">
-                          <Eye className="w-3 h-3 text-amber-600" />
-                          Сила доказательств
-                        </p>
-                        <div className="flex items-center gap-3">
-                          {(() => {
-                            // Determine evidence strength from severity + status heuristic
-                            let strength = 0
-                            if (episode.status === 'доказано') strength = 85
-                            else if (episode.status === 'расследуется') strength = 50
-                            else if (episode.status === 'сомнительно') strength = 25
-                            const label = strength >= 70 ? 'Сильные' : strength >= 40 ? 'Средние' : 'Слабые'
-                            const color = strength >= 70 ? 'text-emerald-700' : strength >= 40 ? 'text-amber-600' : 'text-red-700'
-                            return (
-                              <>
-                                <Progress value={strength} className="h-2 flex-1 max-w-[200px]" />
-                                <span className={`text-xs font-semibold ${color}`}>{label} ({strength}%)</span>
-                              </>
-                            )
-                          })()}
-                        </div>
-                      </div>
-
-                      {/* Defense coverage status */}
-                      <div>
-                        <p className="font-medium flex items-center gap-1 mb-2 text-xs">
-                          <Shield className="w-3 h-3 text-emerald-700" />
-                          Покрытие линии защиты
-                        </p>
-                        <div className="flex flex-wrap gap-1.5">
-                          {(() => {
-                            // Map defense lines that reference this episode's articles
-                            const defenseItems = [
-                              { title: 'Алиби', covers: episode.severity === 'тяжкое' || episode.severity === 'особо тяжкое', strength: 'moderate' },
-                              { title: 'Переквалификация', covers: episode.articles.length > 0, strength: 'weak' },
-                              { title: 'Процессуальные нарушения', covers: true, strength: 'strong' },
-                              { title: 'Недостаточность доказательств', covers: episode.status === 'сомнительно' || episode.status === 'расследуется', strength: 'moderate' },
-                              { title: 'Смягчающие обстоятельства', covers: true, strength: 'strong' },
-                            ]
-                            return defenseItems.map(d => (
-                              <Badge
-                                key={d.title}
-                                variant="outline"
-                                className={`text-xs ${
-                                  d.covers
-                                    ? d.strength === 'strong' ? 'border-emerald-400 text-emerald-700 bg-emerald-50/50'
-                                    : d.strength === 'moderate' ? 'border-amber-400 text-amber-700 bg-amber-50/50'
-                                    : 'border-red-400 text-red-700 bg-red-50/50'
-                                    : 'border-stone-300 text-stone-400 bg-stone-50/50'
-                                }`}
-                              >
-                                {d.covers ? '✓' : '✗'} {d.title}
-                              </Badge>
-                            ))
-                          })()}
-                        </div>
-                      </div>
 
                       {/* Linked Documents — only shown when episodeNumber exists */}
                       {hasValue(episode.episodeNumber) && (
@@ -779,7 +742,7 @@ export function CaseEpisodes({ caseId }: { caseId: string }) {
                           <Separator />
                           <p className="text-xs text-muted-foreground flex items-center gap-1">
                             <FileText className="w-3 h-3" />
-                            Связанные документы: Эпизод № {episode.episodeNumber}
+                            Связанные документы: Этап № {episode.episodeNumber}
                           </p>
                         </>
                       )}

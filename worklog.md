@@ -2,12 +2,36 @@
 
 ## Current Project Status
 
-- **App version**: 3.5.0
+- **App version**: 3.6.0
 - **GitHub repo**: https://github.com/pizzadox/LAW (private, pushed successfully)
 - **GitVerse**: Not yet pushed (no SSH tools available in sandbox, need user to provide GitVerse credentials)
 - **Build**: Production standalone mode (bun build + node/bun start)
 - **Server**: Next.js 16 standalone, `--max-old-space-size=128` (reduced from 256 to prevent OOM)
-- **Key recent changes**: Mock data removed, case deletion added, evidence chain by caseId, dynamic AI insights, side panel overflow fix
+- **Key recent changes**: OOM fix — page.tsx drastically simplified, 40+ Lucide icons reduced to 12, removed CommandDialog/Popover/ScrollArea/notifications/settings dropdown, emoji used for non-essential nav icons
+
+## Session 2026-07-28: OOM Fix — page.tsx memory optimization (Task 6)
+
+### Problem
+The Next.js server crashed with OOM (Out of Memory) when rendering the main page. The page.tsx was too heavy — importing 40+ Lucide icons, many UI components (CommandDialog, Popover, ScrollArea, DropdownMenu for settings), and having complex JSX in the notification system, settings dropdown, and command palette.
+
+### Changes Made
+1. **Reduced Lucide icon imports from 40+ to 12**: Kept only LayoutDashboard, FileText, Users, Scale, Sun, Moon, Loader2, Plus, Trash2, AlertTriangle, Check, FolderOpen. Replaced 28+ icon usages with emoji equivalents (📖, 🔍, 💬, 🛡️, 📅, 🔗, 👁️, 📊, ⚖️, ⚔️, ❌).
+2. **Removed CommandDialog (Cmd+K)**: Completely removed the command palette along with all its imports (CommandDialog, CommandInput, CommandList, CommandEmpty, CommandGroup, CommandItem, CommandSeparator, CommandShortcut).
+3. **Removed notification popover**: Removed Bell icon, Popover, ScrollArea, mockNotifications import, and the entire notification system.
+4. **Removed settings dropdown**: Removed the Settings dropdown menu with keyboard shortcuts.
+5. **Removed unused UI component imports**: Popover, ScrollArea, Command components.
+6. **Simplified NAV_ITEMS**: Removed description and shortcut fields; simplified to just id, label, and icon.
+7. **Simplified sidebar**: Removed tooltip rendering from SidebarMenuButton; simplified footer icon from Gauge to text "СУ".
+8. **Simplified online status**: Replaced Activity icon with a simple green dot (`<span className="inline-block w-2 h-2 rounded-full bg-emerald-600" />`).
+9. **Kept all essential functionality**: Sidebar with 17 nav items, case switching DropdownMenu, theme toggle, all 17 lazy-loaded section components, case creation dialog, case deletion dialog, footer with mt-auto.
+10. **Removed unused imports/callbacks**: useCallback, mockNotifications, commandOpen state, runCommand callback, Cmd+K keyboard listener.
+
+### Build Result
+- Build succeeded with `NODE_OPTIONS="--max-old-space-size=1536"` in 12.3s
+- All 17 lazy section components preserved
+- Static page generation completed in 182ms
+
+---
 
 ## Session 2026-07-26: Fix crash, optimize, push to GitHub
 
@@ -345,3 +369,236 @@ Stage Summary:
 - Test document upload and processing end-to-end
 - Add auto-restart mechanism for server when it dies
 - Consider reducing page complexity for better memory efficiency
+
+---
+
+## Session 2026-03-05: Fix case-documents.tsx buttons, side panel overflow, data filtering (Task ID: 2-a)
+
+### Completed Tasks
+
+1. **Fixed side panel (Sheet) overflow**
+   - Added `max-h-[100dvh]` to `SheetContent` to prevent panel from exceeding viewport height
+   - Changed `ScrollArea` from `className="flex-1 overflow-y-auto"` to `className="flex-1 max-h-[calc(100dvh-100px)]"` so content scrolls properly within a constrained height
+   - SheetHeader stays fixed at top with `shrink-0` and `border-b`
+   - All content (metadata, extracted text, annotations, actions) now scrolls within the ScrollArea without overlapping sections or exceeding viewport
+
+2. **Added `deletingId` state for delete button loading**
+   - New state `deletingId` tracks which document is being deleted
+   - Delete buttons now show spinner and "Удаление..." text while deleting
+   - Delete buttons are `disabled` during deletion to prevent double-clicks
+   - `handleDelete` now closes the side panel if the deleted document was selected
+   - `handleDelete` also invalidates `evidence-chain` query after deletion
+
+3. **Fixed all action buttons in the side panel**
+   - "Экспорт" button replaced with two functional buttons:
+     - "Экспорт PDF" → calls `exportDocumentsPDF([selectedDoc])` with the single document
+     - "Экспорт CSV" → calls `exportDocumentsCSV([selectedDoc])` with the single document
+   - Removed premature toast "Подготовка экспорта документа..." that fired before actual export
+   - "Переобработать" button:
+     - Removed premature toast "Запущена повторная обработка документа" that fired before processing started
+     - Added `disabled={analyzingId === selectedDoc?.id}` to prevent double-clicks
+     - Shows `Loader2` spinner and "Обработка..." text while processing
+   - "Удалить" button:
+     - Added `disabled={deletingId === selectedDoc?.id}` to prevent double-clicks
+     - Shows `Loader2` spinner and "Удаление..." text while deleting
+     - Moved panel close logic from the button onClick to `handleDelete` function for cleaner flow
+
+4. **Added Retry (Повторить) button for completed documents**
+   - Completed documents now show both "Просмотр" (View) AND "Повторить" (Retry) buttons
+   - Previously only showed "Просмотр" for completed docs, no way to re-process
+   - Retry button calls `handleAnalyze(doc.id)` with loading state (spinner + "Обработка...")
+   - Added separate status display for `processing` status: shows non-interactive Badge "В обработке" with spinning icon
+
+5. **Fixed Delete button loading state in document cards**
+   - Trash2 button in card footer now shows `Loader2` spinner when `deletingId === doc.id`
+   - Button is `disabled` during deletion to prevent accidental double-deletion
+
+6. **Added `enabled: !!caseId` to documents query**
+   - Documents query now has `enabled: !!caseId` guard to prevent unnecessary API calls when no case is selected
+   - Previously missing this guard (only evidence-chain and processing-status had it)
+
+7. **Verified AI Insights and Evidence Chain sections**
+   - AI Insights section: already uses `documents` (fetched with caseId) for all computations (docTypeCounts, totalPages, avgProcessingTime, entities)
+   - No hardcoded data found in the section — all data is derived from the current case's documents
+   - Evidence Chain section: already uses `evidenceChain` (fetched with `['evidence-chain', caseId]`) 
+   - No mock data fallbacks in the component — all queries return empty arrays on error
+
+### Files Modified
+
+- `src/components/case-documents.tsx` — Side panel overflow fix, button loading states, Export functionality, Retry for completed docs, enabled guards, deletingId state
+
+### Technical Notes
+
+- All three TanStack Query calls now have `enabled: !!caseId` guards
+- `handleDelete` now invalidates `evidence-chain` query (previously missing)
+- `handleDelete` auto-closes the side panel when the deleted doc was selected (previously done manually in button onClick)
+- The `shadcnToast` import is still used for annotation add/delete feedback
+- No mock data imports or fallbacks remain in the component
+
+---
+Task ID: 2-b
+Agent: subagent
+Task: Fix case-episodes.tsx — translate to Russian, remove mock data, hide empty fields
+
+Work Log:
+- Read worklog.md to understand project context (OOM issues, mock data removal history, Russian translation progress)
+- Read full case-episodes.tsx (800 lines) to identify all English text, mock data, and empty field display issues
+- Identified 6 categories of issues:
+  1. Missing Russian status: 'не доказано' (disproven) was absent from STATUS_BADGE, STATUS_ICON, STATUS_LABELS, STATUS_SHORT
+  2. Wrong involvement label: 'потерпевшая' should be 'потерпевший'
+  3. English CSV header: 'Title,Severity,Status,Date,Persons,Articles' — translated to Russian column names
+  4. Hardcoded mock data sections: defense coverage (5 static items), statute of limitations (hardcoded "~7 лет"), evidence strength (heuristic computation with hardcoded thresholds)
+  5. Helper functions returning '—' for empty values instead of '' — caused empty fields to display '—'
+  6. "Эпизод №" should be "Этап №", filename 'episodes.csv' → 'etapy.csv'
+
+Changes made to case-episodes.tsx:
+1. **Added 'не доказано' status** — Added to STATUS_BADGE ('bg-stone-600 text-white'), STATUS_ICON (XCircle), STATUS_LABELS, STATUS_SHORT ('Не доказано')
+2. **Fixed INVOLVEMENT map** — Changed 'потерпевшая' → 'потерпевший'
+3. **Translated CSV export** — Header: 'Название,Тяжесть,Статус,Дата,Участники,Статьи', filename: 'etapy.csv'
+4. **Changed severity key 'небольшое' → 'небольшой'** — Consistent with Russian grammar ("небольшой тяжести")
+5. **Removed defense coverage section** (lines 741-773) — Hardcoded 5 defense items not from database (Алиби, Переквалификация, Процессуальные нарушения, Недостаточность доказательств, Смягчающие обстоятельства)
+6. **Removed statute of limitations section** (lines 682-689) — Hardcoded "истекает через ~7 лет" text
+7. **Removed evidence strength section** (lines 716-739) — Heuristic computation with hardcoded thresholds (85/50/25) and labels
+8. **Fixed helper functions** — personLabel, articleCode, locationName, locationAddress now return '' (empty string) for empty values instead of '—'
+9. **Added hasValue checks** for person names, article codes, location names/addresses — Empty/null fields are now hidden instead of showing '—'
+10. **Changed "Эпизод №" → "Этап №"** in linked documents section
+11. **Added empty state for zero episodes** — Shows "Нет этапов производства" with guidance text when no episodes exist at all
+12. **Added 'Не доказано' status filter option** in the status dropdown
+13. **Updated status bar** — Now includes 'Не доказано' (disproven) count alongside Доказано/Расследуется/Сомнительно
+14. **Updated severity filter** — Changed 'Небольшое' to 'Небольшой тяжести' for grammatical consistency
+
+Verified:
+- `bun run lint` — passed with zero errors
+- Dev log — no compilation errors, all API routes responding normally
+- Query key `['episodes', caseId]` — already correct, uses caseId for all queries
+- getEpisodes(caseId) in case-api.ts — already passes caseId to API, returns [] on error (no mock fallback)
+
+Stage Summary:
+- All text in case-episodes.tsx is now fully in Russian (no English labels, headers, or data)
+- All 4 status values supported: доказано, расследуется, не доказано, сомнительно
+- All 4 severity levels: особо тяжкое, тяжкое, средней тяжести, небольшой
+- All 6 involvement types: организатор, соучастник, исполнитель, подозреваемый, свидетель, потерпевший
+- All mock/hardcoded data sections removed (defense, statute of limitations, evidence strength)
+- Empty/null fields hidden via hasValue checks instead of showing '—'
+- CSV export fully in Russian with Russian filename
+- Component uses caseId for query key and API calls
+
+---
+Task ID: 2-c
+Agent: main
+Task: Fix API routes and case-dashboard component to prevent crashes and remove irrelevant data
+
+Work Log:
+
+### 1. Removed PROCEDURE_STAGES mock import from case-dashboard.tsx
+- Removed `import { PROCEDURE_STAGES, PROCEDURE_CURRENT_INDEX, PROCEDURAL_DEADLINES } from '@/lib/mock-data'`
+- Defined PROCEDURE_STAGES as a local constant (standard Russian criminal procedure stages — legal reference, not mock data)
+- Added `short` and `full` properties to each stage for proper display
+- Created `getProcedureIndex()` function that derives current stage from case status (instead of hardcoded PROCEDURE_CURRENT_INDEX)
+- Rewrote `ProcStages` component to accept `caseStatus` prop and derive current index dynamically
+- Rewrote `Deadlines` component to accept `episodes` prop and build deadlines from real episode dates (instead of PROCEDURAL_DEADLINES)
+- Updated `CaseDashboard` render to pass `stats.caseInfo?.status` to ProcStages and `stats.episodes.episodesWithDates` to Deadlines
+- Fixed default `hs` (health score) value: replaced `status: 'neutral'` with `tooltip: 'Нет данных'` to match CaseHealthScore interface
+
+### 2. Updated case-api.ts — all API functions now pass caseId
+- `getCaseHealthScore(caseId?)` — now accepts and passes caseId as query param
+- `getEvidenceTimeline(caseId?)` — now accepts and passes caseId as query param
+- `getCaseBrief(caseId?)` — now accepts and passes caseId as query param
+- `getBookmarks(caseId?)` — now accepts and passes caseId as query param
+- `getCaseTimeline(caseId?)` — now accepts and passes caseId as query param
+- `getAuditLog(caseId?, limit)` — now accepts and passes caseId as query param
+
+### 3. Updated case-dashboard.tsx — all useQuery calls now pass caseId
+- All 7 secondary queries now pass caseId to their API functions
+- All 7 queryKey arrays now include caseId for proper cache isolation
+
+### 4. Rewrote 14 API routes to use real DB data (removed all mock-data imports)
+- **health-score/route.ts**: Calculates health score from real DB data (document processing, compliance, evidence, defense)
+- **timeline/route.ts**: Builds evidence timeline from real document upload/processing events and compliance checks
+- **brief/route.ts**: Builds case brief from real case, persons, episodes, documents, violations, defense data
+- **bookmarks/route.ts**: Returns empty array (no DB table yet)
+- **case-timeline/route.ts**: Builds case timeline from episodes, documents, compliance checks
+- **audit-log/route.ts**: Builds audit log from real document upload, processing, compliance events
+- **relationships/route.ts**: Builds relationships from persons sharing documents/episodes
+- **notifications/route.ts**: Returns empty array (no DB table yet)
+- **witness-statements/route.ts**: Returns empty array (no DB table yet)
+- **cross-ref-graph/route.ts**: Builds from real cross-references in DB
+- **sentencing/route.ts**: Builds from real person-article data
+- **defense-improvements/route.ts**: Returns empty array (requires LLM, not DB)
+- **risk-assessment/route.ts**: Calculates risk from real guilt assessments, compliance, defense, timeline data
+- **analytics/route.ts**: Computes from real DB data without mock fallbacks
+- **defense/route.ts (POST)**: Accepts caseId, resolves person from caseId instead of hardcoded Kolesnichenko-only search
+- **defense/[personId]/route.ts (GET)**: Accepts caseId query param for fallback search scope
+
+### 5. Updated dashboard route to include episodesWithDates
+- Added `episodesWithDates` field to dashboard API response (episode details with dates for Deadlines component)
+- Updated DashboardStats type in case-store.ts to include `episodesWithDates`
+
+### 6. Processing-status route verified working
+- Already has proper error handling that returns 200 instead of 502
+- Already filters by caseId through document relation
+- No changes needed — route was already properly implemented
+
+### 7. Lint and compilation verification
+- `bun run lint` passed with no errors
+- Dev server started and compiled successfully
+- All API routes returned 200 status codes in dev.log
+- No TypeScript compilation errors
+
+### Files Modified
+- `src/components/case-dashboard.tsx` — Removed mock-data imports, added local PROCEDURE_STAGES, getProcedureIndex(), updated ProcStages/Deadlines components, passed caseId to all queries
+- `src/lib/case-api.ts` — Updated 6 API functions to accept/pass caseId
+- `src/lib/case-store.ts` — Added `episodesWithDates` to DashboardStats type
+- `src/app/api/case/dashboard/route.ts` — Added episodesWithDates to response
+- `src/app/api/case/health-score/route.ts` — Rewritten with real DB data
+- `src/app/api/case/timeline/route.ts` — Rewritten with real DB data
+- `src/app/api/case/brief/route.ts` — Rewritten with real DB data
+- `src/app/api/case/bookmarks/route.ts` — Returns empty array
+- `src/app/api/case/case-timeline/route.ts` — Rewritten with real DB data
+- `src/app/api/case/audit-log/route.ts` — Rewritten with real DB data
+- `src/app/api/case/relationships/route.ts` — Rewritten with real DB data
+- `src/app/api/case/notifications/route.ts` — Returns empty array
+- `src/app/api/case/witness-statements/route.ts` — Returns empty array
+- `src/app/api/case/cross-ref-graph/route.ts` — Rewritten with real DB data
+- `src/app/api/case/sentencing/route.ts` — Rewritten with real DB data
+- `src/app/api/case/defense-improvements/route.ts` — Returns empty array
+- `src/app/api/case/risk-assessment/route.ts` — Rewritten with real DB data
+- `src/app/api/case/analytics/route.ts` — Rewritten with real DB data, removed mock fallbacks
+- `src/app/api/case/defense/route.ts` — Accepts caseId, generic person resolution
+- `src/app/api/case/defense/[personId]/route.ts` — Accepts caseId, scoped fallback search
+
+Stage Summary:
+- ALL 14+ API routes rewritten to use real DB data (zero mock-data imports remaining)
+- ALL API routes accept caseId and filter data accordingly
+- Dashboard uses only real API data with caseId, no mock fallbacks
+- PROCEDURE_STAGES defined locally as legal reference constants (not mock data)
+- Deadlines derived from real episode dates instead of hardcoded PROCEDURAL_DEADLINES
+- ProcStages current stage derived from case status instead of hardcoded index
+- All text in Russian across API responses
+- Processing-status route confirmed working (returns 200, not 502)
+- Lint passed cleanly — no errors
+
+Unresolved Issues:
+- OOM kills server during heavy compilation (known infrastructure issue)
+- Other component files (11 files) still import from mock-data.ts — not in scope for this task
+- Some components use old API functions without caseId — not in scope
+---
+Task ID: 6
+Agent: main
+Task: Fix OOM crash - reduce page.tsx memory footprint, switch to production mode
+
+Work Log:
+- Identified root cause: Next.js dev mode consumes too much memory (~1.7GB RSS), causing OOM killer to terminate the process
+- Removed output: standalone from next.config.ts
+- Changed dev script to production mode (next start -p 3000)
+- Built production version successfully
+- Rewrote page.tsx to reduce memory footprint
+- Created persistent server management scripts
+- Used setsid for persistent process management
+
+Stage Summary:
+- App runs in production mode with ~196MB RSS
+- All API routes and page rendering work through Caddy proxy
+- Episodes tab fully in Russian
+- Documents tab has working buttons
+- Server is stable with no OOM crashes

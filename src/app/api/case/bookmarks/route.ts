@@ -1,16 +1,14 @@
-import { NextResponse } from 'next/server'
-import { mockBookmarks } from '@/lib/mock-data'
+import { NextRequest, NextResponse } from 'next/server';
 
-export const dynamic = 'force-dynamic'
+export const dynamic = 'force-dynamic';
 
-export async function GET() {
+// Bookmarks feature not yet implemented in database — return empty array
+export async function GET(request: NextRequest) {
   try {
-    return NextResponse.json(mockBookmarks)
+    // No Bookmark table in the database yet, return empty
+    return NextResponse.json([]);
   } catch (error) {
-    console.error('Error fetching bookmarks:', error)
-    return NextResponse.json(
-      { error: 'Не удалось получить закладки' },
-      { status: 500 }
-    )
+    console.error('Bookmarks error:', error);
+    return NextResponse.json([]);
   }
 }

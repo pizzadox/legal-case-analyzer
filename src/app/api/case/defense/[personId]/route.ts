@@ -3,23 +3,35 @@ import { db } from '@/lib/db';
 
 // GET /api/case/defense/:personId
 // Returns defense lines for a person.
-// If personId === 'p1' or invalid, falls back to the Kolesnichenko person.
+// Accepts caseId query parameter to scope the fallback search.
 export async function GET(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ personId: string }> }
 ) {
   try {
     const { personId } = await params;
+    const { searchParams } = new URL(request.url);
+    const caseId = searchParams.get('caseId');
 
     // Resolve actual person — accept either a real Prisma id or the legacy "p1" sentinel.
     let person = await db.person.findUnique({ where: { id: personId } });
+    if (!person && caseId) {
+      // Fallback to Kolesnichenko person in this specific case.
+      person = await db.person.findFirst({ where: { caseId, isKolesnichenko: true } });
+    }
     if (!person) {
-      // Fallback to the Kolesnichenko person (the canonical defendant).
+      // Global fallback to the Kolesnichenko person.
       person = await db.person.findFirst({ where: { isKolesnichenko: true } });
+    }
+    if (!person && caseId) {
+      // Fallback to any defendant in this case.
+      person = await db.person.findFirst({
+        where: { caseId, role: { in: ['обвиняемый', 'подозреваемый'] } },
+      });
     }
     if (!person) {
       return NextResponse.json(
-        { error: 'Person not found', personId },
+        { error: 'Участник не найден', personId },
         { status: 404 }
       );
     }
@@ -43,9 +55,9 @@ export async function GET(
       guiltAssessments,
     });
   } catch (error) {
-    console.error('Failed to load defense lines:', error);
+    console.error('Ошибка загрузки линий защиты:', error);
     return NextResponse.json(
-      { error: 'Failed to load defense lines', details: String(error) },
+      { error: 'Ошибка загрузки линий защиты', details: String(error) },
       { status: 500 }
     );
   }

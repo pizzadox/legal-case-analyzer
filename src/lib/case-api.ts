@@ -281,10 +281,11 @@ export async function advancedSearch(params: {
   })
 }
 
-// Get case health score
-export async function getCaseHealthScore(): Promise<CaseHealthScore> {
+// Get case health score for a specific case
+export async function getCaseHealthScore(caseId?: string): Promise<CaseHealthScore> {
+  const query = caseId ? `?caseId=${encodeURIComponent(caseId)}` : ''
   try {
-    return await fetchApi<CaseHealthScore>('/health-score')
+    return await fetchApi<CaseHealthScore>(`/health-score${query}`)
   } catch {
     return {
       score: 0,
@@ -298,10 +299,11 @@ export async function getCaseHealthScore(): Promise<CaseHealthScore> {
   }
 }
 
-// Get evidence timeline
-export async function getEvidenceTimeline(): Promise<EvidenceTimelineEvent[]> {
+// Get evidence timeline for a specific case
+export async function getEvidenceTimeline(caseId?: string): Promise<EvidenceTimelineEvent[]> {
+  const query = caseId ? `?caseId=${encodeURIComponent(caseId)}` : ''
   try {
-    return await fetchApi<EvidenceTimelineEvent[]>('/timeline')
+    return await fetchApi<EvidenceTimelineEvent[]>(`/timeline${query}`)
   } catch {
     return []
   }
@@ -354,10 +356,11 @@ export async function requestDefenseAnalysis(personId: string): Promise<DefenseI
   })
 }
 
-// === NEW: Get Case Brief (Executive Summary) ===
-export async function getCaseBrief(): Promise<CaseBriefData> {
+// === NEW: Get Case Brief (Executive Summary) for a specific case ===
+export async function getCaseBrief(caseId?: string): Promise<CaseBriefData> {
+  const query = caseId ? `?caseId=${encodeURIComponent(caseId)}` : ''
   try {
-    return await fetchApi<CaseBriefData>('/brief')
+    return await fetchApi<CaseBriefData>(`/brief${query}`)
   } catch {
     return {
       caseNumber: '',
@@ -419,28 +422,31 @@ export async function getEvidenceChain(caseId?: string): Promise<EvidenceChainDa
   }
 }
 
-// === NEW: Get Audit Log ===
-export async function getAuditLog(limit: number = 50): Promise<AuditLogEntry[]> {
+// === NEW: Get Audit Log for a specific case ===
+export async function getAuditLog(caseId?: string, limit: number = 50): Promise<AuditLogEntry[]> {
+  const query = caseId ? `?caseId=${encodeURIComponent(caseId)}&limit=${limit}` : `?limit=${limit}`
   try {
-    return await fetchApi<AuditLogEntry[]>(`/audit-log?limit=${limit}`)
+    return await fetchApi<AuditLogEntry[]>(`/audit-log${query}`)
   } catch {
     return []
   }
 }
 
-// === NEW: Get Case Timeline (overall chronology) ===
-export async function getCaseTimeline(): Promise<CaseTimelineEvent[]> {
+// === NEW: Get Case Timeline (overall chronology) for a specific case ===
+export async function getCaseTimeline(caseId?: string): Promise<CaseTimelineEvent[]> {
+  const query = caseId ? `?caseId=${encodeURIComponent(caseId)}` : ''
   try {
-    return await fetchApi<CaseTimelineEvent[]>('/case-timeline')
+    return await fetchApi<CaseTimelineEvent[]>(`/case-timeline${query}`)
   } catch {
     return []
   }
 }
 
-// === NEW: Get Bookmarks ===
-export async function getBookmarks(): Promise<BookmarkData[]> {
+// === NEW: Get Bookmarks for a specific case ===
+export async function getBookmarks(caseId?: string): Promise<BookmarkData[]> {
+  const query = caseId ? `?caseId=${encodeURIComponent(caseId)}` : ''
   try {
-    return await fetchApi<BookmarkData[]>('/bookmarks')
+    return await fetchApi<BookmarkData[]>(`/bookmarks${query}`)
   } catch {
     return []
   }
