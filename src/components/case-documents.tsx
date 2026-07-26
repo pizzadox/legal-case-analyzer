@@ -346,10 +346,30 @@ export function CaseDocuments({ caseId }: { caseId: string }) {
   const handleAnalyze = async (docId: string) => {
     setAnalyzingId(docId)
     try {
+      // First, reprocess (reset status) if the document was previously processed/failed
+      try {
+        await caseApi.reprocessDocument(docId)
+      } catch {
+        // If reprocess route not available or doc is pending, just continue
+      }
+      // Then, process the document with AI
       await caseApi.processDocument(docId)
-      toast.success('Анализ запущен')
+      toast.success('Анализ документа завершён')
+      // Invalidate all case-related queries so extracted data appears in all tabs
+      await queryClient.invalidateQueries({ queryKey: ['documents', caseId] })
+      await queryClient.invalidateQueries({ queryKey: ['processing-status', caseId] })
+      await queryClient.invalidateQueries({ queryKey: ['persons', caseId] })
+      await queryClient.invalidateQueries({ queryKey: ['episodes', caseId] })
+      await queryClient.invalidateQueries({ queryKey: ['dashboard', caseId] })
+      await queryClient.invalidateQueries({ queryKey: ['criminal-cases'] })
       refetch()
-    } catch { toast.error('Ошибка анализа') }
+    } catch (err: any) {
+      const errorMsg = err?.message || 'Ошибка анализа'
+      toast.error(`Ошибка: ${errorMsg}`)
+      // Still refetch to show updated status (e.g. 'failed')
+      refetch()
+      await queryClient.invalidateQueries({ queryKey: ['processing-status', caseId] })
+    }
     setAnalyzingId(null)
   }
 
@@ -357,8 +377,18 @@ export function CaseDocuments({ caseId }: { caseId: string }) {
     try {
       await caseApi.deleteDocument(docId)
       toast.success('Документ удалён')
+      // Invalidate all case-related queries
+      await queryClient.invalidateQueries({ queryKey: ['documents', caseId] })
+      await queryClient.invalidateQueries({ queryKey: ['processing-status', caseId] })
+      await queryClient.invalidateQueries({ queryKey: ['persons', caseId] })
+      await queryClient.invalidateQueries({ queryKey: ['episodes', caseId] })
+      await queryClient.invalidateQueries({ queryKey: ['dashboard', caseId] })
+      await queryClient.invalidateQueries({ queryKey: ['criminal-cases'] })
       refetch()
-    } catch { toast.error('Ошибка удаления') }
+    } catch (err: any) {
+      const errorMsg = err?.message || 'Ошибка удаления'
+      toast.error(`Ошибка: ${errorMsg}`)
+    }
   }
 
   const handleCompareSelect = (docId: string) => {
@@ -651,7 +681,10 @@ export function CaseDocuments({ caseId }: { caseId: string }) {
                       </Button>
                     )}
                     {doc.processingStatus === 'failed' && (
-                      <Button size="sm" variant="outline" className="rounded-lg" onClick={() => handleAnalyze(doc.id)}><RefreshCw className="w-3 h-3 mr-1" />Повторить</Button>
+                      <Button size="sm" variant="outline" className="rounded-lg" onClick={() => handleAnalyze(doc.id)} disabled={analyzingId === doc.id}>
+                        {analyzingId === doc.id ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : <RefreshCw className="w-3 h-3 mr-1" />}
+                        {analyzingId === doc.id ? 'Обработка...' : 'Повторить'}
+                      </Button>
                     )}
                     <Button size="sm" variant="ghost" className="rounded-lg" onClick={() => handleDelete(doc.id)}><Trash2 className="w-3 h-3" /></Button>
                   </>

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { extractTextFromPDF, analyzeWithLLM } from '@/lib/zai';
+import { extractTextFromDocument, analyzeWithLLM } from '@/lib/zai';
 
 export async function POST(request: NextRequest) {
   try {
@@ -29,12 +29,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (document.processingStatus === 'completed') {
-      return NextResponse.json(
-        { error: 'Document already processed', documentId },
-        { status: 400 }
-      );
-    }
+    // Get caseId from the document for linking extracted entities
+    const caseId = document.caseId;
+
+    // Allow re-processing of completed or failed documents
+    // (The reprocess route resets status first, but this is a safety net)
 
     // Update status to processing
     await db.document.update({
@@ -45,18 +44,18 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    // Update queue entry
+    // Update queue entry - step 1: extracting text
     const queueEntry = document.processingQueue[0];
     if (queueEntry) {
       await db.processingQueue.update({
         where: { id: queueEntry.id },
-        data: { status: 'processing', startedAt: new Date() },
+        data: { status: 'processing', startedAt: new Date(), progressPercent: 10, progressStep: 'Распознавание текста' },
       });
     }
 
     try {
-      // Step 1: Extract text from PDF using VLM
-      const extractedText = await extractTextFromPDF(document.filePath);
+      // Step 1: Extract text from document using VLM (base64 data URL)
+      const extractedText = await extractTextFromDocument(document.filePath);
 
       // Save extracted text to document
       await db.document.update({
@@ -64,8 +63,18 @@ export async function POST(request: NextRequest) {
         data: { extractedText },
       });
 
+      // Update progress: text extraction done, starting AI analysis
+      if (queueEntry) {
+        await db.processingQueue.update({
+          where: { id: queueEntry.id },
+          data: { progressPercent: 40, progressStep: 'ИИ-анализ документа' },
+        });
+      }
+
       // Step 2: Analyze extracted text using LLM
-      const analysisPrompt = `Analyze the following text from a criminal case document (уголовное дело) in the Russian Federation. Extract and categorize the following information in JSON format:
+      const analysisPrompt = `Analyze the following text from a criminal case document (уголовное дело) in the Russian Federation. Extract ONLY information directly relevant to the criminal case — ignore any irrelevant content, personal opinions, or unrelated data.
+
+Extract and categorize the following information in JSON format:
 
 TEXT:
 ${extractedText}
@@ -75,14 +84,14 @@ Return a JSON object with the following structure (respond ONLY with valid JSON,
   "documentType": "type of document (обвинение, доказательство, показание, протокол, постановление, справка, etc.)",
   "documentDate": "date mentioned in the document (format: YYYY-MM-DD if possible, or as written)",
   "sourceReference": "reference number in case materials (e.g. 'том 1, л.д. 15')",
-  "summary": "brief summary of the document content (2-3 sentences)",
+  "summary": "brief summary of the document content (2-3 sentences, only case-relevant facts)",
   "persons": [
     {
-      "fullName": "full name of person",
+      "fullName": "full name of person mentioned in the case context",
       "shortName": "abbreviated name if mentioned",
       "role": "role in case (подозреваемый, обвиняемый, свидетель, потерпевший, эксперт, адвокат, следователь, судья)",
       "status": "current status if mentioned",
-      "description": "brief description",
+      "description": "brief description relevant to the case",
       "birthDate": "date of birth if mentioned",
       "occupation": "occupation if mentioned",
       "alias": "nickname/alias if mentioned",
@@ -90,13 +99,14 @@ Return a JSON object with the following structure (respond ONLY with valid JSON,
       "context": "context of mention in this document"
     }
   ],
-  "locations": [
+  "episodes": [
     {
-      "name": "name of location",
-      "address": "full address if available",
-      "type": "type of location (место преступления, место жительства, место работы, etc.)",
-      "description": "description/context",
-      "context": "how this location appears in this document"
+      "title": "episode title/description — only criminal episodes",
+      "description": "full description of the criminal episode",
+      "date": "date of episode if mentioned",
+      "episodeNumber": "episode number in case structure",
+      "severity": "severity classification",
+      "relevance": "how this document relates to the episode"
     }
   ],
   "articles": [
@@ -111,16 +121,6 @@ Return a JSON object with the following structure (respond ONLY with valid JSON,
       "context": "how this article appears in this document"
     }
   ],
-  "episodes": [
-    {
-      "title": "episode title/description",
-      "description": "full description",
-      "date": "date of episode if mentioned",
-      "episodeNumber": "episode number in case structure",
-      "severity": "severity classification",
-      "relevance": "how this document relates to the episode"
-    }
-  ],
   "crossReferences": [
     {
       "referenceText": "text that creates the link",
@@ -129,12 +129,26 @@ Return a JSON object with the following structure (respond ONLY with valid JSON,
       "note": "additional note"
     }
   ]
-}`;
+}
+
+IMPORTANT: 
+- Only include persons, episodes, and articles that are directly relevant to the criminal case.
+- Exclude any unrelated personal information, opinions, or data not pertaining to the case.
+- If a field is not mentioned in the document, set it to null rather than guessing.
+- Do NOT include any mock/placeholder data.`;
 
       const analysisResult = await analyzeWithLLM(
-        'You are a legal analyst specializing in Russian Federation criminal law. You analyze criminal case documents and extract structured information. You must respond ONLY with valid JSON, no additional commentary or formatting.',
+        'You are a legal analyst specializing in Russian Federation criminal law. You analyze criminal case documents and extract ONLY case-relevant structured information. You must respond ONLY with valid JSON, no additional commentary or formatting. Exclude any irrelevant or unrelated data.',
         analysisPrompt
       );
+
+      // Update progress: analysis done, saving to DB
+      if (queueEntry) {
+        await db.processingQueue.update({
+          where: { id: queueEntry.id },
+          data: { progressPercent: 70, progressStep: 'Сохранение данных в БД' },
+        });
+      }
 
       // Parse the LLM response as JSON
       let analysis: Record<string, unknown>;
@@ -179,24 +193,37 @@ Return a JSON object with the following structure (respond ONLY with valid JSON,
         );
       }
 
-      // Step 3: Save extracted data to database
+      // Step 3: Save extracted data to database, linking to the case
       const persons = (analysis.persons as Array<Record<string, unknown>>) || [];
-      const locations = (analysis.locations as Array<Record<string, unknown>>) || [];
-      const articles = (analysis.articles as Array<Record<string, unknown>>) || [];
       const episodes = (analysis.episodes as Array<Record<string, unknown>>) || [];
+      const articles = (analysis.articles as Array<Record<string, unknown>>) || [];
       const crossReferences = (analysis.crossReferences as Array<Record<string, unknown>>) || [];
 
-      // Create or update Person records and link to document
+      // Update document metadata from analysis
+      await db.document.update({
+        where: { id: documentId },
+        data: {
+          documentType: analysis.documentType as string | null,
+          documentDate: analysis.documentDate as string | null,
+          sourceReference: analysis.sourceReference as string | null,
+          summary: analysis.summary as string | null,
+        },
+      });
+
+      // Create or update Person records and link to document AND case
       const personLinks = [];
       for (const personData of persons) {
-        // Check if person already exists
+        const fullName = personData.fullName as string;
+        if (!fullName || fullName.trim() === '') continue; // Skip empty names
+
+        // Check if person already exists in this case
         const existingPerson = await db.person.findFirst({
-          where: { fullName: personData.fullName as string },
+          where: { fullName, caseId: caseId || undefined },
         });
 
         let personId: string;
         if (existingPerson) {
-          // Update existing person
+          // Update existing person with new data from this document
           await db.person.update({
             where: { id: existingPerson.id },
             data: {
@@ -211,18 +238,19 @@ Return a JSON object with the following structure (respond ONLY with valid JSON,
           });
           personId = existingPerson.id;
         } else {
-          // Create new person
+          // Create new person linked to the case
           const newPerson = await db.person.create({
             data: {
-              fullName: personData.fullName as string,
-              shortName: personData.shortName as string | null,
-              role: personData.role as string | null,
-              status: personData.status as string | null,
-              description: personData.description as string | null,
-              birthDate: personData.birthDate as string | null,
-              occupation: personData.occupation as string | null,
-              alias: personData.alias as string | null,
-              isKolesnichenko: (personData.fullName as string).toLowerCase().includes('колесниченко'),
+              fullName,
+              shortName: (personData.shortName as string) || null,
+              role: (personData.role as string) || null,
+              status: (personData.status as string) || null,
+              description: (personData.description as string) || null,
+              birthDate: (personData.birthDate as string) || null,
+              occupation: (personData.occupation as string) || null,
+              alias: (personData.alias as string) || null,
+              isKolesnichenko: fullName.toLowerCase().includes('колесниченко'),
+              caseId: caseId || null, // Link person to the case!
             },
           });
           personId = newPerson.id;
@@ -240,94 +268,40 @@ Return a JSON object with the following structure (respond ONLY with valid JSON,
         personLinks.push({ personId, personDocId: personDoc.id });
       }
 
-      // Create Location records and link to document
-      const locationLinks = [];
-      for (const locationData of locations) {
-        const existingLocation = await db.location.findFirst({
-          where: { name: locationData.name as string },
-        });
-
-        let locationId: string;
-        if (existingLocation) {
-          locationId = existingLocation.id;
-        } else {
-          const newLocation = await db.location.create({
-            data: {
-              name: locationData.name as string,
-              address: locationData.address as string | null,
-              type: locationData.type as string | null,
-              description: locationData.description as string | null,
-            },
-          });
-          locationId = newLocation.id;
-        }
-
-        // Create DocumentLocation link
-        const docLoc = await db.documentLocation.create({
-          data: {
-            documentId,
-            locationId,
-            context: locationData.context as string | null,
-          },
-        });
-        locationLinks.push({ locationId, docLocId: docLoc.id });
-      }
-
-      // Create Article records and link to document
-      const articleLinks = [];
-      for (const articleData of articles) {
-        const existingArticle = await db.article.findFirst({
-          where: { code: articleData.code as string },
-        });
-
-        let articleId: string;
-        if (existingArticle) {
-          articleId = existingArticle.id;
-        } else {
-          const newArticle = await db.article.create({
-            data: {
-              code: articleData.code as string,
-              number: articleData.number as string,
-              codeType: (articleData.codeType as string) || 'УК РФ',
-              description: articleData.description as string,
-              category: articleData.category as string | null,
-              punishmentMin: articleData.punishmentMin as string | null,
-              punishmentMax: articleData.punishmentMax as string | null,
-              isCurrent: true,
-            },
-          });
-          articleId = newArticle.id;
-        }
-
-        // Create DocumentArticle link
-        const docArt = await db.documentArticle.create({
-          data: {
-            documentId,
-            articleId,
-            context: articleData.context as string | null,
-          },
-        });
-        articleLinks.push({ articleId, docArtId: docArt.id });
-      }
-
-      // Create Episode records and link to document and persons
+      // Create Episode records linked to the case
       const episodeLinks = [];
       for (const episodeData of episodes) {
+        const title = episodeData.title as string;
+        if (!title || title.trim() === '') continue; // Skip empty titles
+
+        // Check if episode already exists in this case
         const existingEpisode = await db.episode.findFirst({
-          where: { title: episodeData.title as string },
+          where: { title, caseId: caseId || undefined },
         });
 
         let episodeId: string;
         if (existingEpisode) {
+          // Update existing episode
+          await db.episode.update({
+            where: { id: existingEpisode.id },
+            data: {
+              description: (episodeData.description as string) || existingEpisode.description,
+              date: (episodeData.date as string) || existingEpisode.date,
+              episodeNumber: (episodeData.episodeNumber as string) || existingEpisode.episodeNumber,
+              severity: (episodeData.severity as string) || existingEpisode.severity,
+            },
+          });
           episodeId = existingEpisode.id;
         } else {
+          // Create new episode linked to the case
           const newEpisode = await db.episode.create({
             data: {
-              title: episodeData.title as string,
-              description: episodeData.description as string,
-              date: episodeData.date as string | null,
-              episodeNumber: episodeData.episodeNumber as string | null,
-              severity: episodeData.severity as string | null,
+              title,
+              description: (episodeData.description as string) || '',
+              date: (episodeData.date as string) || null,
+              episodeNumber: (episodeData.episodeNumber as string) || null,
+              severity: (episodeData.severity as string) || null,
+              caseId: caseId || null, // Link episode to the case!
             },
           });
           episodeId = newEpisode.id;
@@ -345,63 +319,88 @@ Return a JSON object with the following structure (respond ONLY with valid JSON,
 
         // Link persons to episodes
         for (const pLink of personLinks) {
-          const personDocEntry = await db.personDocument.findUnique({
-            where: { id: pLink.personDocId },
-          });
-          if (personDocEntry) {
-            await db.personEpisode.create({
-              data: {
-                personId: pLink.personId,
-                episodeId,
-                involvement: personDocEntry.role,
-              },
-            });
-          }
-        }
-
-        // Link locations to episodes
-        for (const lLink of locationLinks) {
-          await db.episodeLocation.create({
+          await db.personEpisode.create({
             data: {
+              personId: pLink.personId,
               episodeId,
-              locationId: lLink.locationId,
-              context: null,
-            },
-          });
-        }
-
-        // Link articles to episodes
-        for (const aLink of articleLinks) {
-          await db.episodeArticle.create({
-            data: {
-              episodeId,
-              articleId: aLink.articleId,
+              involvement: 'mentioned',
             },
           });
         }
       }
 
-      // Link persons to articles (charges)
-      for (const pLink of personLinks) {
-        for (const aLink of articleLinks) {
+      // Create Article records and link to document
+      const articleLinks = [];
+      for (const articleData of articles) {
+        const code = articleData.code as string;
+        if (!code || code.trim() === '') continue; // Skip empty articles
+
+        const existingArticle = await db.article.findFirst({
+          where: { code },
+        });
+
+        let articleId: string;
+        if (existingArticle) {
+          articleId = existingArticle.id;
+        } else {
+          const newArticle = await db.article.create({
+            data: {
+              code,
+              number: (articleData.number as string) || code.match(/\d+/)?.[0] || '',
+              codeType: (articleData.codeType as string) || 'УК РФ',
+              description: (articleData.description as string) || code,
+              category: (articleData.category as string) || null,
+              punishmentMin: (articleData.punishmentMin as string) || null,
+              punishmentMax: (articleData.punishmentMax as string) || null,
+              isCurrent: true,
+            },
+          });
+          articleId = newArticle.id;
+        }
+
+        // Create DocumentArticle link
+        const docArt = await db.documentArticle.create({
+          data: {
+            documentId,
+            articleId,
+            context: articleData.context as string | null,
+          },
+        });
+        articleLinks.push({ articleId, docArtId: docArt.id });
+
+        // Link articles to episodes
+        for (const eLink of episodeLinks) {
+          await db.episodeArticle.create({
+            data: {
+              episodeId: eLink.episodeId,
+              articleId,
+            },
+          });
+        }
+
+        // Link persons to articles (charges)
+        for (const pLink of personLinks) {
           await db.personArticle.create({
             data: {
               personId: pLink.personId,
-              articleId: aLink.articleId,
+              articleId,
               chargeStatus: 'обвиняется',
             },
           });
         }
       }
 
-      // Create cross-references (we'll link sourceDocument but targetDocument requires matching)
+      // Create cross-references
       for (const refData of crossReferences) {
-        // Try to find a matching target document by reference text
+        const referenceText = refData.referenceText as string;
+        if (!referenceText || referenceText.trim() === '') continue;
+
         const targetDoc = await db.document.findFirst({
           where: {
+            caseId: caseId || undefined,
             OR: [
-              { originalName: { contains: refData.referenceText as string } },
-              { sourceReference: { contains: refData.referenceText as string } },
+              { originalName: { contains: referenceText } },
+              { sourceReference: { contains: referenceText } },
             ],
           },
         });
@@ -411,23 +410,22 @@ Return a JSON object with the following structure (respond ONLY with valid JSON,
             data: {
               sourceDocumentId: documentId,
               targetDocumentId: targetDoc.id,
-              referenceText: refData.referenceText as string,
+              referenceText,
               referenceType: refData.referenceType as string | null,
               context: refData.context as string | null,
               note: refData.note as string | null,
             },
           });
         } else {
-          // Create cross-reference with the same document as target (placeholder)
-          // Will be updated when the referenced document is uploaded
+          // Self-reference as placeholder - will be updated when referenced document is uploaded
           await db.crossReference.create({
             data: {
               sourceDocumentId: documentId,
-              targetDocumentId: documentId, // Self-reference as placeholder
-              referenceText: refData.referenceText as string,
+              targetDocumentId: documentId,
+              referenceText,
               referenceType: refData.referenceType as string | null,
               context: refData.context as string | null,
-              note: `Ожидает загрузки целевого документа: ${refData.referenceText}`,
+              note: `Ожидает загрузки целевого документа: ${referenceText}`,
             },
           });
         }
@@ -438,10 +436,6 @@ Return a JSON object with the following structure (respond ONLY with valid JSON,
         where: { id: documentId },
         data: {
           processingStatus: 'completed',
-          documentType: analysis.documentType as string | null,
-          documentDate: analysis.documentDate as string | null,
-          sourceReference: analysis.sourceReference as string | null,
-          summary: analysis.summary as string | null,
           processedAt: new Date(),
         },
       });
@@ -453,6 +447,8 @@ Return a JSON object with the following structure (respond ONLY with valid JSON,
           data: {
             status: 'completed',
             completedAt: new Date(),
+            progressPercent: 100,
+            progressStep: 'Завершено',
           },
         });
       }
@@ -460,20 +456,16 @@ Return a JSON object with the following structure (respond ONLY with valid JSON,
       return NextResponse.json({
         success: true,
         documentId,
+        caseId,
         extractedData: {
           documentType: analysis.documentType,
           documentDate: analysis.documentDate,
           sourceReference: analysis.sourceReference,
           summary: analysis.summary,
           personsCount: persons.length,
-          locationsCount: locations.length,
-          articlesCount: articles.length,
           episodesCount: episodes.length,
+          articlesCount: articles.length,
           crossReferencesCount: crossReferences.length,
-          personLinks,
-          locationLinks,
-          articleLinks,
-          episodeLinks,
         },
       });
     } catch (processingError) {
@@ -488,10 +480,10 @@ Return a JSON object with the following structure (respond ONLY with valid JSON,
         },
       });
 
-      const queueEntry = document.processingQueue[0];
-      if (queueEntry) {
+      const qEntry = document.processingQueue[0];
+      if (qEntry) {
         await db.processingQueue.update({
-          where: { id: queueEntry.id },
+          where: { id: qEntry.id },
           data: {
             status: 'failed',
             error: String(processingError),
