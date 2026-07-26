@@ -51,6 +51,7 @@ export const mockProcessingQueue: ProcessingQueueData[] = [{id:'q1',documentId:'
 
 // ─── Dashboard Stats ───
 export const mockDashboardStats: DashboardStats = {
+  caseInfo:null,
   summary:{totalDocuments:5,totalPersons:5,totalEpisodes:3,totalArticles:2,totalLocations:3,totalCrossReferences:4,totalChatMessages:2,totalComplianceChecks:4,totalDefenseLines:5,totalGuiltAssessments:5},
   documents:{total:mockDocuments.length,byStatus:{completed:3,processing:1,pending:1},byType:{обвинение:1,показание:2,протокол:1,экспертиза:1},recent:mockDocuments.slice(0,3)},
   persons:{total:mockPersons.length,byRole:{обвиняемый:1,соучастник:1,свидетель:2,потерпевшая:1},kolesnichenko:{id:'p1',fullName:'Колесниченко Дмитрий Александрович',role:'обвиняемый',status:'задержанный',defenseStrategy:'Непризнание вины, алиби'}},

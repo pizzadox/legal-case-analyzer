@@ -7,7 +7,6 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import { Checkbox } from '@/components/ui/checkbox'
-import { Switch } from '@/components/ui/label'
 import { Label } from '@/components/ui/label'
 import { Progress } from '@/components/ui/progress'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -67,6 +66,11 @@ const GROUPS = [
 
 const ALL_IDS = GROUPS.flatMap(g=>g.items.map(i=>i.id))
 
+// Item ID sets that map to export data sections
+const DOCUMENT_IDS = ['documents-registry', 'evidence-chain', 'witness-matrix', 'cross-refs']
+const PERSON_IDS = ['persons-list', 'episodes', 'guilt', 'defense']
+const CORE_IDS = ['brief', 'dashboard', 'timeline', 'risk']
+
 const estimate = (items:Set<string>,fmt:ExportFormat,opt:ExportOptions) => {
   let b=items.size*F_CFG[fmt].perItem; if(opt.includeAI)b=Math.round(b*1.2);if(opt.includeCharts&&(fmt==='pdf'||fmt==='html'))b=Math.round(b*1.15);if(opt.language==='both')b*=2;if(opt.encrypt)b+=4096;return b
 }
@@ -74,11 +78,14 @@ const fmtDateRu = (iso:string) => {try{return new Date(iso).toLocaleString('ru-R
 
 // ─── Export Helpers ───
 
-function exportAsCSV(data: { documents: any[], persons: any[], episodes: any[], dashboard: any }, caseNumber: string): void {
+function exportAsCSV(data: { documents: any[], persons: any[], episodes: any[], dashboard: any }, caseNumber: string, selItems: Set<string>): void {
   const sections: string[] = []
+  const hasDocs = DOCUMENT_IDS.some(id => selItems.has(id))
+  const hasPersons = PERSON_IDS.some(id => selItems.has(id))
+  const hasEpisodes = PERSON_IDS.some(id => selItems.has(id))
 
   // Documents section
-  if (data.documents.length > 0) {
+  if (hasDocs && data.documents.length > 0) {
     sections.push('=== Документы ===')
     const headers = ['Название', 'Тип', 'Статус', 'Дата документа', 'Размер (КБ)', 'Дата загрузки', 'Описание']
     const rows = data.documents.map(d => [
@@ -91,7 +98,7 @@ function exportAsCSV(data: { documents: any[], persons: any[], episodes: any[], 
   }
 
   // Persons section
-  if (data.persons.length > 0) {
+  if (hasPersons && data.persons.length > 0) {
     sections.push('')
     sections.push('=== Участники ===')
     const headers = ['ФИО', 'Роль', 'Статус', 'Описание']
@@ -103,7 +110,7 @@ function exportAsCSV(data: { documents: any[], persons: any[], episodes: any[], 
   }
 
   // Episodes section
-  if (data.episodes.length > 0) {
+  if (hasEpisodes && data.episodes.length > 0) {
     sections.push('')
     sections.push('=== Эпизоды ===')
     const headers = ['Название', 'Описание', 'Дата', 'Тяжесть', 'Статус']
@@ -126,15 +133,19 @@ function exportAsCSV(data: { documents: any[], persons: any[], episodes: any[], 
   toast.success('CSV экспорт выполнен')
 }
 
-function exportAsJSON(data: { documents: any[], persons: any[], episodes: any[], dashboard: any }, caseNumber: string): void {
-  const exportData = {
+function exportAsJSON(data: { documents: any[], persons: any[], episodes: any[], dashboard: any }, caseNumber: string, selItems: Set<string>): void {
+  const hasDocs = DOCUMENT_IDS.some(id => selItems.has(id))
+  const hasPersons = PERSON_IDS.some(id => selItems.has(id))
+  const hasEpisodes = PERSON_IDS.some(id => selItems.has(id))
+  const hasDashboard = CORE_IDS.some(id => selItems.has(id))
+  const exportData: Record<string, any> = {
     caseNumber,
     exportedAt: new Date().toISOString(),
-    documents: data.documents,
-    persons: data.persons,
-    episodes: data.episodes,
-    dashboard: data.dashboard,
   }
+  if (hasDocs) exportData.documents = data.documents
+  if (hasPersons) exportData.persons = data.persons
+  if (hasEpisodes) exportData.episodes = data.episodes
+  if (hasDashboard) exportData.dashboard = data.dashboard
   const json = JSON.stringify(exportData, null, 2)
   const blob = new Blob([json], { type: 'application/json;charset=utf-8' })
   const url = URL.createObjectURL(blob)
@@ -146,27 +157,40 @@ function exportAsJSON(data: { documents: any[], persons: any[], episodes: any[],
   toast.success('JSON экспорт выполнен')
 }
 
-function exportAsHTML(data: { documents: any[], persons: any[], episodes: any[], dashboard: any }, caseNumber: string): void {
+function exportAsHTML(data: { documents: any[], persons: any[], episodes: any[], dashboard: any }, caseNumber: string, selItems: Set<string>): void {
   const rows = (items: any[], cols: string[]) => items.map(d =>
     `<tr>${cols.map(c => `<td>${d[c] ?? '—'}</td>`).join('')}</tr>`
   ).join('')
+
+  const hasDocs = DOCUMENT_IDS.some(id => selItems.has(id))
+  const hasPersons = PERSON_IDS.some(id => selItems.has(id))
+  const hasEpisodes = PERSON_IDS.some(id => selItems.has(id))
+
+  let sectionsHtml = ''
+  if (hasDocs) {
+    sectionsHtml += `
+<h2>Документы (${data.documents.length})</h2>
+<table><tr><th>Название</th><th>Тип</th><th>Статус</th><th>Размер</th><th>Описание</th></tr>
+${data.documents.map(d => `<tr><td>${d.originalName}</td><td>${d.documentType ?? '—'}</td><td>${d.processingStatus}</td><td>${fmtSize(d.fileSize)}</td><td>${(d.summary ?? '—').substring(0, 300)}</td></tr>`).join('')}</table>`
+  }
+  if (hasPersons) {
+    sectionsHtml += `
+<h2>Участники (${data.persons.length})</h2>
+<table><tr><th>ФИО</th><th>Роль</th><th>Статус</th><th>Описание</th></tr>
+${data.persons.map(p => `<tr><td>${p.fullName}</td><td>${p.role ?? '—'}</td><td>${p.status ?? '—'}</td><td>${(p.description ?? '—').substring(0, 200)}</td></tr>`).join('')}</table>`
+  }
+  if (hasEpisodes) {
+    sectionsHtml += `
+<h2>Эпизоды (${data.episodes.length})</h2>
+<table><tr><th>Название</th><th>Дата</th><th>Тяжесть</th><th>Статус</th><th>Описание</th></tr>
+${data.episodes.map(e => `<tr><td>${e.title}</td><td>${e.date ?? '—'}</td><td>${e.severity ?? '—'}</td><td>${e.status ?? '—'}</td><td>${(e.description ?? '').substring(0, 200)}</td></tr>`).join('')}</table>`
+  }
 
   const html = `<!DOCTYPE html><html lang="ru"><head><meta charset="utf-8"><title>Экспорт дела ${caseNumber}</title>
 <style>body{font-family:'Segoe UI',Arial,sans-serif;padding:30px;color:#333;background:#fff}h1{color:#2c3e50;border-bottom:2px solid #c0392b;padding-bottom:10px}h2{color:#34495e;margin-top:25px}table{border-collapse:collapse;width:100%;margin:15px 0}th{background:#ecf0f1;padding:10px;text-align:left;font-weight:600}td{border:1px solid #ddd;padding:8px}tr:nth-child(even){background:#f9f9f9}.badge{padding:3px 8px;border-radius:4px;font-size:11px;color:#fff}.badge-green{background:#27ae60}.badge-yellow{background:#f39c12}.badge-red{background:#c0392b}</style></head><body>
 <h1>Экспорт материалов уголовного дела № ${caseNumber}</h1>
 <p>Дата экспорта: ${new Date().toLocaleDateString('ru-RU')}</p>
-
-<h2>Документы (${data.documents.length})</h2>
-<table><tr><th>Название</th><th>Тип</th><th>Статус</th><th>Размер</th><th>Описание</th></tr>
-${data.documents.map(d => `<tr><td>${d.originalName}</td><td>${d.documentType ?? '—'}</td><td>${d.processingStatus}</td><td>${fmtSize(d.fileSize)}</td><td>${(d.summary ?? '—').substring(0, 300)}</td></tr>`).join('')}</table>
-
-<h2>Участники (${data.persons.length})</h2>
-<table><tr><th>ФИО</th><th>Роль</th><th>Статус</th><th>Описание</th></tr>
-${data.persons.map(p => `<tr><td>${p.fullName}</td><td>${p.role ?? '—'}</td><td>${p.status ?? '—'}</td><td>${(p.description ?? '—').substring(0, 200)}</td></tr>`).join('')}</table>
-
-<h2>Эпизоды (${data.episodes.length})</h2>
-<table><tr><th>Название</th><th>Дата</th><th>Тяжесть</th><th>Статус</th><th>Описание</th></tr>
-${data.episodes.map(e => `<tr><td>${e.title}</td><td>${e.date ?? '—'}</td><td>${e.severity ?? '—'}</td><td>${e.status ?? '—'}</td><td>${(e.description ?? '').substring(0, 200)}</td></tr>`).join('')}</table>
+${sectionsHtml}
 </body></html>`
 
   const w = window.open('', '_blank')
@@ -174,25 +198,42 @@ ${data.episodes.map(e => `<tr><td>${e.title}</td><td>${e.date ?? '—'}</td><td>
   else { toast.error('Не удалось открыть окно') }
 }
 
-function exportAsPDF(data: { documents: any[], persons: any[], episodes: any[], dashboard: any }, caseNumber: string): void {
+function exportAsPDF(data: { documents: any[], persons: any[], episodes: any[], dashboard: any }, caseNumber: string, selItems: Set<string>): void {
   // Use printable HTML approach for PDF
+  const hasDocs = DOCUMENT_IDS.some(id => selItems.has(id))
+  const hasPersons = PERSON_IDS.some(id => selItems.has(id))
+  const hasEpisodes = PERSON_IDS.some(id => selItems.has(id))
+
+  let sectionsHtml = ''
+  let sectionNum = 0
+  if (hasDocs) {
+    sectionNum++
+    sectionsHtml += `
+<h2>${sectionNum}. Документы (${data.documents.length})</h2>
+<table><tr><th style="width:35%">Название</th><th style="width:15%">Тип</th><th style="width:10%">Статус</th><th style="width:10%">Размер</th><th style="width:30%">Описание</th></tr>
+${data.documents.map(d => `<tr><td>${d.originalName}</td><td>${d.documentType ?? '—'}</td><td>${d.processingStatus}</td><td>${fmtSize(d.fileSize)}</td><td>${(d.summary ?? '—').substring(0, 150)}</td></tr>`).join('')}</table>`
+  }
+  if (hasPersons) {
+    sectionNum++
+    sectionsHtml += `
+<h2>${sectionNum}. Участники (${data.persons.length})</h2>
+<table><tr><th style="width:30%">ФИО</th><th style="width:20%">Роль</th><th style="width:15%">Статус</th><th style="width:35%">Описание</th></tr>
+${data.persons.map(p => `<tr><td>${p.fullName}</td><td>${p.role ?? '—'}</td><td>${p.status ?? '—'}</td><td>${(p.description ?? '—').substring(0, 150)}</td></tr>`).join('')}</table>`
+  }
+  if (hasEpisodes) {
+    sectionNum++
+    sectionsHtml += `
+<h2>${sectionNum}. Эпизоды (${data.episodes.length})</h2>
+<table><tr><th style="width:25%">Название</th><th style="width:10%">Дата</th><th style="width:10%">Тяжесть</th><th style="width:10%">Статус</th><th style="width:45%">Описание</th></tr>
+${data.episodes.map(e => `<tr><td>${e.title}</td><td>${e.date ?? '—'}</td><td>${e.severity ?? '—'}</td><td>${e.status ?? '—'}</td><td>${(e.description ?? '').substring(0, 200)}</td></tr>`).join('')}</table>`
+  }
+
   const html = `<!DOCTYPE html><html lang="ru"><head><meta charset="utf-8"><title>PDF Отчёт — Дело ${caseNumber}</title>
 <style>@page{size:A4;margin:15mm}body{font-family:'Segoe UI',Arial,sans-serif;padding:0;color:#333}h1{color:#2c3e50;font-size:18pt;border-bottom:2pt solid #c0392b;padding-bottom:8pt}h2{color:#34495e;font-size:14pt;margin-top:20pt}table{border-collapse:collapse;width:100%;margin:10pt 0;font-size:9pt}th{background:#ecf0f1;padding:6pt;text-align:left;font-weight:600}td{border:0.5pt solid #ddd;padding:5pt}tr:nth-child(even){background:#f9f9f9}.header-bar{display:flex;justify-content:space-between;align-items:center;border-bottom:1pt solid #bdc3c7;padding:5pt 0;margin-bottom:15pt;font-size:8pt;color:#7f8c8d}</style></head><body>
 <div class="header-bar"><span>Система Управления Уголовным Делом</span><span>Дело № ${caseNumber}</span></div>
 <h1>Отчёт по материалам уголовного дела № ${caseNumber}</h1>
 <p style="font-size:8pt;color:#7f8c8d">Дата формирования: ${new Date().toLocaleDateString('ru-RU')} ${new Date().toLocaleTimeString('ru-RU')}</p>
-
-<h2>1. Документы (${data.documents.length})</h2>
-<table><tr><th style="width:35%">Название</th><th style="width:15%">Тип</th><th style="width:10%">Статус</th><th style="width:10%">Размер</th><th style="width:30%">Описание</th></tr>
-${data.documents.map(d => `<tr><td>${d.originalName}</td><td>${d.documentType ?? '—'}</td><td>${d.processingStatus}</td><td>${fmtSize(d.fileSize)}</td><td>${(d.summary ?? '—').substring(0, 150)}</td></tr>`).join('')}</table>
-
-<h2>2. Участники (${data.persons.length})</h2>
-<table><tr><th style="width:30%">ФИО</th><th style="width:20%">Роль</th><th style="width:15%">Статус</th><th style="width:35%">Описание</th></tr>
-${data.persons.map(p => `<tr><td>${p.fullName}</td><td>${p.role ?? '—'}</td><td>${p.status ?? '—'}</td><td>${(p.description ?? '—').substring(0, 150)}</td></tr>`).join('')}</table>
-
-<h2>3. Эпизоды (${data.episodes.length})</h2>
-<table><tr><th style="width:25%">Название</th><th style="width:10%">Дата</th><th style="width:10%">Тяжесть</th><th style="width:10%">Статус</th><th style="width:45%">Описание</th></tr>
-${data.episodes.map(e => `<tr><td>${e.title}</td><td>${e.date ?? '—'}</td><td>${e.severity ?? '—'}</td><td>${e.status ?? '—'}</td><td>${(e.description ?? '').substring(0, 200)}</td></tr>`).join('')}</table>
+${sectionsHtml}
 </body></html>`
 
   const w = window.open('', '_blank')
@@ -262,10 +303,10 @@ export function CaseExportCenter({ caseId }: { caseId: string }) {
     // Actually generate the export based on format
     const data = { documents, persons, episodes, dashboard }
     switch(selFmt) {
-      case 'csv': exportAsCSV(data, caseNumber); break
-      case 'json': exportAsJSON(data, caseNumber); break
-      case 'html': exportAsHTML(data, caseNumber); break
-      case 'pdf': exportAsPDF(data, caseNumber); break
+      case 'csv': exportAsCSV(data, caseNumber, selItems); break
+      case 'json': exportAsJSON(data, caseNumber, selItems); break
+      case 'html': exportAsHTML(data, caseNumber, selItems); break
+      case 'pdf': exportAsPDF(data, caseNumber, selItems); break
     }
 
     setIsGen(false);setProg(0)

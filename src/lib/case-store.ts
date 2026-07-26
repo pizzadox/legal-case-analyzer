@@ -437,6 +437,15 @@ export interface SearchResultData {
 
 // DashboardStats matching the actual API response at /api/case/dashboard
 export interface DashboardStats {
+  caseInfo: {
+    id: string
+    caseNumber: string
+    caseTitle: string
+    defendantName: string | null
+    articles: string | null
+    status: string
+    createdAt: string
+  } | null
   summary: {
     totalDocuments: number
     totalPersons: number

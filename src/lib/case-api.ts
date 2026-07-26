@@ -145,10 +145,7 @@ export async function getDashboardStats(caseId?: string): Promise<DashboardStats
   return fetchApi<DashboardStats>(`/dashboard${query}`)
 }
 
-// Get processing queue
-export async function getProcessingQueue(): Promise<ProcessingQueueData[]> {
-  return fetchApi<ProcessingQueueData[]>('/queue')
-}
+
 
 // Get processing status from the doc-processor microservice
 export interface ProcessingStatusItem {

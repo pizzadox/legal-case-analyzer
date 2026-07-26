@@ -6,6 +6,22 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const caseId = searchParams.get('caseId');
 
+    // Fetch CriminalCase record for case-level info
+    const criminalCase = caseId
+      ? await db.criminalCase.findUnique({
+          where: { id: caseId },
+          select: {
+            id: true,
+            caseNumber: true,
+            caseTitle: true,
+            defendantName: true,
+            articles: true,
+            status: true,
+            createdAt: true,
+          },
+        })
+      : null;
+
     // Build base filter for caseId
     const docFilter = caseId ? { caseId } : {};
     const personFilter = caseId ? { caseId } : {};
@@ -188,6 +204,17 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
+      caseInfo: criminalCase
+        ? {
+            id: criminalCase.id,
+            caseNumber: criminalCase.caseNumber,
+            caseTitle: criminalCase.caseTitle,
+            defendantName: criminalCase.defendantName,
+            articles: criminalCase.articles,
+            status: criminalCase.status,
+            createdAt: criminalCase.createdAt.toISOString(),
+          }
+        : null,
       summary: {
         totalDocuments,
         totalPersons,
