@@ -66,10 +66,10 @@ function CoverageDonut({ covered, total }: { covered: number; total: number }) {
 
 export function CaseDefense() {
   const [showImprovements, setShowImprovements] = useState(false)
-  const { data: personsData, isLoading: personsLoading } = useQuery({ queryKey: ['persons'], queryFn: caseApi.getPersons, retry: 1 })
-  const { data: defenseData, isLoading: defenseLoading } = useQuery({ queryKey: ['defense'], queryFn: () => caseApi.getDefenseLines('p1'), retry: 1 })
-  const { data: improvementsData } = useQuery({ queryKey: ['defense-improvements'], queryFn: () => caseApi.getDefenseImprovements('p1'), retry: 1 })
-  const { data: riskData } = useQuery({ queryKey: ['risk-assessment'], queryFn: caseApi.getRiskAssessment, retry: 1 })
+  const { data: personsData, isLoading: personsLoading } = useQuery({ queryKey: ['persons'], queryFn: caseApi.getPersons, retry: 1, refetchInterval: 10000 })
+  const { data: defenseData, isLoading: defenseLoading } = useQuery({ queryKey: ['defense'], queryFn: () => caseApi.getDefenseLines('p1'), retry: 1, refetchInterval: 10000 })
+  const { data: improvementsData } = useQuery({ queryKey: ['defense-improvements'], queryFn: () => caseApi.getDefenseImprovements('p1'), retry: 1, refetchInterval: 10000 })
+  const { data: riskData } = useQuery({ queryKey: ['risk-assessment'], queryFn: caseApi.getRiskAssessment, retry: 1, refetchInterval: 10000 })
 
   const persons = personsData ?? mockPersons
   const defenseLines = defenseData ?? mockDefenseLines

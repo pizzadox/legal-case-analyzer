@@ -25,7 +25,7 @@ const DOC_CFG = { Обвинение: { label: 'Обвинение', color: '#dc
 
 export function CaseAnalytics() {
   const [expandedInsight, setExpandedInsight] = useState<string | null>(null)
-  const { data, isLoading } = useQuery({ queryKey: ['analytics'], queryFn: getAnalytics, retry: 1 })
+  const { data, isLoading } = useQuery({ queryKey: ['analytics'], queryFn: getAnalytics, retry: 1, refetchInterval: 10000 })
   const a = data ?? mockAnalytics
   if (isLoading) return <div className="grid grid-cols-2 md:grid-cols-4 gap-4">{[0,1,2,3].map(i => <Skeleton key={i} className="h-24" />)}</div>
 

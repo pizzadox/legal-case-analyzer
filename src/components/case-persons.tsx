@@ -343,9 +343,9 @@ export function CasePersons({ caseId }: { caseId: string }) {
   const [expandedId, setExpandedId] = useState<string|null>(null)
   const [compareIds, setCompareIds] = useState<string[]>([])
 
-  const { data: persons = [], isLoading } = useQuery({ queryKey: ['persons', caseId], queryFn: () => getPersons(caseId), enabled: !!caseId })
-  const { data: relationships = [] } = useQuery({ queryKey: ['personRelationships', caseId], queryFn: getPersonRelationships, enabled: !!caseId })
-  const { data: statements = [] } = useQuery({ queryKey: ['witnessStatements', caseId], queryFn: getWitnessStatements, enabled: !!caseId })
+  const { data: persons = [], isLoading } = useQuery({ queryKey: ['persons', caseId], queryFn: () => getPersons(caseId), enabled: !!caseId, refetchInterval: 10000 })
+  const { data: relationships = [] } = useQuery({ queryKey: ['personRelationships', caseId], queryFn: getPersonRelationships, enabled: !!caseId, refetchInterval: 10000 })
+  const { data: statements = [] } = useQuery({ queryKey: ['witnessStatements', caseId], queryFn: getWitnessStatements, enabled: !!caseId, refetchInterval: 10000 })
 
   const filtered = useMemo(() => {
     let result = persons
@@ -488,18 +488,19 @@ function ComparisonView({ persons, compareIds, setCompareIds }: { persons: Perso
   const addP = (id:string) => { if(compareIds.length>=3){toast.info('Максимум 3');return} setCompareIds([...compareIds,id]) }
   const removeP = (id:string) => setCompareIds(compareIds.filter(x=>x!==id))
 
-  const dims = [
-    {key:'role',label:'Роль',get:(p:PersonData)=>ROLE[p.role??'']?.label??p.role??'—'},
+  const allDims = [
+    {key:'role',label:'Роль',get:(p:PersonData)=>ROLE[p.role??'']?.label??p.role??''},
     {key:'guilt',label:'Виновность',get:(p:PersonData)=>GUILT[p.guiltLevel??'none'].label},
     {key:'guiltPct',label:'Уровень вины',get:(p:PersonData)=>`${GUILT[p.guiltLevel??'none'].pct}%`},
-    {key:'defense',label:'Стратегия защиты',get:(p:PersonData)=>p.defenseStrategy??'Не определена'},
-    {key:'occupation',label:'Должность',get:(p:PersonData)=>p.occupation??'—'},
-    {key:'alias',label:'Псевдоним',get:(p:PersonData)=>p.alias??'—'},
-    {key:'birthDate',label:'Дата рождения',get:(p:PersonData)=>p.birthDate?fmtDate(p.birthDate):'—'},
-    {key:'status',label:'Статус',get:(p:PersonData)=>p.status??'—'},
+    {key:'defense',label:'Стратегия защиты',get:(p:PersonData)=>p.defenseStrategy??''},
+    {key:'occupation',label:'Должность',get:(p:PersonData)=>p.occupation??''},
+    {key:'alias',label:'Псевдоним',get:(p:PersonData)=>p.alias??''},
+    {key:'birthDate',label:'Дата рождения',get:(p:PersonData)=>p.birthDate?fmtDate(p.birthDate):''},
+    {key:'status',label:'Статус',get:(p:PersonData)=>p.status??''},
   ]
+  const dims = allDims.filter(dim => selected.some(p => hasValue(dim.get(p))))
 
-  const conflicts = useMemo(() => {
+  const conflicts = (() => {
     if(selected.length<2) return []
     const res:{pair:[string,string];desc:string}[] = []
     for(let i=0;i<selected.length;i++) for(let j=i+1;j<selected.length;j++){
@@ -507,7 +508,7 @@ function ComparisonView({ persons, compareIds, setCompareIds }: { persons: Perso
       if(c) res.push({pair:[selected[i].id,selected[j].id],desc:c})
     }
     return res
-  },[selected])
+  })()
 
   const epCounts = useMemo(() => { const c:Record<string,number>={}; persons.forEach(p=>{c[p.id]=0}); mockEpisodes.forEach(ep=>ep.persons.forEach(pe=>{c[pe.personId]=(c[pe.personId]??0)+1})); return c },[persons])
 
@@ -548,7 +549,7 @@ function ComparisonView({ persons, compareIds, setCompareIds }: { persons: Perso
                 </th>)}
               </tr></thead>
               <tbody>
-                {dims.map((dim,i)=> <tr key={dim.key} className={i%2===0?'bg-muted/20':''}><td className="p-2 font-medium text-muted-foreground">{dim.label}</td>{selected.map(p=> <td key={p.id} className="p-2 align-top">{dim.key==='guilt'?<Badge className={`${GUILT[p.guiltLevel??'none'].badge} text-xs`}>{dim.get(p)}</Badge>:<span className="text-xs">{dim.get(p)}</span>}</td>)}</tr>)}
+                {dims.map((dim,i)=> <tr key={dim.key} className={i%2===0?'bg-muted/20':''}><td className="p-2 font-medium text-muted-foreground">{dim.label}</td>{selected.map(p=> <td key={p.id} className="p-2 align-top">{hasValue(dim.get(p))?(dim.key==='guilt'?<Badge className={`${GUILT[p.guiltLevel??'none'].badge} text-xs`}>{dim.get(p)}</Badge>:<span className="text-xs">{dim.get(p)}</span>):null}</td>)}</tr>)}
                 <tr className="bg-muted/20"><td className="p-2 font-medium text-muted-foreground">Эпизоды</td>{selected.map(p=> <td key={p.id} className="p-2"><Badge variant="outline" className="text-xs">{epCounts[p.id]??0}</Badge></td>)}</tr>
                 <tr><td className="p-2 font-medium text-muted-foreground">Документы</td>{selected.map(p=> <td key={p.id} className="p-2"><Badge variant="outline" className="text-xs">1</Badge></td>)}</tr>
               </tbody>

@@ -92,6 +92,7 @@ export function CaseTimeline() {
     queryKey: ['case-timeline'],
     queryFn: getCaseTimeline,
     retry: 1,
+    refetchInterval: 10000,
   })
   const events = data ?? mockCaseTimeline
 

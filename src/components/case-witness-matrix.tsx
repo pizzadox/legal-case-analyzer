@@ -50,8 +50,8 @@ function ConflictsSummary({ witnesses, facts }: { witnesses: WitnessData[]; fact
   }, [witnesses, facts])
   const stats = [
     { icon: <Flame className="w-5 h-5 text-red-700" />, bg: 'bg-red-100 dark:bg-red-950/40', label: 'Всего противоречий', value: totalConflicts, hint: 'Сумма конфликтующих ячеек', tone: 'text-red-700' },
-    { icon: <TrendingDown className="w-5 h-5 text-orange-600" />, bg: 'bg-orange-100 dark:bg-orange-950/40', label: 'Худший свидетель', value: worst?.name ?? '—', hint: `${worst ? countContradictions(worst) : 0} противоречий`, tone: 'text-orange-700' },
-    { icon: <AlertTriangle className="w-5 h-5 text-amber-600" />, bg: 'bg-amber-100 dark:bg-amber-950/40', label: 'Самый спорный факт', value: mostDisputed?.fact.text ?? '—', hint: `${mostDisputed?.count ?? 0} свидетелей в конфликте`, tone: 'text-amber-700' },
+    ...(worst ? [{ icon: <TrendingDown className="w-5 h-5 text-orange-600" />, bg: 'bg-orange-100 dark:bg-orange-950/40', label: 'Худший свидетель', value: worst.name, hint: `${countContradictions(worst)} противоречий`, tone: 'text-orange-700' }] : []),
+    ...(mostDisputed ? [{ icon: <AlertTriangle className="w-5 h-5 text-amber-600" />, bg: 'bg-amber-100 dark:bg-amber-950/40', label: 'Самый спорный факт', value: mostDisputed.fact.text, hint: `${mostDisputed.count} свидетелей в конфликте`, tone: 'text-amber-700' }] : []),
   ]
   return (
     <Card className="rounded-xl shadow-sm border-l-4 border-red-700 hover:shadow-md hover:-translate-y-0.5 transition-all">

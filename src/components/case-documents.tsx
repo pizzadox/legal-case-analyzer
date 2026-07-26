@@ -28,6 +28,11 @@ interface Annotation {
   timestamp: string
 }
 
+// Helper to check if a value is non-null, non-empty, and not a placeholder
+function hasValue(v: unknown): boolean {
+  return v != null && v !== '' && v !== undefined && v !== '—'
+}
+
 // Format ISO timestamp in Russian style: dd.MM.yyyy HH:mm
 function formatRussianDateTime(iso: string): string {
   try {
@@ -217,14 +222,15 @@ function exportDocumentsPDF(docs: DocumentData[]) {
 
 // Document comparison dialog
 function DocumentCompareDialog({ doc1, doc2, onClose }: { doc1: DocumentData; doc2: DocumentData; onClose: () => void }) {
-  const fields = [
+  const allFields = [
     { label: 'Название', key1: doc1.originalName, key2: doc2.originalName },
-    { label: 'Тип', key1: doc1.documentType ?? '—', key2: doc2.documentType ?? '—' },
-    { label: 'Дата документа', key1: doc1.documentDate ?? '—', key2: doc2.documentDate ?? '—' },
+    { label: 'Тип', key1: doc1.documentType ?? '', key2: doc2.documentType ?? '' },
+    { label: 'Дата документа', key1: doc1.documentDate ?? '', key2: doc2.documentDate ?? '' },
     { label: 'Статус', key1: doc1.processingStatus, key2: doc2.processingStatus },
     { label: 'Размер', key1: fmtSize(doc1.fileSize), key2: fmtSize(doc2.fileSize) },
-    { label: 'Источник', key1: doc1.sourceReference ?? '—', key2: doc2.sourceReference ?? '—' },
+    { label: 'Источник', key1: doc1.sourceReference ?? '', key2: doc2.sourceReference ?? '' },
   ]
+  const fields = allFields.filter(f => hasValue(f.key1) || hasValue(f.key2))
   const renderSide = (doc: DocumentData, label: string, getValue: (f: typeof fields[number]) => string) => (
     <div className="space-y-3">
       <div className="p-3 rounded-lg bg-muted"><p className="font-medium text-xs mb-1">{label}</p>{doc.documentType && <Badge className={TYPE_BADGE[doc.documentType] ?? 'bg-stone-500 text-white'}>{doc.documentType}</Badge>}</div>
@@ -272,8 +278,9 @@ export function CaseDocuments({ caseId }: { caseId: string }) {
     queryKey: ['documents', caseId],
     queryFn: () => caseApi.getDocuments(caseId),
     retry: 1,
+    refetchInterval: 10000,
   })
-  const { data: evidenceChainData } = useQuery({ queryKey: ['evidence-chain'], queryFn: caseApi.getEvidenceChain, retry: 1 })
+  const { data: evidenceChainData } = useQuery({ queryKey: ['evidence-chain'], queryFn: caseApi.getEvidenceChain, retry: 1, refetchInterval: 10000 })
   
   // Poll processing status from the microservice every 5 seconds
   const { data: processingStatus } = useQuery<ProcessingStatusResponse>({ 
@@ -318,12 +325,21 @@ export function CaseDocuments({ caseId }: { caseId: string }) {
     if (!files?.length) return
     setIsUploading(true)
     try {
-      await caseApi.uploadDocuments(Array.from(files), caseId)
-      toast.success(`Загружено ${files.length} документ(ов)`)
+      const result = await caseApi.uploadDocuments(Array.from(files), caseId)
+      toast.success(`Загружено ${result.length} документ(ов)`)
+      // Invalidate all case-related queries so the uploaded file appears immediately
       await queryClient.invalidateQueries({ queryKey: ['documents', caseId] })
+      await queryClient.invalidateQueries({ queryKey: ['processing-status', caseId] })
+      await queryClient.invalidateQueries({ queryKey: ['dashboard', caseId] })
+      await queryClient.invalidateQueries({ queryKey: ['criminal-cases'] })
+      // Also force an immediate refetch
+      refetch()
       // Reset file input so the same file can be re-uploaded
       if (fileRef.current) fileRef.current.value = ''
-    } catch { toast.error('Ошибка загрузки') }
+    } catch (err) {
+      console.error('[Upload] Error:', err)
+      toast.error('Ошибка загрузки')
+    }
     setIsUploading(false)
   }
 
@@ -707,16 +723,20 @@ export function CaseDocuments({ caseId }: { caseId: string }) {
                     <Badge className={TYPE_BADGE[selectedDoc.documentType] ?? 'bg-stone-500 text-white'}>{selectedDoc.documentType}</Badge>
                   </div>
                 )}
+                {hasValue(selectedDoc?.documentDate) && (
                 <div className="flex items-center gap-2">
                   <Calendar className="w-3 h-3 text-muted-foreground shrink-0" />
                   <span className="text-muted-foreground w-24">Дата документа:</span>
-                  <span className="font-medium">{selectedDoc?.documentDate ?? '—'}</span>
+                  <span className="font-medium">{selectedDoc?.documentDate}</span>
                 </div>
+                )}
+                {hasValue(selectedDoc?.sourceReference) && (
                 <div className="flex items-center gap-2">
                   <BookOpen className="w-3 h-3 text-muted-foreground shrink-0" />
                   <span className="text-muted-foreground w-24">Источник:</span>
-                  <span className="font-medium">{selectedDoc?.sourceReference ?? '—'}</span>
+                  <span className="font-medium">{selectedDoc?.sourceReference}</span>
                 </div>
+                )}
                 <div className="flex items-center gap-2">
                   <FileText className="w-3 h-3 text-muted-foreground shrink-0" />
                   <span className="text-muted-foreground w-24">Размер файла:</span>

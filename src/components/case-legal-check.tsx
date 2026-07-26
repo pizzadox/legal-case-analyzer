@@ -44,9 +44,9 @@ export function CaseLegalCheck() {
   const [searchQuery, setSearchQuery] = useState('')
 
   const checkMutation = useMutation({ mutationFn: (params: { documentId?: string; articleId?: string }) => checkCompliance(params.documentId, params.articleId), onSuccess: () => toast.success('Проверка завершена'), onError: () => toast.error('Ошибка проверки') })
-  const { data: compData } = useQuery({ queryKey: ['compliance-results'], queryFn: getComplianceResults, retry: 1 })
-  const { data: docData } = useQuery({ queryKey: ['documents'], queryFn: getDocuments, retry: 1 })
-  const { data: auditData } = useQuery({ queryKey: ['audit-log'], queryFn: () => getAuditLog(20), retry: 1 })
+  const { data: compData } = useQuery({ queryKey: ['compliance-results'], queryFn: getComplianceResults, retry: 1, refetchInterval: 10000 })
+  const { data: docData } = useQuery({ queryKey: ['documents'], queryFn: getDocuments, retry: 1, refetchInterval: 10000 })
+  const { data: auditData } = useQuery({ queryKey: ['audit-log'], queryFn: () => getAuditLog(20), retry: 1, refetchInterval: 10000 })
 
   const checks = compData ?? mockComplianceChecks
   const documents = docData ?? mockDocuments

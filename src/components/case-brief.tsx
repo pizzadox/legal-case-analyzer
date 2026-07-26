@@ -37,11 +37,16 @@ const VIOLATION_CONFIG: Record<string, { label: string; badge: string; border: s
 
 const SCENARIO_COLORS = ['#dc2626', '#ea580c', '#ca8a04', '#059669']
 
+function hasValue(v: unknown): boolean {
+  return v != null && v !== '' && v !== undefined && v !== '—'
+}
+
 export function CaseBrief() {
   const { data, isLoading, refetch, isFetching } = useQuery({
     queryKey: ['case-brief'],
     queryFn: getCaseBrief,
     retry: 1,
+    refetchInterval: 10000,
   })
   const brief: CaseBriefData = data ?? mockCaseBrief
 
@@ -92,12 +97,12 @@ export function CaseBrief() {
       <Card className="rounded-xl shadow-sm border-l-4 border-emerald-700">
         <CardContent className="p-4">
           <div className="flex items-center gap-2 mb-2">
-            <Badge className="bg-emerald-700 text-white">Дело № {brief.caseNumber}</Badge>
-            <Badge variant="outline" className="text-xs">{brief.keyDefendants.length} обвиняемых</Badge>
-            <Badge variant="outline" className="text-xs">{brief.keyEpisodes.length} эпизодов</Badge>
+            {hasValue(brief.caseNumber) && <Badge className="bg-emerald-700 text-white">Дело № {brief.caseNumber}</Badge>}
+            {brief.keyDefendants.length > 0 && <Badge variant="outline" className="text-xs">{brief.keyDefendants.length} обвиняемых</Badge>}
+            {brief.keyEpisodes.length > 0 && <Badge variant="outline" className="text-xs">{brief.keyEpisodes.length} эпизодов</Badge>}
           </div>
-          <h3 className="text-base font-bold">{brief.caseTitle}</h3>
-          <p className="text-sm text-muted-foreground mt-2">{brief.summary}</p>
+          {hasValue(brief.caseTitle) && <h3 className="text-base font-bold">{brief.caseTitle}</h3>}
+          {hasValue(brief.summary) && <p className="text-sm text-muted-foreground mt-2">{brief.summary}</p>}
         </CardContent>
       </Card>
 
@@ -113,7 +118,7 @@ export function CaseBrief() {
                     <p className="font-semibold text-sm flex-1 min-w-0 break-words pr-2 leading-tight">{d.name}</p>
                     <Badge className={GUILT_BADGE[d.guiltLevel] ?? 'bg-stone-500 text-white'}>Вина: {GUILT_LABEL[d.guiltLevel] ?? d.guiltLevel}</Badge>
                   </div>
-                  <p className="text-xs text-muted-foreground mt-0.5">Роль: {d.role}</p>
+                  {hasValue(d.role) && <p className="text-xs text-muted-foreground mt-0.5">Роль: {d.role}</p>}
                   <div className="flex flex-wrap gap-1 mt-2">
                     {d.articles.map((a, j) => <Badge key={j} variant="outline" className="text-xs gap-1"><Scale className="w-2.5 h-2.5" />{a}</Badge>)}
                   </div>
@@ -133,7 +138,7 @@ export function CaseBrief() {
                 <Card key={i} className="rounded-lg shadow-none border-l-4 border-amber-600 transition-all duration-200 hover:scale-[1.02]">
                   <CardContent className="p-3">
                     <p className="font-semibold text-sm">{e.title}</p>
-                    <p className="text-xs text-muted-foreground mt-0.5">{new Date(e.date).toLocaleDateString('ru-RU', { day: '2-digit', month: 'long', year: 'numeric' })}</p>
+                    {hasValue(e.date) && <p className="text-xs text-muted-foreground mt-0.5">{new Date(e.date).toLocaleDateString('ru-RU', { day: '2-digit', month: 'long', year: 'numeric' })}</p>}
                     <div className="flex gap-1 mt-2">
                       <Badge className={sevBadge}>{e.severity}</Badge>
                       <Badge className={stBadge}>{e.status}</Badge>
@@ -158,8 +163,8 @@ export function CaseBrief() {
                   <div key={i} className="flex items-start gap-2 p-2 rounded-lg bg-muted/50 transition-colors hover:bg-muted">
                     <div className={`w-2 h-2 rounded-full ${cfg.dot} mt-1.5 shrink-0`} />
                     <div className="flex-1 min-w-0">
-                      <p className="text-xs font-medium">{e.description}</p>
-                      <p className="text-xs text-muted-foreground">{e.source}</p>
+                      {hasValue(e.description) && <p className="text-xs font-medium">{e.description}</p>}
+                      {hasValue(e.source) && <p className="text-xs text-muted-foreground">{e.source}</p>}
                     </div>
                     <Badge variant="outline" className={`text-xs ${cfg.color}`}>{cfg.label}</Badge>
                   </div>
@@ -182,7 +187,7 @@ export function CaseBrief() {
                         <p className="text-xs font-medium flex-1">{v.description}</p>
                         <Badge className={cfg.badge}>{cfg.label}</Badge>
                       </div>
-                      <p className="text-xs text-muted-foreground mt-1 gap-1 flex items-center"><Scale className="w-2.5 h-2.5" />{v.legalBasis}</p>
+                      {hasValue(v.legalBasis) && <p className="text-xs text-muted-foreground mt-1 gap-1 flex items-center"><Scale className="w-2.5 h-2.5" />{v.legalBasis}</p>}
                     </CardContent>
                   </Card>
                 )
@@ -197,13 +202,13 @@ export function CaseBrief() {
         <Card className="rounded-xl shadow-sm border-l-4 border-emerald-700">
           <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2"><Shield className="w-4 h-4 text-emerald-700" /> Резюме защиты</CardTitle></CardHeader>
           <CardContent className="p-4">
-            <p className="text-sm text-foreground/80">{brief.defenseSummary}</p>
+            {hasValue(brief.defenseSummary) ? <p className="text-sm text-foreground/80">{brief.defenseSummary}</p> : <p className="text-xs text-muted-foreground italic">Данные загружаются...</p>}
           </CardContent>
         </Card>
         <Card className="rounded-xl shadow-sm border-l-4 border-red-700">
           <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2"><Gavel className="w-4 h-4 text-red-700" /> Резюме обвинения</CardTitle></CardHeader>
           <CardContent className="p-4">
-            <p className="text-sm text-foreground/80">{brief.prosecutionSummary}</p>
+            {hasValue(brief.prosecutionSummary) ? <p className="text-sm text-foreground/80">{brief.prosecutionSummary}</p> : <p className="text-xs text-muted-foreground italic">Данные загружаются...</p>}
           </CardContent>
         </Card>
       </div>

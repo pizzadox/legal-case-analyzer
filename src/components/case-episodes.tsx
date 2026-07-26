@@ -138,7 +138,7 @@ export function CaseEpisodes({ caseId }: { caseId: string }) {
   const [statusFilter, setStatusFilter] = useState('all')
   const [searchQuery, setSearchQuery] = useState('')
   const [expandedEpisodes, setExpandedEpisodes] = useState<Set<string>>(new Set())
-  const { data, isLoading } = useQuery({ queryKey: ['episodes', caseId], queryFn: () => getEpisodes(caseId), enabled: !!caseId, retry: 1 })
+  const { data, isLoading } = useQuery({ queryKey: ['episodes', caseId], queryFn: () => getEpisodes(caseId), enabled: !!caseId, retry: 1, refetchInterval: 10000 })
   const episodes = data ?? []
 
   // ─── Filtered episodes ────────────────────────────────────────────────────
@@ -635,9 +635,11 @@ export function CaseEpisodes({ caseId }: { caseId: string }) {
                           <div className="space-y-2">
                             {episode.persons.map(p => (
                               <div key={p.personId} className="flex items-center gap-2 p-2 rounded-lg bg-stone-50/50 dark:bg-stone-800/20">
-                                <Badge className={`${INVOLVEMENT[p.involvement ?? ''] ?? 'bg-stone-500 text-white'} text-xs font-semibold shrink-0`}>
-                                  {p.involvement ?? '—'}
-                                </Badge>
+                                {hasValue(p.involvement) && (
+                                  <Badge className={`${INVOLVEMENT[p.involvement ?? ''] ?? 'bg-stone-500 text-white'} text-xs font-semibold shrink-0`}>
+                                    {p.involvement}
+                                  </Badge>
+                                )}
                                 <span className="text-sm font-medium">{personLabel(p)}</span>
                                 {p.person?.role && (
                                   <Badge variant="outline" className="text-xs shrink-0">{p.person.role}</Badge>
@@ -660,16 +662,18 @@ export function CaseEpisodes({ caseId }: { caseId: string }) {
                               <div key={a.articleId} className="p-2 rounded-lg bg-red-50/40 dark:bg-red-950/20 border border-red-200/50 dark:border-red-900/30">
                                 <div className="flex items-center gap-2">
                                   <Badge className="bg-red-700 text-white text-xs font-semibold shrink-0">{articleCode(a)}</Badge>
-                                  <span className="text-xs font-medium">{a.article?.description ?? '—'}</span>
+                                  {hasValue(a.article?.description) && <span className="text-xs font-medium">{a.article.description}</span>}
                                 </div>
                                 {/* Punishment preview */}
-                                {a.article && (
+                                {a.article && (hasValue(a.article.punishmentMin) || hasValue(a.article.punishmentMax) || hasValue(a.article.category)) && (
                                   <div className="mt-1.5 text-xs space-y-0.5 ml-1">
-                                    <li className="flex items-center gap-1">
-                                      <Gavel className="w-2.5 h-2.5 text-red-600" />
-                                      Наказание: {a.article.punishmentMin ?? '—'} — {a.article.punishmentMax ?? '—'}
-                                    </li>
-                                    <li className="text-muted-foreground">Категория: {a.article.category ?? '—'}</li>
+                                    {(hasValue(a.article.punishmentMin) || hasValue(a.article.punishmentMax)) && (
+                                      <li className="flex items-center gap-1">
+                                        <Gavel className="w-2.5 h-2.5 text-red-600" />
+                                        Наказание: {a.article.punishmentMin ?? ''}{hasValue(a.article.punishmentMin) && hasValue(a.article.punishmentMax) ? ' — ' : ''}{a.article.punishmentMax ?? ''}
+                                      </li>
+                                    )}
+                                    {hasValue(a.article.category) && <li className="text-muted-foreground">Категория: {a.article.category}</li>}
                                   </div>
                                 )}
                               </div>

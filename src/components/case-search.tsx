@@ -66,7 +66,7 @@ function EpisodeCard({ episode }: { episode: EpisodeData }) {
 }
 
 function CrossRefCard({ cr }: { cr: { id: string; referenceText: string; referenceType: string | null; sourceDocument: DocumentData; targetDocument: DocumentData } }) {
-  return (<Card className="rounded-xl shadow-sm transition-all hover:shadow-md group"><CardContent className="p-4"><div className="flex items-start gap-3"><div className="w-10 h-10 rounded-lg bg-stone-50 dark:bg-stone-900/30 flex items-center justify-center shrink-0"><Link2 className="w-5 h-5 text-stone-600" /></div><div className="flex-1 min-w-0"><div className="flex items-center gap-2 mb-1.5"><Badge className={`${TYPE_B[cr.sourceDocument.documentType ?? ''] ?? 'bg-stone-500 text-white'} text-xs shrink-0`}>{cr.sourceDocument.documentType ?? '—'}</Badge><span className="text-xs font-medium truncate max-w-[10rem]">{cr.sourceDocument.originalName}</span><ArrowRight className="w-3.5 h-3.5 text-muted-foreground shrink-0" /><Badge className={`${TYPE_B[cr.targetDocument.documentType ?? ''] ?? 'bg-stone-500 text-white'} text-xs shrink-0`}>{cr.targetDocument.documentType ?? '—'}</Badge><span className="text-xs font-medium truncate max-w-[10rem]">{cr.targetDocument.originalName}</span></div>{cr.referenceType && <Badge className={`${LINK_B[cr.referenceType] ?? 'border-stone-300 text-stone-500'} text-xs shrink-0 mb-1.5`}>{cr.referenceType}</Badge>}<p className="text-xs text-muted-foreground line-clamp-2 group-hover:text-foreground/80">{trunc(cr.referenceText, 120)}</p></div></div></CardContent></Card>)
+  return (<Card className="rounded-xl shadow-sm transition-all hover:shadow-md group"><CardContent className="p-4"><div className="flex items-start gap-3"><div className="w-10 h-10 rounded-lg bg-stone-50 dark:bg-stone-900/30 flex items-center justify-center shrink-0"><Link2 className="w-5 h-5 text-stone-600" /></div><div className="flex-1 min-w-0"><div className="flex items-center gap-2 mb-1.5">{cr.sourceDocument.documentType && <Badge className={`${TYPE_B[cr.sourceDocument.documentType ?? ''] ?? 'bg-stone-500 text-white'} text-xs shrink-0`}>{cr.sourceDocument.documentType}</Badge>}<span className="text-xs font-medium truncate max-w-[10rem]">{cr.sourceDocument.originalName}</span><ArrowRight className="w-3.5 h-3.5 text-muted-foreground shrink-0" />{cr.targetDocument.documentType && <Badge className={`${TYPE_B[cr.targetDocument.documentType ?? ''] ?? 'bg-stone-500 text-white'} text-xs shrink-0`}>{cr.targetDocument.documentType}</Badge>}<span className="text-xs font-medium truncate max-w-[10rem]">{cr.targetDocument.originalName}</span></div>{cr.referenceType && <Badge className={`${LINK_B[cr.referenceType] ?? 'border-stone-300 text-stone-500'} text-xs shrink-0 mb-1.5`}>{cr.referenceType}</Badge>}<p className="text-xs text-muted-foreground line-clamp-2 group-hover:text-foreground/80">{trunc(cr.referenceText, 120)}</p></div></div></CardContent></Card>)
 }
 
 function BookmarksPanel({ bookmarks }: { bookmarks: BookmarkData[] }) {
@@ -92,8 +92,8 @@ export function CaseSearch() {
   const inputRef = useRef<HTMLInputElement>(null)
 
   const searchMutation = useMutation({ mutationFn: (params: { query: string; filterType: string }) => caseApi.search(params) })
-  const { data: bkData } = useQuery({ queryKey: ['bookmarks'], queryFn: caseApi.getBookmarks, retry: 1 })
-  const { data: crData } = useQuery({ queryKey: ['cross-ref-graph'], queryFn: caseApi.getCrossRefGraph, retry: 1 })
+  const { data: bkData } = useQuery({ queryKey: ['bookmarks'], queryFn: caseApi.getBookmarks, retry: 1, refetchInterval: 10000 })
+  const { data: crData } = useQuery({ queryKey: ['cross-ref-graph'], queryFn: caseApi.getCrossRefGraph, retry: 1, refetchInterval: 10000 })
 
   const results = searchMutation.data ?? mockSearchResults
   const bookmarks = bkData ?? mockBookmarks

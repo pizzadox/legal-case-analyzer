@@ -219,21 +219,25 @@ export function CaseExportCenter({ caseId }: { caseId: string }) {
     queryKey: ['documents', caseId],
     queryFn: () => caseApi.getDocuments(caseId),
     enabled: !!caseId,
+    refetchInterval: 10000,
   })
   const { data: persons = [] } = useQuery({
     queryKey: ['persons', caseId],
     queryFn: () => caseApi.getPersons(caseId),
     enabled: !!caseId,
+    refetchInterval: 10000,
   })
   const { data: episodes = [] } = useQuery({
     queryKey: ['episodes', caseId],
     queryFn: () => caseApi.getEpisodes(caseId),
     enabled: !!caseId,
+    refetchInterval: 10000,
   })
   const { data: dashboard } = useQuery({
     queryKey: ['dashboard', caseId],
     queryFn: () => caseApi.getDashboardStats(caseId),
     enabled: !!caseId,
+    refetchInterval: 10000,
   })
 
   const exportData = { documents, persons, episodes, dashboard }

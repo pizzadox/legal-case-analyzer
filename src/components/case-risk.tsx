@@ -141,8 +141,8 @@ function SentencingTable({ data }: { data: SentencingData[] }) {
 
 export function CaseRisk() {
   const [tab, setTab] = useState<'plea' | 'risk' | 'sentencing'>('plea')
-  const { data: riskData } = useQuery({ queryKey: ['risk-assessment'], queryFn: getRiskAssessment, retry: 1 })
-  const { data: sentData } = useQuery({ queryKey: ['sentencing'], queryFn: getSentencing, retry: 1 })
+  const { data: riskData } = useQuery({ queryKey: ['risk-assessment'], queryFn: getRiskAssessment, retry: 1, refetchInterval: 10000 })
+  const { data: sentData } = useQuery({ queryKey: ['sentencing'], queryFn: getSentencing, retry: 1, refetchInterval: 10000 })
   const risk = riskData ?? mockRiskAssessment, sent = sentData ?? mockSentencing
 
   return (<div className="space-y-4">

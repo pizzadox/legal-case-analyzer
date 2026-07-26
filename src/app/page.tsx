@@ -11,7 +11,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuLabel, DropdownMenuSeparator } from '@/components/ui/dropdown-menu'
 import { CommandDialog, CommandInput, CommandList, CommandEmpty, CommandGroup, CommandItem, CommandSeparator, CommandShortcut } from '@/components/ui/command'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { LayoutDashboard, FileText, Users, BookOpen, Search, MessageSquare, Shield, Scale, Sun, Moon, PanelLeft, Bell, HelpCircle, CheckCircle, AlertTriangle, XCircle, Clock, Zap, CalendarClock, TrendingUp, BarChart3, Command as CommandIcon, Activity, ArrowRight, Settings, Gauge, RefreshCw, Swords, Gavel, Link2, Eye, Plus, FolderOpen, Check } from 'lucide-react'
+import { LayoutDashboard, FileText, Users, BookOpen, Search, MessageSquare, Shield, Scale, Sun, Moon, PanelLeft, Bell, HelpCircle, CheckCircle, AlertTriangle, XCircle, Clock, Zap, CalendarClock, TrendingUp, BarChart3, Command as CommandIcon, Activity, ArrowRight, Settings, Gauge, RefreshCw, Swords, Gavel, Link2, Eye, Plus, FolderOpen, Check, Loader2 } from 'lucide-react'
 import { useTheme } from 'next-themes'
 import { toast } from 'sonner'
 import type { SectionId, NotificationData, CriminalCaseData } from '@/lib/case-store'
@@ -20,24 +20,27 @@ import * as caseApi from '@/lib/case-api'
 import { Input } from '@/components/ui/input'
 import { mockNotifications } from '@/lib/mock-data'
 
-import { CaseDashboard } from '@/components/case-dashboard'
-import { CaseDocuments } from '@/components/case-documents'
-import { CasePersons } from '@/components/case-persons'
-import { CaseEpisodes } from '@/components/case-episodes'
-import { CaseSearch } from '@/components/case-search'
-import { CaseQa } from '@/components/case-qa'
-import { CaseDefense } from '@/components/case-defense'
-import { CaseLegalCheck } from '@/components/case-legal-check'
-import { CaseTimeline } from '@/components/case-timeline'
-import { CaseEvidenceChain } from '@/components/case-evidence-chain'
-import { CaseRisk } from '@/components/case-risk'
-import { CaseWitnessMatrix } from '@/components/case-witness-matrix'
-import { CaseBrief } from '@/components/case-brief'
-import { CaseAnalytics } from '@/components/case-analytics'
-import { CaseExportCenter } from '@/components/case-export-center'
-import { CaseBattlePlan } from '@/components/case-battle-plan'
-import { CaseViolations } from '@/components/case-violations'
+import { lazy, Suspense } from 'react'
 import { ErrorBoundary } from '@/components/error-boundary'
+
+// Lazy-load all section components to reduce initial bundle size and memory usage
+const CaseDashboard = lazy(() => import('@/components/case-dashboard').then(m => ({ default: m.CaseDashboard })))
+const CaseDocuments = lazy(() => import('@/components/case-documents').then(m => ({ default: m.CaseDocuments })))
+const CasePersons = lazy(() => import('@/components/case-persons').then(m => ({ default: m.CasePersons })))
+const CaseEpisodes = lazy(() => import('@/components/case-episodes').then(m => ({ default: m.CaseEpisodes })))
+const CaseSearch = lazy(() => import('@/components/case-search').then(m => ({ default: m.CaseSearch })))
+const CaseQa = lazy(() => import('@/components/case-qa').then(m => ({ default: m.CaseQa })))
+const CaseDefense = lazy(() => import('@/components/case-defense').then(m => ({ default: m.CaseDefense })))
+const CaseLegalCheck = lazy(() => import('@/components/case-legal-check').then(m => ({ default: m.CaseLegalCheck })))
+const CaseTimeline = lazy(() => import('@/components/case-timeline').then(m => ({ default: m.CaseTimeline })))
+const CaseEvidenceChain = lazy(() => import('@/components/case-evidence-chain').then(m => ({ default: m.CaseEvidenceChain })))
+const CaseRisk = lazy(() => import('@/components/case-risk').then(m => ({ default: m.CaseRisk })))
+const CaseWitnessMatrix = lazy(() => import('@/components/case-witness-matrix').then(m => ({ default: m.CaseWitnessMatrix })))
+const CaseBrief = lazy(() => import('@/components/case-brief').then(m => ({ default: m.CaseBrief })))
+const CaseAnalytics = lazy(() => import('@/components/case-analytics').then(m => ({ default: m.CaseAnalytics })))
+const CaseExportCenter = lazy(() => import('@/components/case-export-center').then(m => ({ default: m.CaseExportCenter })))
+const CaseBattlePlan = lazy(() => import('@/components/case-battle-plan').then(m => ({ default: m.CaseBattlePlan })))
+const CaseViolations = lazy(() => import('@/components/case-violations').then(m => ({ default: m.CaseViolations })))
 
 const NAV_ITEMS: { id: SectionId; label: string; icon: React.ReactNode; description: string; shortcut: string }[] = [
   { id: 'dashboard', label: 'Главная', icon: <LayoutDashboard className="h-4 w-4" />, description: 'Обзор дела и статистика', shortcut: '1' },
@@ -88,6 +91,7 @@ export default function CasePage() {
   const { data: cases = [], isLoading: isLoadingCases } = useQuery<CriminalCaseData[]>({
     queryKey: ['criminal-cases'],
     queryFn: () => caseApi.getCases(),
+    refetchInterval: 10000,
   })
 
   // Compute the currently active case
@@ -211,7 +215,7 @@ export default function CasePage() {
           </SidebarGroup>
         </SidebarContent>
         <SidebarFooter>
-          <SidebarMenu><SidebarMenuItem><SidebarMenuButton size="lg"><div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-stone-700 text-white"><Gauge className="size-4" /></div><div className="grid flex-1 text-left text-sm leading-tight"><span className="truncate font-semibold text-xs">Система</span><span className="truncate text-xs text-muted-foreground">v2.0</span></div></SidebarMenuButton></SidebarMenuItem></SidebarMenu>
+          <SidebarMenu><SidebarMenuItem><SidebarMenuButton size="lg"><div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-stone-700 text-white"><Gauge className="size-4" /></div><div className="grid flex-1 text-left text-sm leading-tight"><span className="truncate font-semibold text-xs">Система</span><span className="truncate text-xs text-muted-foreground">v3.0</span></div></SidebarMenuButton></SidebarMenuItem></SidebarMenu>
         </SidebarFooter>
         <SidebarRail />
       </Sidebar>
@@ -263,12 +267,12 @@ export default function CasePage() {
           </div>
         </header>
 
-        <main className="flex-1 overflow-auto"><div className="p-4 md:p-6 max-w-7xl mx-auto"><ErrorBoundary>{renderSection()}</ErrorBoundary></div></main>
+        <main className="flex-1 overflow-auto"><div className="p-4 md:p-6 max-w-7xl mx-auto"><ErrorBoundary><Suspense fallback={<div className="flex items-center justify-center h-64"><Loader2 className="w-8 h-8 animate-spin text-muted-foreground" /></div>}>{renderSection()}</Suspense></ErrorBoundary></div></main>
 
         <footer className="border-t bg-muted/30 px-4 py-3 mt-auto">
           <div className="flex items-center justify-between gap-3 text-xs text-stone-500 dark:text-stone-400">
             <span className="truncate">Система Управления Уголовным Делом • {activeCase ? `Дело ${activeCase.caseNumber}` : 'Дело № ...'} • {activeCase?.defendantName || '...'}</span>
-            <span className="shrink-0 font-medium text-stone-600 dark:text-stone-300">ИИ-аналитик v2.0</span>
+            <span className="shrink-0 font-medium text-stone-600 dark:text-stone-300">ИИ-аналитик v3.0</span>
           </div>
         </footer>
 

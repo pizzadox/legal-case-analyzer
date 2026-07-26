@@ -218,7 +218,7 @@ function StatsBar({ stats, onNavigate }: { stats: typeof mockDashboardStats; onN
   const defR = stats.defenseLines.total > 0 ? Math.round(((stats.defenseLines.byStrength.strong ?? 0) / stats.defenseLines.total) * 100) : 0
   const items = [
     { label: 'Документы', value: s.totalDocuments, delta: `${procR}% обработано`, deltaType: procR >= 70 ? 'up' as const : 'flat' as const, icon: FileText, iconBg: 'bg-red-700/15', iconColor: 'text-red-700', border: 'border-t-red-500', gradient: 'from-card via-card to-red-500/5', progressValue: procR, onClick: () => onNavigate('documents') },
-    { label: 'Участники', value: s.totalPersons, delta: stats.persons.kolesnichenko ? '1 обвиняемый' : '—', deltaType: 'flat' as const, icon: Users, iconBg: 'bg-orange-600/15', iconColor: 'text-orange-600', border: 'border-t-orange-500', gradient: 'from-card via-card to-orange-500/5', progressValue: 20, onClick: () => onNavigate('persons') },
+    { label: 'Участники', value: s.totalPersons, delta: stats.persons.kolesnichenko ? '1 обвиняемый' : undefined, deltaType: stats.persons.kolesnichenko ? 'flat' as const : undefined, icon: Users, iconBg: 'bg-orange-600/15', iconColor: 'text-orange-600', border: 'border-t-orange-500', gradient: 'from-card via-card to-orange-500/5', progressValue: 20, onClick: () => onNavigate('persons') },
     { label: 'Эпизоды', value: s.totalEpisodes, delta: `${stats.episodes.byStatus['доказано'] ?? 0} доказано`, deltaType: 'up' as const, icon: BookOpen, iconBg: 'bg-amber-600/15', iconColor: 'text-amber-600', border: 'border-t-amber-500', gradient: 'from-card via-card to-amber-500/5', progressValue: 33, onClick: () => onNavigate('episodes') },
     { label: 'Статьи УК', value: s.totalArticles, delta: 'активные статьи', deltaType: 'flat' as const, icon: Scale, iconBg: 'bg-stone-600/15', iconColor: 'text-stone-600', border: 'border-t-stone-500', gradient: 'from-card via-card to-stone-500/5', progressValue: 100, onClick: () => onNavigate('legal-check') },
     { label: 'Соответствие', value: compR, delta: `${stats.complianceChecks.total} проверок`, deltaType: compR >= 70 ? 'up' as const : 'down' as const, icon: ShieldCheck, iconBg: 'bg-emerald-700/15', iconColor: 'text-emerald-700', border: 'border-t-emerald-500', gradient: 'from-card via-card to-emerald-500/5', progressValue: compR, onClick: () => onNavigate('legal-check') },
@@ -239,13 +239,13 @@ function MiniTimeline({ events, onNavigate }: { events: CaseTimelineEvent[]; onN
 
 export function CaseDashboard({ caseId }: { caseId: string }) {
   const { setActiveSection } = useCaseStore()
-  const { data, isLoading } = useQuery({ queryKey: ['dashboard', caseId], queryFn: () => getDashboardStats(caseId), retry: 1, enabled: !!caseId })
-  const { data: healthData } = useQuery({ queryKey: ['health-score'], queryFn: getCaseHealthScore, retry: 1 })
-  const { data: tlData } = useQuery({ queryKey: ['evidence-timeline'], queryFn: getEvidenceTimeline, retry: 1 })
-  const { data: briefData } = useQuery({ queryKey: ['case-brief'], queryFn: getCaseBrief, retry: 1 })
-  const { data: bkData } = useQuery({ queryKey: ['bookmarks'], queryFn: getBookmarks, retry: 1 })
-  const { data: ctData } = useQuery({ queryKey: ['case-timeline'], queryFn: getCaseTimeline, retry: 1 })
-  const { data: auData } = useQuery({ queryKey: ['audit-log'], queryFn: () => getAuditLog(10), retry: 1 })
+  const { data, isLoading } = useQuery({ queryKey: ['dashboard', caseId], queryFn: () => getDashboardStats(caseId), retry: 1, enabled: !!caseId, refetchInterval: 10000 })
+  const { data: healthData } = useQuery({ queryKey: ['health-score'], queryFn: getCaseHealthScore, retry: 1, refetchInterval: 10000 })
+  const { data: tlData } = useQuery({ queryKey: ['evidence-timeline'], queryFn: getEvidenceTimeline, retry: 1, refetchInterval: 10000 })
+  const { data: briefData } = useQuery({ queryKey: ['case-brief'], queryFn: getCaseBrief, retry: 1, refetchInterval: 10000 })
+  const { data: bkData } = useQuery({ queryKey: ['bookmarks'], queryFn: getBookmarks, retry: 1, refetchInterval: 10000 })
+  const { data: ctData } = useQuery({ queryKey: ['case-timeline'], queryFn: getCaseTimeline, retry: 1, refetchInterval: 10000 })
+  const { data: auData } = useQuery({ queryKey: ['audit-log'], queryFn: () => getAuditLog(10), retry: 1, refetchInterval: 10000 })
   const stats = data ?? mockDashboardStats, hs = healthData ?? mockCaseHealthScore, evs = tlData ?? mockEvidenceTimeline, brief = briefData ?? mockCaseBrief, bks = bkData ?? mockBookmarks, ct = ctData ?? mockCaseTimeline, au = auData ?? mockAuditLog
   if (isLoading) return <div className="grid grid-cols-2 md:grid-cols-4 gap-4">{[0,1,2,3].map(i => <Skeleton key={i} className="h-24" />)}</div>
 
