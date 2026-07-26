@@ -90,16 +90,121 @@
 - **OOM memory risk**: Server may still crash with heavy usage; 256MB limit is minimal
 - **Large file processing**: Base64 encoding for large files (500MB) will consume significant memory
 - **Preview URL**: The preview URL at space-z.ai shows a Z.ai default page instead of our app (gateway routing issue)
-- **Mock data fallbacks**: Some API functions in case-api.ts still fall back to mock data for missing endpoints (health-score, timeline, relationships, etc.)
+- **Mock data fallbacks**: ~~Some API functions in case-api.ts still fall back to mock data~~ **RESOLVED** — All mock data fallbacks removed in Task ID 1 session; now returns empty arrays/objects
 - **Export CSV/PDF**: Export buttons on Documents tab work (client-side CSV/PDF generation), but Export Center tab may still use mock data
 - **Real-time updates**: Still using polling (refetchInterval) instead of WebSocket
 
 ### Next Steps Recommendations
 
 - Test document upload and processing end-to-end with a real file
-- Remove remaining mock data fallbacks from case-api.ts for real DB endpoints
+- ~~Remove remaining mock data fallbacks from case-api.ts~~ **DONE in Task ID 1**
 - Add WebSocket for real-time processing updates
 - Implement proper Export CSV/PDF in case-export-center.tsx
 - Add file serving endpoint for viewing uploaded documents inline
 - Clear stale processing queue entries and failed documents from DB
 - Optimize memory usage for large file uploads (streaming base64)
+
+---
+
+## Session 2026-03-05: Fix mock data, side panel, evidence chain, AI insights (Task ID: 1)
+
+### Completed Tasks
+
+1. **Fixed side panel overflow in case-documents.tsx**
+   - Changed `<SheetContent>` to add `h-full` class for proper height management
+   - Wrapped inner content area with `<ScrollArea className="flex-1 overflow-y-auto">` instead of a plain `<div>` with `overflow-y-auto`
+   - SheetHeader stays fixed at top with `shrink-0` and `border-b`
+   - ScrollArea ensures all content (metadata, extracted text, annotations, actions) scrolls properly without overlapping sections
+
+2. **Removed hardcoded mock data from AI Insights section**
+   - Replaced entire hardcoded "ИИ-инсайты по документам" section with dynamic data derived from actual `documents` array
+   - Section only renders if there are completed documents (`documents.filter(d => d.processingStatus === 'completed').length > 0`)
+   - Dynamic insights computed from case documents:
+     - Document types found in this case (from `documentType` field) with counts
+     - Total pages estimated from file sizes
+     - Average processing time calculated from `uploadedAt → processedAt` timestamps
+     - Source references extracted from completed documents as entities
+   - Removed all hardcoded data: "Колесниченко Д.А.", "ООО 'ФинансГрупп'", "ст. 159 ч.3 УК РФ", "г. Москва", "15.03.2024", "бухгалтер", language counts, "2.4 сек/док", "-15% к прошлой неделе"
+
+3. **Fixed Evidence Chain section on Documents tab**
+   - Changed `useQuery` for evidence chain from `queryKey: ['evidence-chain']` to `queryKey: ['evidence-chain', caseId]`
+   - Changed `queryFn: caseApi.getEvidenceChain` to `queryFn: () => caseApi.getEvidenceChain(caseId)`
+   - Added `enabled: !!caseId` to only fetch when caseId is available
+   - Evidence chain data now only shows items related to the current case's documents
+
+4. **Fixed case-api.ts getEvidenceChain function**
+   - Changed `getEvidenceChain()` to `getEvidenceChain(caseId?: string)`
+   - Added `caseId` parameter with query string: `?caseId=${caseId}`
+   - Changed catch block from importing `mockEvidenceChain` to returning `[]` (empty array)
+
+5. **Fixed evidence-chain API route**
+   - Changed from returning hardcoded `mockEvidenceChain` to using real database via Prisma
+   - Accepts `caseId` via URL query parameter
+   - Returns empty array `[]` if no `caseId` is provided
+   - Fetches completed documents for the case from DB: `db.document.findMany({ where: { caseId, processingStatus: 'completed' } })`
+   - Builds evidence chain data from actual document records:
+     - Each document becomes an evidence item with chain steps (upload → AI processing)
+     - Integrity score set to 85, admissibility set to 'admissible', no challenges
+
+6. **Removed ALL mock data fallbacks from case-api.ts**
+   - Replaced all `await import('./mock-data')` fallbacks with empty defaults
+   - `getCaseHealthScore` → returns empty `CaseHealthScore` object with score: 0 and empty factors
+   - `getEvidenceTimeline` → returns `[]`
+   - `getPersonRelationships` → returns `[]`
+   - `getDefenseImprovements` → returns `[]`
+   - `getNotifications` → returns `[]`
+   - `getCrossRefGraph` → returns `[]`
+   - `getCaseBrief` → returns empty `CaseBriefData` object with all arrays empty and aiConfidence: 0
+   - `getRiskAssessment` → returns empty `RiskAssessmentData` object with overallRisk: 0, riskLevel: 'low', empty factors
+   - `getSentencing` → returns `[]`
+   - `getEvidenceChain` → returns `[]` (already handled above)
+   - `getAuditLog` → returns `[]`
+   - `getCaseTimeline` → returns `[]`
+   - `getBookmarks` → returns `[]`
+   - `getWitnessStatements` → returns `[]`
+   - `getAnalytics` → returns empty `AnalyticsData` object with all arrays empty and complexity rating: 'low'
+
+### Files Modified
+
+- `src/components/case-documents.tsx` — Side panel ScrollArea fix, AI Insights dynamic data, evidence chain caseId filtering
+- `src/lib/case-api.ts` — getEvidenceChain caseId parameter, all mock data fallbacks removed
+- `src/app/api/case/evidence-chain/route.ts` — Real DB-based evidence chain with caseId filtering
+- `worklog.md` — Updated unresolved issues and next steps
+
+---
+
+## Session 2026-03-04: Add case deletion feature (Task ID: 2)
+
+### Completed Tasks
+
+1. **Added case deletion feature to case selector dropdown** (`src/app/page.tsx`)
+   - Added `Trash2` icon import from lucide-react
+   - Added `deleteCaseDialogId` and `isDeletingCase` state variables
+   - Added `deleteCase` computed memo to find the case being deleted
+   - Added `handleDeleteCase` async function that:
+     - Calls `caseApi.deleteCase(caseId)` to delete the case via `DELETE /api/case/cases/[caseId]`
+     - Invalidates all case-related queries: `criminal-cases`, `documents`, `persons`, `episodes`, `dashboard`, `evidence-chain`
+     - If the deleted case was the active case, switches to the first remaining case (or clears active case if no cases remain)
+     - Updates localStorage and Zustand store accordingly
+     - Shows success/error toast notifications
+   - Added "Удалить текущее дело" DropdownMenuItem in the case selector dropdown, after a separator, below "Новое дело"
+     - Styled with red-700 text color and red focus background to signal danger
+     - Only shown when there is an active case
+   - Added confirmation Dialog (`<Dialog>`) for case deletion:
+     - Shows AlertTriangle icon with red-700 color
+     - Displays case number of the case being deleted
+     - Warning text: "Все связанные данные (документы, участники, эпизоды) будут удалены навсегда."
+     - "Отмена" (Cancel) and "Удалить дело" (Delete case) buttons
+     - Delete button styled with red-700 background, disabled during deletion
+     - Shows "Удаление..." loading text while deleting
+
+### Files Modified
+
+- `src/app/page.tsx` — Added delete case functionality (state, handler, dropdown item, confirmation dialog)
+
+### Technical Notes
+
+- Backend API already supported deletion: `DELETE /api/case/cases/[caseId]` and `caseApi.deleteCase(caseId)` were already implemented
+- The delete option is placed after a separator in the dropdown to avoid accidental clicks
+- The confirmation dialog prevents accidental deletion by requiring explicit user confirmation
+- All related query caches are invalidated after deletion to ensure UI consistency

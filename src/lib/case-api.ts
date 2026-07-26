@@ -286,9 +286,15 @@ export async function getCaseHealthScore(): Promise<CaseHealthScore> {
   try {
     return await fetchApi<CaseHealthScore>('/health-score')
   } catch {
-    // Fallback to mock data
-    const { mockCaseHealthScore } = await import('./mock-data')
-    return mockCaseHealthScore
+    return {
+      score: 0,
+      factors: {
+        documentProcessing: { value: 0, label: '', tooltip: '' },
+        complianceRate: { value: 0, label: '', tooltip: '' },
+        evidenceStrength: { value: 0, label: '', tooltip: '' },
+        defenseCoverage: { value: 0, label: '', tooltip: '' },
+      },
+    }
   }
 }
 
@@ -297,8 +303,7 @@ export async function getEvidenceTimeline(): Promise<EvidenceTimelineEvent[]> {
   try {
     return await fetchApi<EvidenceTimelineEvent[]>('/timeline')
   } catch {
-    const { mockEvidenceTimeline } = await import('./mock-data')
-    return mockEvidenceTimeline
+    return []
   }
 }
 
@@ -307,8 +312,7 @@ export async function getPersonRelationships(): Promise<PersonRelationship[]> {
   try {
     return await fetchApi<PersonRelationship[]>('/relationships')
   } catch {
-    const { mockPersonRelationships } = await import('./mock-data')
-    return mockPersonRelationships
+    return []
   }
 }
 
@@ -320,8 +324,7 @@ export async function getDefenseImprovements(personId?: string): Promise<Defense
       body: JSON.stringify({ personId }),
     })
   } catch {
-    const { mockDefenseImprovements } = await import('./mock-data')
-    return mockDefenseImprovements
+    return []
   }
 }
 
@@ -330,8 +333,7 @@ export async function getNotifications(): Promise<NotificationData[]> {
   try {
     return await fetchApi<NotificationData[]>('/notifications')
   } catch {
-    const { mockNotifications } = await import('./mock-data')
-    return mockNotifications
+    return []
   }
 }
 
@@ -340,8 +342,7 @@ export async function getCrossRefGraph(): Promise<CrossRefNode[]> {
   try {
     return await fetchApi<CrossRefNode[]>('/cross-ref-graph')
   } catch {
-    const { mockCrossRefNodes } = await import('./mock-data')
-    return mockCrossRefNodes
+    return []
   }
 }
 
@@ -358,8 +359,20 @@ export async function getCaseBrief(): Promise<CaseBriefData> {
   try {
     return await fetchApi<CaseBriefData>('/brief')
   } catch {
-    const { mockCaseBrief } = await import('./mock-data')
-    return mockCaseBrief
+    return {
+      caseNumber: '',
+      caseTitle: '',
+      summary: '',
+      keyDefendants: [],
+      keyEpisodes: [],
+      keyEvidence: [],
+      keyViolations: [],
+      defenseSummary: '',
+      prosecutionSummary: '',
+      predictedOutcome: [],
+      generatedAt: '',
+      aiConfidence: 0,
+    }
   }
 }
 
@@ -368,8 +381,19 @@ export async function getRiskAssessment(): Promise<RiskAssessmentData> {
   try {
     return await fetchApi<RiskAssessmentData>('/risk-assessment')
   } catch {
-    const { mockRiskAssessment } = await import('./mock-data')
-    return mockRiskAssessment
+    return {
+      overallRisk: 0,
+      riskLevel: 'low',
+      factors: {
+        evidenceRisk: { score: 0, label: '', description: '' },
+        proceduralRisk: { score: 0, label: '', description: '' },
+        defenseRisk: { score: 0, label: '', description: '' },
+        complianceRisk: { score: 0, label: '', description: '' },
+        timelineRisk: { score: 0, label: '', description: '' },
+      },
+      matrix: [],
+      mitigationStrategies: [],
+    }
   }
 }
 
@@ -381,18 +405,17 @@ export async function getSentencing(articleCode?: string): Promise<SentencingDat
       body: JSON.stringify({ articleCode }),
     })
   } catch {
-    const { mockSentencing } = await import('./mock-data')
-    return mockSentencing
+    return []
   }
 }
 
 // === NEW: Get Evidence Chain of Custody ===
-export async function getEvidenceChain(): Promise<EvidenceChainData[]> {
+export async function getEvidenceChain(caseId?: string): Promise<EvidenceChainData[]> {
+  const query = caseId ? `?caseId=${caseId}` : ''
   try {
-    return await fetchApi<EvidenceChainData[]>('/evidence-chain')
+    return await fetchApi<EvidenceChainData[]>(`/evidence-chain${query}`)
   } catch {
-    const { mockEvidenceChain } = await import('./mock-data')
-    return mockEvidenceChain
+    return []
   }
 }
 
@@ -401,8 +424,7 @@ export async function getAuditLog(limit: number = 50): Promise<AuditLogEntry[]> 
   try {
     return await fetchApi<AuditLogEntry[]>(`/audit-log?limit=${limit}`)
   } catch {
-    const { mockAuditLog } = await import('./mock-data')
-    return mockAuditLog.slice(0, limit)
+    return []
   }
 }
 
@@ -411,8 +433,7 @@ export async function getCaseTimeline(): Promise<CaseTimelineEvent[]> {
   try {
     return await fetchApi<CaseTimelineEvent[]>('/case-timeline')
   } catch {
-    const { mockCaseTimeline } = await import('./mock-data')
-    return mockCaseTimeline
+    return []
   }
 }
 
@@ -421,8 +442,7 @@ export async function getBookmarks(): Promise<BookmarkData[]> {
   try {
     return await fetchApi<BookmarkData[]>('/bookmarks')
   } catch {
-    const { mockBookmarks } = await import('./mock-data')
-    return mockBookmarks
+    return []
   }
 }
 
@@ -431,8 +451,7 @@ export async function getWitnessStatements(): Promise<WitnessStatementData[]> {
   try {
     return await fetchApi<WitnessStatementData[]>('/witness-statements')
   } catch {
-    const { mockWitnessStatements } = await import('./mock-data')
-    return mockWitnessStatements
+    return []
   }
 }
 
@@ -441,8 +460,17 @@ export async function getAnalytics(): Promise<AnalyticsData> {
   try {
     return await fetchApi<AnalyticsData>('/analytics')
   } catch {
-    const { mockAnalytics } = await import('./mock-data')
-    return mockAnalytics
+    return {
+      processingTrend: [],
+      episodeMatrix: [],
+      personInvolvement: [],
+      articleCharges: [],
+      complexity: { overallScore: 0, factors: [], rating: 'low' },
+      documentTypes: [],
+      insights: [],
+      outcomePrediction: [],
+      workloadByMonth: [],
+    }
   }
 }
 

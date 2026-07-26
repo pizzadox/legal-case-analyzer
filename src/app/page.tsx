@@ -11,7 +11,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuLabel, DropdownMenuSeparator } from '@/components/ui/dropdown-menu'
 import { CommandDialog, CommandInput, CommandList, CommandEmpty, CommandGroup, CommandItem, CommandSeparator, CommandShortcut } from '@/components/ui/command'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { LayoutDashboard, FileText, Users, BookOpen, Search, MessageSquare, Shield, Scale, Sun, Moon, PanelLeft, Bell, HelpCircle, CheckCircle, AlertTriangle, XCircle, Clock, Zap, CalendarClock, TrendingUp, BarChart3, Command as CommandIcon, Activity, ArrowRight, Settings, Gauge, RefreshCw, Swords, Gavel, Link2, Eye, Plus, FolderOpen, Check, Loader2 } from 'lucide-react'
+import { LayoutDashboard, FileText, Users, BookOpen, Search, MessageSquare, Shield, Scale, Sun, Moon, PanelLeft, Bell, HelpCircle, CheckCircle, AlertTriangle, XCircle, Clock, Zap, CalendarClock, TrendingUp, BarChart3, Command as CommandIcon, Activity, ArrowRight, Settings, Gauge, RefreshCw, Swords, Gavel, Link2, Eye, Plus, FolderOpen, Check, Loader2, Trash2 } from 'lucide-react'
 import { useTheme } from 'next-themes'
 import { toast } from 'sonner'
 import type { SectionId, NotificationData, CriminalCaseData } from '@/lib/case-store'
@@ -85,6 +85,8 @@ export default function CasePage() {
   const [newCaseDialogOpen, setNewCaseDialogOpen] = useState(false)
   const [newCaseForm, setNewCaseForm] = useState({ caseNumber: '', caseTitle: '', defendantName: '', articles: '' })
   const [isCreatingCase, setIsCreatingCase] = useState(false)
+  const [deleteCaseDialogId, setDeleteCaseDialogId] = useState<string | null>(null)
+  const [isDeletingCase, setIsDeletingCase] = useState(false)
   const queryClient = useQueryClient()
 
   // Fetch all criminal cases
@@ -132,6 +134,46 @@ export default function CasePage() {
     queryClient.invalidateQueries({ queryKey: ['evidence-chain'] })
     const selectedCase = cases.find(c => c.id === caseId)
     toast.success(`Дело переключено: ${selectedCase?.caseNumber || caseId}`)
+  }
+
+  // Compute the case being considered for deletion
+  const deleteCase = useMemo<CriminalCaseData | null>(() => {
+    if (!deleteCaseDialogId || !cases.length) return null
+    return cases.find(c => c.id === deleteCaseDialogId) || null
+  }, [cases, deleteCaseDialogId])
+
+  const handleDeleteCase = async () => {
+    if (!deleteCaseDialogId) return
+    setIsDeletingCase(true)
+    try {
+      await caseApi.deleteCase(deleteCaseDialogId)
+      await queryClient.invalidateQueries({ queryKey: ['criminal-cases'] })
+      // If deleted case was active, switch to another
+      if (activeCaseId === deleteCaseDialogId) {
+        const remaining = cases.filter(c => c.id !== deleteCaseDialogId)
+        if (remaining.length > 0) {
+          setActiveCaseId(remaining[0].id)
+          localStorage.setItem('activeCaseId', remaining[0].id)
+          setActiveCaseIdInStore(remaining[0].id)
+        } else {
+          setActiveCaseId('')
+          localStorage.removeItem('activeCaseId')
+          setActiveCaseIdInStore('')
+        }
+      }
+      // Invalidate all case-related queries
+      queryClient.invalidateQueries({ queryKey: ['documents'] })
+      queryClient.invalidateQueries({ queryKey: ['persons'] })
+      queryClient.invalidateQueries({ queryKey: ['episodes'] })
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] })
+      queryClient.invalidateQueries({ queryKey: ['evidence-chain'] })
+      setDeleteCaseDialogId(null)
+      toast.success('Дело удалено')
+    } catch (err) {
+      toast.error('Ошибка удаления дела')
+    } finally {
+      setIsDeletingCase(false)
+    }
   }
 
   const handleCreateCase = async () => {
@@ -257,6 +299,12 @@ export default function CasePage() {
                 <Plus className="mr-2 h-3.5 w-3.5" />
                 Новое дело
               </DropdownMenuItem>
+              {activeCase && (
+                <DropdownMenuItem onClick={() => setDeleteCaseDialogId(activeCase.id)} className="text-xs text-red-700 focus:text-red-700 focus:bg-red-700/10">
+                  <Trash2 className="mr-2 h-3.5 w-3.5" />
+                  Удалить текущее дело
+                </DropdownMenuItem>
+              )}
             </DropdownMenuContent>
           </DropdownMenu>
           <div className="flex items-center gap-2">
@@ -275,6 +323,26 @@ export default function CasePage() {
             <span className="shrink-0 font-medium text-stone-600 dark:text-stone-300">ИИ-аналитик v3.4</span>
           </div>
         </footer>
+
+        <Dialog open={!!deleteCaseDialogId} onOpenChange={(open) => !open && setDeleteCaseDialogId(null)}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <AlertTriangle className="w-5 h-5 text-red-700" />
+                Удаление дела
+              </DialogTitle>
+            </DialogHeader>
+            <p className="text-sm py-2">
+              Вы уверены, что хотите удалить дело <strong>{deleteCase ? deleteCase.caseNumber : ''}</strong>? Все связанные данные (документы, участники, эпизоды) будут удалены навсегда.
+            </p>
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="outline" onClick={() => setDeleteCaseDialogId(null)}>Отмена</Button>
+              <Button className="bg-red-700 text-white hover:bg-red-800" onClick={handleDeleteCase} disabled={isDeletingCase}>
+                {isDeletingCase ? 'Удаление...' : 'Удалить дело'}
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
 
         <Dialog open={newCaseDialogOpen} onOpenChange={setNewCaseDialogOpen}>
           <DialogContent className="sm:max-w-md">

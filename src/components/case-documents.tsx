@@ -280,7 +280,7 @@ export function CaseDocuments({ caseId }: { caseId: string }) {
     retry: 1,
     refetchInterval: 10000,
   })
-  const { data: evidenceChainData } = useQuery({ queryKey: ['evidence-chain'], queryFn: caseApi.getEvidenceChain, retry: 1, refetchInterval: 10000 })
+  const { data: evidenceChainData } = useQuery({ queryKey: ['evidence-chain', caseId], queryFn: () => caseApi.getEvidenceChain(caseId), retry: 1, refetchInterval: 10000, enabled: !!caseId })
   
   // Poll processing status from the microservice every 5 seconds
   const { data: processingStatus } = useQuery<ProcessingStatusResponse>({ 
@@ -714,57 +714,100 @@ export function CaseDocuments({ caseId }: { caseId: string }) {
       {/* Evidence Chain Section */}
       {evidenceChain.length > 0 && <EvidenceChainSection items={evidenceChain} />}
 
-      {/* AI Document Insights - new feature: smart metadata summary */}
-      <Card className="rounded-xl shadow-sm border-l-4 border-purple-700/50 bg-gradient-to-r from-purple-900/10 to-transparent">
-        <CardHeader className="pb-2">
-          <CardTitle className="text-sm flex items-center gap-2">
-            <BrainCircuit className="w-4 h-4 text-purple-700" /> ИИ-инсайты по документам
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="p-4 space-y-3">
-          <div className="grid sm:grid-cols-3 gap-3">
-            {/* Languages detected */}
-            <div className="p-2 rounded-lg bg-muted/40">
-              <p className="text-xs font-semibold mb-1.5 flex items-center gap-1"><Globe className="w-3 h-3 text-amber-600" />Языки</p>
-              <div className="flex flex-wrap gap-1">
-                <Badge className="bg-emerald-700 text-white text-xs">Русский — 8</Badge>
-                <Badge variant="outline" className="text-xs">Английский — 1</Badge>
+      {/* AI Document Insights - dynamic insights based on actual case documents */}
+      {documents.filter(d => d.processingStatus === 'completed').length > 0 && (() => {
+        const completedDocs = documents.filter(d => d.processingStatus === 'completed')
+        // Document types found in this case
+        const docTypeCounts: Record<string, number> = {}
+        for (const d of completedDocs) {
+          const t = d.documentType || 'документ'
+          docTypeCounts[t] = (docTypeCounts[t] || 0) + 1
+        }
+        // Total pages estimate
+        const totalPages = completedDocs.reduce((s, d) => s + Math.ceil(d.fileSize / 50000), 0)
+        // Processing time: estimate from uploadedAt → processedAt
+        const processingTimes = completedDocs
+          .filter(d => d.processedAt && d.uploadedAt)
+          .map(d => {
+            const uploaded = new Date(d.uploadedAt).getTime()
+            const processed = new Date(d.processedAt!).getTime()
+            const diffSec = Math.max(0, (processed - uploaded) / 1000)
+            return diffSec
+          })
+        const avgProcessingTime = processingTimes.length > 0
+          ? processingTimes.reduce((a, b) => a + b, 0) / processingTimes.length
+          : null
+        // Collect unique source references as entities
+        const entities: { ent: string; type: string; color: string }[] = []
+        for (const [type, count] of Object.entries(docTypeCounts)) {
+          const typeColors: Record<string, string> = {
+            обвинение: 'bg-red-100 text-red-800 border-red-200',
+            показание: 'bg-orange-100 text-orange-800 border-orange-200',
+            протокол: 'bg-amber-100 text-amber-800 border-amber-200',
+            экспертиза: 'bg-stone-100 text-stone-800 border-stone-300',
+            документ: 'bg-purple-100 text-purple-800 border-purple-200',
+          }
+          entities.push({ ent: `${type} — ${count}`, type: 'тип док.', color: typeColors[type] || 'bg-emerald-100 text-emerald-800 border-emerald-200' })
+        }
+        for (const d of completedDocs) {
+          if (d.sourceReference && d.sourceReference !== '—') {
+            entities.push({ ent: d.sourceReference, type: 'источник', color: 'bg-emerald-100 text-emerald-800 border-emerald-200' })
+          }
+        }
+        return (
+          <Card className="rounded-xl shadow-sm border-l-4 border-purple-700/50 bg-gradient-to-r from-purple-900/10 to-transparent">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm flex items-center gap-2">
+                <BrainCircuit className="w-4 h-4 text-purple-700" /> ИИ-инсайты по документам
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-4 space-y-3">
+              <div className="grid sm:grid-cols-3 gap-3">
+                {/* Document types found */}
+                <div className="p-2 rounded-lg bg-muted/40">
+                  <p className="text-xs font-semibold mb-1.5 flex items-center gap-1"><FileText className="w-3 h-3 text-amber-600" />Типы документов</p>
+                  <div className="flex flex-wrap gap-1">
+                    {Object.entries(docTypeCounts).map(([type, count]) => (
+                      <Badge key={type} className="bg-emerald-700 text-white text-xs">{type} — {count}</Badge>
+                    ))}
+                  </div>
+                </div>
+                {/* Average processing time */}
+                <div className="p-2 rounded-lg bg-muted/40">
+                  <p className="text-xs font-semibold mb-1.5 flex items-center gap-1"><Zap className="w-3 h-3 text-amber-600" />Среднее время</p>
+                  {avgProcessingTime != null ? (
+                    <p className="text-lg font-bold">{avgProcessingTime < 60 ? `${avgProcessingTime.toFixed(1)}` : `${(avgProcessingTime / 60).toFixed(1)}`} <span className="text-xs text-muted-foreground font-normal">{avgProcessingTime < 60 ? 'сек/док' : 'мин/док'}</span></p>
+                  ) : (
+                    <p className="text-lg font-bold">— <span className="text-xs text-muted-foreground font-normal">сек/док</span></p>
+                  )}
+                  <p className="text-xs text-muted-foreground">{completedDocs.length} обработано</p>
+                </div>
+                {/* Total pages processed */}
+                <div className="p-2 rounded-lg bg-muted/40">
+                  <p className="text-xs font-semibold mb-1.5 flex items-center gap-1"><FileText className="w-3 h-3 text-amber-600" />Страниц обработано</p>
+                  <p className="text-lg font-bold">{totalPages} <span className="text-xs text-muted-foreground font-normal">стр.</span></p>
+                  <p className="text-xs text-muted-foreground">в {completedDocs.length} документах</p>
+                </div>
               </div>
-            </div>
-            {/* Average processing time */}
-            <div className="p-2 rounded-lg bg-muted/40">
-              <p className="text-xs font-semibold mb-1.5 flex items-center gap-1"><Zap className="w-3 h-3 text-amber-600" />Среднее время</p>
-              <p className="text-lg font-bold">2.4 <span className="text-xs text-muted-foreground font-normal">сек/док</span></p>
-              <p className="text-xs text-emerald-700 flex items-center gap-1"><TrendingDown className="w-2 h-2" />-15% к прошлой неделе</p>
-            </div>
-            {/* Total pages processed */}
-            <div className="p-2 rounded-lg bg-muted/40">
-              <p className="text-xs font-semibold mb-1.5 flex items-center gap-1"><FileText className="w-3 h-3 text-amber-600" />Страниц обработано</p>
-              <p className="text-lg font-bold">{documents.reduce((s, d) => s + Math.ceil(d.fileSize / 50000), 0)} <span className="text-xs text-muted-foreground font-normal">стр.</span></p>
-              <p className="text-xs text-muted-foreground">в {documents.length} документах</p>
-            </div>
-          </div>
-          <Separator />
-          {/* Top entities extracted */}
-          <div>
-            <p className="text-xs font-semibold mb-1.5 flex items-center gap-1"><BrainCircuit className="w-3 h-3 text-purple-700" />Топ извлечённых сущностей</p>
-            <div className="flex flex-wrap gap-1.5">
-              {[
-                { ent: 'Колесниченко Д.А.', type: 'человек', color: 'bg-red-100 text-red-800 border-red-200' },
-                { ent: 'ООО "ФинансГрупп"', type: 'организация', color: 'bg-amber-100 text-amber-800 border-amber-200' },
-                { ent: 'ст. 159 ч.3 УК РФ', type: 'статья', color: 'bg-stone-100 text-stone-800 border-stone-300' },
-                { ent: 'г. Москва', type: 'место', color: 'bg-emerald-100 text-emerald-800 border-emerald-200' },
-                { ent: '15.03.2024', type: 'дата', color: 'bg-purple-100 text-purple-800 border-purple-200' },
-                { ent: 'бухгалтер', type: 'должность', color: 'bg-orange-100 text-orange-800 border-orange-200' },
-              ].map((e, i) => (
-                <Badge key={i} variant="outline" className={`text-xs border ${e.color} font-medium`}>
-                  {e.ent} <span className="opacity-60 ml-1">({e.type})</span>
-                </Badge>
-              ))}
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+              {entities.length > 0 && (
+                <>
+                  <Separator />
+                  <div>
+                    <p className="text-xs font-semibold mb-1.5 flex items-center gap-1"><BrainCircuit className="w-3 h-3 text-purple-700" />Ключевые данные из документов</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {entities.slice(0, 10).map((e, i) => (
+                        <Badge key={i} variant="outline" className={`text-xs border ${e.color} font-medium`}>
+                          {e.ent} <span className="opacity-60 ml-1">({e.type})</span>
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                </>
+              )}
+            </CardContent>
+          </Card>
+        )
+      })()}
 
       <Separator />
       <p className="text-xs text-muted-foreground">Показано {filteredDocs.length} из {documents.length} документов из базы данных</p>
@@ -774,7 +817,7 @@ export function CaseDocuments({ caseId }: { caseId: string }) {
         open={!!selectedDoc}
         onOpenChange={(open) => { if (!open) { setSelectedDoc(null); setNewAnnotation('') } }}
       >
-        <SheetContent side="right" className="w-full sm:max-w-xl p-0 gap-0 flex flex-col">
+        <SheetContent side="right" className="w-full sm:max-w-xl p-0 gap-0 flex flex-col h-full">
           <SheetHeader className="p-4 border-b shrink-0 space-y-1">
             <SheetTitle className="text-base flex items-start gap-2 pr-8">
               <FileText className="w-4 h-4 mt-0.5 shrink-0 text-amber-600" />
@@ -791,7 +834,8 @@ export function CaseDocuments({ caseId }: { caseId: string }) {
             </SheetDescription>
           </SheetHeader>
 
-          <div className="flex-1 overflow-y-auto p-4 space-y-4">
+          <ScrollArea className="flex-1 overflow-y-auto">
+            <div className="p-4 space-y-4">
             {/* Metadata section */}
             <Card className="rounded-xl shadow-sm">
               <CardHeader className="pb-2"><CardTitle className="text-sm">Метаданные документа</CardTitle></CardHeader>
@@ -1015,7 +1059,8 @@ export function CaseDocuments({ caseId }: { caseId: string }) {
                 </Button>
               </CardContent>
             </Card>
-          </div>
+            </div>
+          </ScrollArea>
         </SheetContent>
       </Sheet>
 
