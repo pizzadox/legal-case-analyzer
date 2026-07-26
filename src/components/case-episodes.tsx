@@ -20,6 +20,9 @@ import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 
 // ─── Helpers ────────────────────────────────────────────────────────────────────
+function hasValue(v: unknown): boolean {
+  return v != null && v !== '' && v !== undefined
+}
 function personLabel(p: { shortName?: string | null; fullName?: string | null; person?: { shortName?: string | null; fullName?: string | null } }): string {
   if (p.person) return p.person.shortName ?? p.person.fullName ?? '—'
   return (p.shortName ?? p.fullName ?? '—') as string
@@ -135,7 +138,7 @@ export function CaseEpisodes({ caseId }: { caseId: string }) {
   const [statusFilter, setStatusFilter] = useState('all')
   const [searchQuery, setSearchQuery] = useState('')
   const [expandedEpisodes, setExpandedEpisodes] = useState<Set<string>>(new Set())
-  const { data, isLoading } = useQuery({ queryKey: ['episodes', caseId], queryFn: () => getEpisodes(caseId), retry: 1 })
+  const { data, isLoading } = useQuery({ queryKey: ['episodes', caseId], queryFn: () => getEpisodes(caseId), enabled: !!caseId, retry: 1 })
   const episodes = data ?? []
 
   // ─── Filtered episodes ────────────────────────────────────────────────────
@@ -419,7 +422,7 @@ export function CaseEpisodes({ caseId }: { caseId: string }) {
                       </TooltipTrigger>
                       <TooltipContent side="top">
                         <p className="font-semibold">{ep.title}</p>
-                        <p className="text-xs opacity-80">{ep.date ?? '—'} · {ep.severity ?? '—'} · {ep.status ?? '—'}</p>
+                        <p className="text-xs opacity-80">{[ep.date, ep.severity, ep.status].filter(hasValue).join(' · ')}</p>
                       </TooltipContent>
                     </Tooltip>
                   ))}
@@ -530,36 +533,40 @@ export function CaseEpisodes({ caseId }: { caseId: string }) {
                 {/* ── Card Header (always visible) ───────────────────────────── */}
                 <CardContent className="p-4">
                   <div className="flex items-start gap-3">
-                    {/* Calendar-style date */}
-                    <div className="shrink-0 flex flex-col items-center w-12 rounded-lg bg-stone-100/80 dark:bg-stone-800/50 border border-stone-200/60 overflow-hidden">
-                      {episode.date ? (() => {
-                        const d = new Date(episode.date)
-                        const months = ['ЯНВ', 'ФЕВ', 'МАР', 'АПР', 'МАЙ', 'ИЮН', 'ИЮЛ', 'АВГ', 'СЕН', 'ОКТ', 'НОЯ', 'ДЕК']
-                        return (
-                          <>
-                            <div className="bg-red-700/80 text-white text-xs font-bold px-1 py-0.5 w-full text-center">{months[d.getMonth()]}</div>
-                            <div className="text-lg font-bold text-stone-800 dark:text-stone-200 leading-none py-0.5">{d.getDate()}</div>
-                            <div className="text-xs text-muted-foreground pb-0.5">{d.getFullYear()}</div>
-                          </>
-                        )
-                      })() : (
-                        <div className="text-xs text-muted-foreground p-1">—</div>
-                      )}
-                    </div>
+                    {/* Calendar-style date — only shown when date exists */}
+                    {hasValue(episode.date) && (
+                      <div className="shrink-0 flex flex-col items-center w-12 rounded-lg bg-stone-100/80 dark:bg-stone-800/50 border border-stone-200/60 overflow-hidden">
+                        {(() => {
+                          const d = new Date(episode.date!)
+                          const months = ['ЯНВ', 'ФЕВ', 'МАР', 'АПР', 'МАЙ', 'ИЮН', 'ИЮЛ', 'АВГ', 'СЕН', 'ОКТ', 'НОЯ', 'ДЕК']
+                          return (
+                            <>
+                              <div className="bg-red-700/80 text-white text-xs font-bold px-1 py-0.5 w-full text-center">{months[d.getMonth()]}</div>
+                              <div className="text-lg font-bold text-stone-800 dark:text-stone-200 leading-none py-0.5">{d.getDate()}</div>
+                              <div className="text-xs text-muted-foreground pb-0.5">{d.getFullYear()}</div>
+                            </>
+                          )
+                        })()}
+                      </div>
+                    )}
 
                     {/* Main content */}
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="font-semibold text-sm truncate">{episode.title}</span>
-                        {/* Severity badge */}
-                        <Badge className={`${severityColor} text-xs font-semibold shrink-0`}>
-                          {episode.severity ?? '—'}
-                        </Badge>
-                        {/* Status badge with icon */}
-                        <Badge className={`${statusColor} text-xs font-semibold shrink-0 flex items-center gap-1`}>
-                          <StatusIcon className="w-3 h-3" />
-                          {episode.status ?? '—'}
-                        </Badge>
+                        {/* Severity badge — only shown when severity exists */}
+                        {hasValue(episode.severity) && (
+                          <Badge className={`${severityColor} text-xs font-semibold shrink-0`}>
+                            {episode.severity}
+                          </Badge>
+                        )}
+                        {/* Status badge with icon — only shown when status exists */}
+                        {hasValue(episode.status) && (
+                          <Badge className={`${statusColor} text-xs font-semibold shrink-0 flex items-center gap-1`}>
+                            <StatusIcon className="w-3 h-3" />
+                            {episode.status}
+                          </Badge>
+                        )}
                         {/* Person count badge */}
                         {episode.persons.length > 0 && (
                           <Badge variant="outline" className="text-xs shrink-0 flex items-center gap-1 border-orange-300/50 text-orange-700">
@@ -575,16 +582,20 @@ export function CaseEpisodes({ caseId }: { caseId: string }) {
                           </Badge>
                         )}
                       </div>
-                      {/* Short description preview */}
-                      <p className="text-xs text-muted-foreground mt-1 line-clamp-2 leading-relaxed">{episode.description}</p>
-                      {/* Severity score */}
-                      <div className="flex items-center gap-2 mt-2">
-                        <span className="text-xs text-muted-foreground font-medium">Индекс тяжести:</span>
-                        <div className="flex-1 max-w-[120px]">
-                          <Progress value={severityScore(episode.severity) * 25} className="h-1.5" />
+                      {/* Short description preview — only shown when description exists */}
+                      {hasValue(episode.description) && (
+                        <p className="text-xs text-muted-foreground mt-1 line-clamp-2 leading-relaxed">{episode.description}</p>
+                      )}
+                      {/* Severity score — only shown when severity exists */}
+                      {hasValue(episode.severity) && (
+                        <div className="flex items-center gap-2 mt-2">
+                          <span className="text-xs text-muted-foreground font-medium">Индекс тяжести:</span>
+                          <div className="flex-1 max-w-[120px]">
+                            <Progress value={severityScore(episode.severity) * 25} className="h-1.5" />
+                          </div>
+                          <span className="text-xs font-bold text-stone-700">{severityScore(episode.severity)}/4</span>
                         </div>
-                        <span className="text-xs font-bold text-stone-700">{severityScore(episode.severity)}/4</span>
-                      </div>
+                      )}
                     </div>
 
                     {/* Expand/collapse chevron */}
@@ -600,14 +611,19 @@ export function CaseEpisodes({ caseId }: { caseId: string }) {
                   {/* ── Expanded Detail ──────────────────────────────────────── */}
                   {isExpanded && (
                     <div className="mt-4 pt-3 border-t border-stone-200/50 space-y-3 animate-in fade-in-0 slide-in-from-top-2 duration-300">
-                      {/* Full description */}
-                      <div>
-                        <p className="text-sm text-muted-foreground leading-relaxed">{episode.description}</p>
-                        <div className="flex items-center gap-1 text-xs mt-1">
-                          <Calendar className="w-3 h-3 text-amber-600" />
-                          <span className="font-medium">Период: {episode.date ?? '—'}</span>
+                      {/* Full description — only shown when description exists */}
+                      {hasValue(episode.description) && (
+                        <div>
+                          <p className="text-sm text-muted-foreground leading-relaxed">{episode.description}</p>
                         </div>
-                      </div>
+                      )}
+                      {/* Date row — only shown when date exists */}
+                      {hasValue(episode.date) && (
+                        <div className="flex items-center gap-1 text-xs">
+                          <Calendar className="w-3 h-3 text-amber-600" />
+                          <span className="font-medium">Период: {episode.date}</span>
+                        </div>
+                      )}
 
                       {/* Connected Persons with role badges and involvement descriptions */}
                       {episode.persons.length > 0 && (
@@ -753,12 +769,16 @@ export function CaseEpisodes({ caseId }: { caseId: string }) {
                         </div>
                       </div>
 
-                      {/* Linked Documents */}
-                      <Separator />
-                      <p className="text-xs text-muted-foreground flex items-center gap-1">
-                        <FileText className="w-3 h-3" />
-                        Связанные документы: Эпизод № {episode.episodeNumber ?? '—'}
-                      </p>
+                      {/* Linked Documents — only shown when episodeNumber exists */}
+                      {hasValue(episode.episodeNumber) && (
+                        <>
+                          <Separator />
+                          <p className="text-xs text-muted-foreground flex items-center gap-1">
+                            <FileText className="w-3 h-3" />
+                            Связанные документы: Эпизод № {episode.episodeNumber}
+                          </p>
+                        </>
+                      )}
                     </div>
                   )}
                 </CardContent>

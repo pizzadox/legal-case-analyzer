@@ -503,3 +503,30 @@
    503→2. **Processing pipeline**: Not yet tested end-to-end with real file upload + AI processing (needs actual document upload to test full pipeline)
    504→3. **Other components**: Defense, search, legal-check, risk, brief, analytics, qa, timeline, witness-matrix, violations still use some mock data for secondary data
    505→
+   506→---
+   507→Task ID: 5
+   508→Agent: Main Coordinator
+   509→Task: Fix critical bugs and set up document processing pipeline
+   510→
+   511→Work Log:
+   512→- Fixed 404 error on processing-status API: Changed URL from `/api/case/processing-status` to `/api/status` (matching doc-processor's actual endpoint)
+   513→- Added graceful error handling in getProcessingStatus() - returns empty status instead of throwing when service unavailable
+   514→- Created `/api/case/upload/route.ts` - new upload API route that saves files, creates Document + ProcessingQueue records
+   515→- Updated next.config.ts to set 500MB body size limit for uploads
+   516→- Fixed doc-processor VLM extraction: Replaced SDK base64 approach with z-ai CLI subprocess approach (more stable for large files)
+   517→- Rewrote extraction.ts to use pdftotext + pdftoppm + z-ai CLI for OCR of scanned PDFs
+   518→- Fixed doc-processor to process only 1 document at a time (skip polling when currentlyProcessing.size > 0)
+   519→- Started doc-processor with keep-alive.sh for crash recovery
+   520→- Registered 3 PDF files for case 111 in database (том 1_0001-страницы-1/2/3.pdf)
+   521→- Cleared all data for case 111 (documents, persons, episodes)
+   522→- Rewrote CaseExportCenter component to use real data from API (CSV, JSON, HTML, PDF exports now functional)
+   523→- Passed caseId prop to CaseExportCenter from page.tsx
+   524→- Verified app renders correctly via agent-browser (documents visible in list for case 111)
+   525→
+   526→Stage Summary:
+   527→- Upload route created and functional
+   528→- Processing pipeline restructured: pdftotext → pdftoppm → z-ai CLI OCR → LLM analysis
+   529→- Export Center now works with real case data (CSV/JSON/HTML/PDF)
+   530→- Document processing is ongoing (OCR of scanned PDFs takes time per page)
+   531→- Key fix: VLM uses CLI subprocess instead of SDK (prevents process crashes)
+   532→

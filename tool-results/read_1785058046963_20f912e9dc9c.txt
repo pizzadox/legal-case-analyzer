@@ -503,3 +503,73 @@
    503→2. **Processing pipeline**: Not yet tested end-to-end with real file upload + AI processing (needs actual document upload to test full pipeline)
    504→3. **Other components**: Defense, search, legal-check, risk, brief, analytics, qa, timeline, witness-matrix, violations still use some mock data for secondary data
    505→
+   506→---
+   507→Task ID: 5
+   508→Agent: Main Coordinator
+   509→Task: Fix critical bugs and set up document processing pipeline
+   510→
+   511→Work Log:
+   512→- Fixed 404 error on processing-status API: Changed URL from `/api/case/processing-status` to `/api/status` (matching doc-processor's actual endpoint)
+   513→- Added graceful error handling in getProcessingStatus() - returns empty status instead of throwing when service unavailable
+   514→- Created `/api/case/upload/route.ts` - new upload API route that saves files, creates Document + ProcessingQueue records
+   515→- Updated next.config.ts to set 500MB body size limit for uploads
+   516→- Fixed doc-processor VLM extraction: Replaced SDK base64 approach with z-ai CLI subprocess approach (more stable for large files)
+   517→- Rewrote extraction.ts to use pdftotext + pdftoppm + z-ai CLI for OCR of scanned PDFs
+   518→- Fixed doc-processor to process only 1 document at a time (skip polling when currentlyProcessing.size > 0)
+   519→- Started doc-processor with keep-alive.sh for crash recovery
+   520→- Registered 3 PDF files for case 111 in database (том 1_0001-страницы-1/2/3.pdf)
+   521→- Cleared all data for case 111 (documents, persons, episodes)
+   522→- Rewrote CaseExportCenter component to use real data from API (CSV, JSON, HTML, PDF exports now functional)
+   523→- Passed caseId prop to CaseExportCenter from page.tsx
+   524→- Verified app renders correctly via agent-browser (documents visible in list for case 111)
+   525→
+   526→Stage Summary:
+   527→- Upload route created and functional
+   528→- Processing pipeline restructured: pdftotext → pdftoppm → z-ai CLI OCR → LLM analysis
+   529→- Export Center now works with real case data (CSV/JSON/HTML/PDF)
+   530→- Document processing is ongoing (OCR of scanned PDFs takes time per page)
+   531→- Key fix: VLM uses CLI subprocess instead of SDK (prevents process crashes)
+   532→
+   533→---
+   534→Task ID: 4-a
+   535→Agent: Persons Component Fixer
+   536→Task: Hide empty data fields in case-persons.tsx
+   537→
+   538→Work Log:
+   539→- Read case-persons.tsx (565 lines)
+   540→- Identified fields that should be conditionally rendered: role, status, guiltLevel, birthDate, occupation, alias, defenseStrategy, description
+   541→- Added hasValue(v) helper function: checks v != null && v !== '' && v !== undefined
+   542→- Updated person card badge row: role badge only shows when hasValue(person.role), guilt badge only shows when guiltLevel exists and !== 'none', status badge only shows when hasValue(person.status)
+   543→- Wrapped birthDate/occupation/alias grid in outer conditional so entire grid section is hidden when all three fields are empty
+   544→- Updated defenseStrategy accordion to use hasValue() check
+   545→- Updated description in expanded section to use hasValue() check
+   546→- Updated all 3 useQuery calls: added caseId to query keys (['persons', caseId], ['personRelationships', caseId], ['witnessStatements', caseId]) and added enabled: !!caseId since refetchInterval default is handled in query-provider
+   547→- Verified no TypeScript errors in case-persons.tsx
+   548→- Build error exists in case-episodes.tsx (pre-existing, unrelated to this change)
+   549→
+   550→Stage Summary:
+   551→- Updated case-persons.tsx to conditionally hide empty/null fields using hasValue helper
+   552→- Person cards now only display populated data fields — empty fields are completely omitted
+   553→- useQuery calls now use proper query keys with caseId and enabled flag for cache isolation
+   554→
+   555→---
+   556→Task ID: 4-b
+   557→Agent: Episodes Component Fixer
+   558→Task: Hide empty data fields in case-episodes.tsx
+   559→
+   560→Work Log:
+   561→- Read case-episodes.tsx (796 lines)
+   562→- Identified fields that should be conditionally rendered: date, episodeNumber, severity, status, description
+   563→- Added hasValue(v: unknown): boolean helper function checking v != null && v !== '' && v !== undefined
+   564→- Updated useQuery to include enabled: !!caseId and confirmed queryKey: ['episodes', caseId]
+   565→- Updated episode card header to conditionally render: calendar date widget, severity badge, status badge, description preview, severity score indicator
+   566→- Updated expanded detail section to conditionally render: full description, date row, linked documents (episodeNumber)
+   567→- Updated timeline tooltip to conditionally show date/severity/status using filter(hasValue).join
+   568→- Fixed JSX syntax error (missing closing brace on conditional date block)
+   569→
+   570→Stage Summary:
+   571→- Updated case-episodes.tsx to conditionally hide empty/null fields
+   572→- Episode cards now only display populated data fields
+   573→- hasValue helper ensures null, empty string, and undefined values are all skipped
+   574→- Query properly gated with enabled: !!caseId
+   575→

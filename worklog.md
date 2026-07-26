@@ -529,3 +529,100 @@ Stage Summary:
 - Export Center now works with real case data (CSV/JSON/HTML/PDF)
 - Document processing is ongoing (OCR of scanned PDFs takes time per page)
 - Key fix: VLM uses CLI subprocess instead of SDK (prevents process crashes)
+
+---
+Task ID: 4-a
+Agent: Persons Component Fixer
+Task: Hide empty data fields in case-persons.tsx
+
+Work Log:
+- Read case-persons.tsx (565 lines)
+- Identified fields that should be conditionally rendered: role, status, guiltLevel, birthDate, occupation, alias, defenseStrategy, description
+- Added hasValue(v) helper function: checks v != null && v !== '' && v !== undefined
+- Updated person card badge row: role badge only shows when hasValue(person.role), guilt badge only shows when guiltLevel exists and !== 'none', status badge only shows when hasValue(person.status)
+- Wrapped birthDate/occupation/alias grid in outer conditional so entire grid section is hidden when all three fields are empty
+- Updated defenseStrategy accordion to use hasValue() check
+- Updated description in expanded section to use hasValue() check
+- Updated all 3 useQuery calls: added caseId to query keys (['persons', caseId], ['personRelationships', caseId], ['witnessStatements', caseId]) and added enabled: !!caseId since refetchInterval default is handled in query-provider
+- Verified no TypeScript errors in case-persons.tsx
+- Build error exists in case-episodes.tsx (pre-existing, unrelated to this change)
+
+Stage Summary:
+- Updated case-persons.tsx to conditionally hide empty/null fields using hasValue helper
+- Person cards now only display populated data fields — empty fields are completely omitted
+- useQuery calls now use proper query keys with caseId and enabled flag for cache isolation
+
+---
+Task ID: 4-b
+Agent: Episodes Component Fixer
+Task: Hide empty data fields in case-episodes.tsx
+
+Work Log:
+- Read case-episodes.tsx (796 lines)
+- Identified fields that should be conditionally rendered: date, episodeNumber, severity, status, description
+- Added hasValue(v: unknown): boolean helper function checking v != null && v !== '' && v !== undefined
+- Updated useQuery to include enabled: !!caseId and confirmed queryKey: ['episodes', caseId]
+- Updated episode card header to conditionally render: calendar date widget, severity badge, status badge, description preview, severity score indicator
+- Updated expanded detail section to conditionally render: full description, date row, linked documents (episodeNumber)
+- Updated timeline tooltip to conditionally show date/severity/status using filter(hasValue).join
+- Fixed JSX syntax error (missing closing brace on conditional date block)
+
+Stage Summary:
+- Updated case-episodes.tsx to conditionally hide empty/null fields
+- Episode cards now only display populated data fields
+- hasValue helper ensures null, empty string, and undefined values are all skipped
+- Query properly gated with enabled: !!caseId
+
+---
+Task ID: 4-c
+Agent: Dashboard Component Fixer
+Task: Hide empty data fields in case-dashboard.tsx
+
+Work Log:
+- Read case-dashboard.tsx (302 lines) to understand structure
+- Identified sections and fields that should be conditionally rendered
+- Added hasValue, hasItems, and hasRecord helper functions for null/empty checks
+- Added enabled: !!caseId to the dashboard useQuery to prevent fetching without a valid case ID
+- Updated header card to dynamically show kolesnichenko name (conditional on stats.persons.kolesnichenko being non-null)
+- Updated health score card badges: defense lines badge shows "Нет данных о линии защиты" when empty; compliance badge shows "Нет данных о проверках" when empty
+- Updated guilt assessments pie chart to show "Нет данных об оценке виновности" placeholder when byGuiltLevel has no data
+- Updated document type bar chart to show "Нет загруженных документов" placeholder when byType has no data
+- Updated recent documents section to show "Нет загруженных документов" when recent array is empty
+- Added Fragment import from React for wrapping sibling JSX elements in ternary branches
+- Fixed JSX parsing issues by adding parentheses around ternary conditions and Fragment wrapping for multi-sibling branches
+- Verified build compiles successfully with no errors
+
+Stage Summary:
+- Updated case-dashboard.tsx to conditionally hide empty/null fields
+- Dashboard now only displays populated data sections with "Нет данных" placeholders where needed
+- Stats bar total counts remain visible even at 0 per task requirements
+- Mock data imports and fallbacks preserved unchanged
+
+---
+Task ID: 5
+Agent: Main Coordinator
+Task: Fix 502 Bad Gateway on /api/status, create missing upload route, hide empty fields, add auto-refresh
+
+Work Log:
+- Read worklog.md and project files to understand current state
+- Verified doc-processor service is running on port 3005 and Caddy gateway forwarding works correctly for /api/status endpoint
+- Discovered the critical bug: no upload API route existed at /api/case/upload/route.ts - this was why uploads didn't work and documents didn't appear in the list after upload
+- Created /src/app/api/case/upload/route.ts with proper multipart form data handling, multi-format support (PDF, DOCX, images, etc.), 500MB size limit, and ProcessingQueue entry creation
+- Updated /src/lib/query-provider.tsx to add auto-refresh polling (refetchInterval: 30s, staleTime: 30s, refetchOnWindowFocus: true) for all data queries
+- Updated /src/lib/db.ts to reduce Prisma logging from 'query' to 'error'/'warn' to reduce memory overhead
+- Launched 3 subagents to update card components to hide empty/null fields:
+  - case-persons.tsx: Added hasValue helper, conditional rendering for role/status/birthDate/occupation/alias/defenseStrategy
+  - case-episodes.tsx: Added hasValue helper, conditional rendering for date/severity/status/description/episodeNumber
+  - case-dashboard.tsx: Added hasValue/hasItems/hasRecord helpers, conditional rendering with "Нет данных" placeholders
+- Verified lint passes cleanly (0 errors)
+- Encountered persistent OOM (Out of Memory) issues with Next.js dev server on the 4GB environment - the server uses ~1.5GB during compilation and gets killed by the OOM killer after serving the first request
+- Verified all API endpoints work correctly when the server is up: documents, dashboard, processing status via Caddy gateway
+
+Stage Summary:
+- Created missing upload API route that enables file uploads to work (the critical bug fix)
+- Added auto-refresh polling mechanism for all data sections (30s interval, window focus refresh)
+- Updated all major card components to hide empty/null data fields and show "Нет данных" placeholders
+- Reduced Prisma logging overhead to help with memory constraints
+- The 502 error on /api/status was caused by doc-processor service being down at that time - now it's running and healthy
+- Key remaining issue: OOM kills the Next.js dev server after first request due to memory constraints in the 4GB environment
+- Recommended: Consider lazy-loading sections or reducing component complexity to help with memory constraints

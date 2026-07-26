@@ -85,6 +85,9 @@ const guiltChartCfg = Object.fromEntries(Object.entries(GUILT).map(([k,v]) => [v
 
 const fmtDate = (iso: string) => { try { return new Intl.DateTimeFormat('ru-RU',{day:'numeric',month:'long',year:'numeric'}).format(new Date(iso)) } catch { return iso } }
 
+/** Helper to check if a value is non-null, non-empty, and non-undefined */
+const hasValue = (v: string | null | undefined) => v != null && v !== '' && v !== undefined
+
 function exportCSV(persons: PersonData[]) {
   const rows = ['Name,Role,Status,GuiltLevel,Occupation']
   persons.forEach(p => rows.push(`"${p.fullName}",${p.role??''},${p.status??''},${p.guiltLevel??'none'},${p.occupation??''}`))
@@ -340,9 +343,9 @@ export function CasePersons({ caseId }: { caseId: string }) {
   const [expandedId, setExpandedId] = useState<string|null>(null)
   const [compareIds, setCompareIds] = useState<string[]>([])
 
-  const { data: persons = [], isLoading } = useQuery({ queryKey: ['persons', caseId], queryFn: () => getPersons(caseId) })
-  const { data: relationships = [] } = useQuery({ queryKey: ['personRelationships'], queryFn: getPersonRelationships })
-  const { data: statements = [] } = useQuery({ queryKey: ['witnessStatements'], queryFn: getWitnessStatements })
+  const { data: persons = [], isLoading } = useQuery({ queryKey: ['persons', caseId], queryFn: () => getPersons(caseId), enabled: !!caseId })
+  const { data: relationships = [] } = useQuery({ queryKey: ['personRelationships', caseId], queryFn: getPersonRelationships, enabled: !!caseId })
+  const { data: statements = [] } = useQuery({ queryKey: ['witnessStatements', caseId], queryFn: getWitnessStatements, enabled: !!caseId })
 
   const filtered = useMemo(() => {
     let result = persons
@@ -391,19 +394,21 @@ export function CasePersons({ caseId }: { caseId: string }) {
                   {person.isKolesnichenko && <div className="flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-amber-500/20 border border-amber-500/40 shrink-0"><Star className="w-3 h-3 text-amber-500 fill-amber-500"/><span className="text-[9px] font-bold text-amber-600">Главный</span></div>}
                 </div>
                 <div className="flex items-center gap-1 mt-2 flex-wrap">
-                  <Badge className={`${rCfg?.badge??'bg-stone-500 text-white'} text-xs flex items-center gap-1`}>{rCfg?.label??person.role}</Badge>
-                  <Badge className={`${gCfg.badge} text-xs`}>{gCfg.label}</Badge>
-                  <Badge variant="outline" className="text-xs">{person.status??'—'}</Badge>
+                  {hasValue(person.role) && <Badge className={`${rCfg?.badge??'bg-stone-500 text-white'} text-xs flex items-center gap-1`}>{rCfg?.label??person.role}</Badge>}
+                  {person.guiltLevel && person.guiltLevel !== 'none' && <Badge className={`${gCfg.badge} text-xs`}>{gCfg.label}</Badge>}
+                  {hasValue(person.status) && <Badge variant="outline" className="text-xs">{person.status}</Badge>}
                 </div>
                 {person.guiltLevel && person.guiltLevel !== 'none' && (
                   <div className="mt-2 flex items-center gap-2"><span className="text-xs text-muted-foreground shrink-0">Виновность:</span><Progress value={gCfg.pct} className="h-2 flex-1"/><span className="text-xs font-bold" style={{color:gCfg.color}}>{gCfg.pct}%</span></div>
                 )}
+                {(hasValue(person.birthDate) || hasValue(person.occupation) || hasValue(person.alias)) && (
                 <div className="grid grid-cols-3 gap-2 mt-3">
-                  {person.birthDate && <div className="p-1.5 rounded-md bg-muted/30 flex items-center gap-1"><Cake className="w-3 h-3 text-muted-foreground shrink-0"/><span className="text-[10px] font-medium truncate">{fmtDate(person.birthDate)}</span></div>}
-                  {person.occupation && <div className="p-1.5 rounded-md bg-muted/30 flex items-center gap-1"><MapPin className="w-3 h-3 text-muted-foreground shrink-0"/><span className="text-[10px] font-medium truncate">{person.occupation}</span></div>}
-                  {person.alias && <div className="p-1.5 rounded-md bg-muted/30 flex items-center gap-1"><Users className="w-3 h-3 text-muted-foreground shrink-0"/><span className="text-[10px] font-medium truncate">{person.alias}</span></div>}
+                  {hasValue(person.birthDate) && <div className="p-1.5 rounded-md bg-muted/30 flex items-center gap-1"><Cake className="w-3 h-3 text-muted-foreground shrink-0"/><span className="text-[10px] font-medium truncate">{fmtDate(person.birthDate)}</span></div>}
+                  {hasValue(person.occupation) && <div className="p-1.5 rounded-md bg-muted/30 flex items-center gap-1"><MapPin className="w-3 h-3 text-muted-foreground shrink-0"/><span className="text-[10px] font-medium truncate">{person.occupation}</span></div>}
+                  {hasValue(person.alias) && <div className="p-1.5 rounded-md bg-muted/30 flex items-center gap-1"><Users className="w-3 h-3 text-muted-foreground shrink-0"/><span className="text-[10px] font-medium truncate">{person.alias}</span></div>}
                 </div>
-                {person.defenseStrategy && (
+                )}
+                {hasValue(person.defenseStrategy) && (
                   <Accordion type="single" collapsible className="mt-2"><AccordionItem value="d" className="border-none"><AccordionTrigger className="text-xs py-2 hover:no-underline flex items-center gap-1"><Shield className="w-3 h-3 text-amber-600"/>Стратегия защиты</AccordionTrigger><AccordionContent className="text-xs pb-2"><div className="p-2 rounded-lg bg-muted">{person.defenseStrategy}</div></AccordionContent></AccordionItem></Accordion>
                 )}
                 <Separator className="mt-3"/>
@@ -412,7 +417,7 @@ export function CasePersons({ caseId }: { caseId: string }) {
                   {isExp ? 'Свернуть' : 'Подробнее'}
                 </Button>
                 {isExp && <div className="mt-2 space-y-2 text-xs">
-                  {person.description && <p>{person.description}</p>}
+                  {hasValue(person.description) && <p>{person.description}</p>}
                   {person.guiltAssessments?.[0] && <div className="p-2 rounded-lg bg-muted"><p className="font-medium flex items-center gap-1"><Gavel className="w-3 h-3"/>Оценка виновности:</p><p>Доказательства: {person.guiltAssessments[0].evidenceStrength}</p>{person.guiltAssessments[0].forecast && <p>Прогноз: {person.guiltAssessments[0].forecast}</p>}</div>}
                   <div className="p-2 rounded-lg bg-muted/50"><p className="font-medium flex items-center gap-1 mb-1"><Target className="w-3 h-3"/>Радар виновности:</p><GuiltRadarChart guiltLevel={person.guiltLevel??'none'}/></div>
                 </div>}
