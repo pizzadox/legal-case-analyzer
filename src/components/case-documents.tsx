@@ -290,26 +290,45 @@ export function CaseDocuments({ caseId }: { caseId: string }) {
   const { data: processingStatus } = useQuery<ProcessingStatusResponse>({ 
     queryKey: ['processing-status', caseId],
     queryFn: () => caseApi.getProcessingStatus(caseId),
-    refetchInterval: 5000, // Poll every 5 seconds
+    refetchInterval: 15000, // Poll every 15 seconds (reduced from 5s to prevent re-render loop)
     retry: 1,
     enabled: !!caseId, // Only poll when we have a caseId
   })
   
-  // Auto-refresh document list when processing status changes
+  // Track previous processing state to detect TRANSITIONS (not every poll)
+  const prevCompletedRef = useRef(0)
+  const prevFailedRef = useRef(0)
+  const prevProcessingRef = useRef(0)
+
+  // Only invalidate when processing status TRANSITIONS happen
+  // (e.g., a document goes from "processing" to "completed" or "failed")
+  // NOT on every 5-second poll cycle — that causes infinite re-render loop
   useEffect(() => {
-    if (processingStatus) {
-      // Always refresh documents to show latest processingStatus/progress
+    if (!processingStatus) return
+
+    const curCompleted = processingStatus.completed
+    const curFailed = processingStatus.failed
+    const curProcessing = processingStatus.processing
+
+    // Detect transitions: completed/failed count changed, or processing count changed to 0
+    const completedChanged = curCompleted !== prevCompletedRef.current
+    const failedChanged = curFailed !== prevFailedRef.current
+    const processingFinished = prevProcessingRef.current > 0 && curProcessing === 0
+
+    if (completedChanged || failedChanged || processingFinished) {
+      // Only invalidate when actual transitions happen
       queryClient.invalidateQueries({ queryKey: ['documents', caseId] })
-      
-      // When processing completes or fails, refresh all related data
-      if (processingStatus.items.some(item => item.status === 'completed' || item.status === 'failed')) {
-        queryClient.invalidateQueries({ queryKey: ['persons', caseId] })
-        queryClient.invalidateQueries({ queryKey: ['episodes', caseId] })
-        queryClient.invalidateQueries({ queryKey: ['dashboard', caseId] })
-        queryClient.invalidateQueries({ queryKey: ['criminal-cases'] })
-        queryClient.invalidateQueries({ queryKey: ['evidence-chain', caseId] })
-      }
+      queryClient.invalidateQueries({ queryKey: ['persons', caseId] })
+      queryClient.invalidateQueries({ queryKey: ['episodes', caseId] })
+      queryClient.invalidateQueries({ queryKey: ['dashboard', caseId] })
+      queryClient.invalidateQueries({ queryKey: ['criminal-cases'] })
+      queryClient.invalidateQueries({ queryKey: ['evidence-chain', caseId] })
     }
+
+    // Update refs for next comparison
+    prevCompletedRef.current = curCompleted
+    prevFailedRef.current = curFailed
+    prevProcessingRef.current = curProcessing
   }, [processingStatus, caseId, queryClient])
   
   const documents = data ?? []

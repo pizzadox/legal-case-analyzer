@@ -9,10 +9,12 @@ export function QueryProvider({ children }: { children: React.ReactNode }) {
       new QueryClient({
         defaultOptions: {
           queries: {
-            staleTime: 30 * 1000, // 30 seconds - reasonable stale time
+            staleTime: 60 * 1000, // 60 seconds - data stays fresh for 1 minute
             retry: 1,
-            refetchInterval: 30 * 1000, // Auto-refresh every 30 seconds (polling for DB changes)
-            refetchOnWindowFocus: true, // Refresh when user switches back to the window
+            // Do NOT set global refetchInterval — each component sets its own.
+            // Global refetchInterval causes ALL queries to poll constantly,
+            // creating cascading re-renders and infinite update loops.
+            refetchOnWindowFocus: false, // Disable to prevent mass re-fetch on tab switch
           },
         },
       })
