@@ -118,3 +118,58 @@ export async function POST(request: NextRequest) {
     );
   }
 }
+
+/**
+ * Cancel processing for a document.
+ * Tries to cancel via the doc-processor microservice first, then falls back to direct DB update.
+ */
+export async function DELETE(request: NextRequest) {
+  const { searchParams } = new URL(request.url);
+  const documentId = searchParams.get('documentId');
+
+  if (!documentId) {
+    return NextResponse.json({ error: 'documentId is required' }, { status: 400 });
+  }
+
+  // Try to cancel via doc-processor microservice
+  try {
+    const response = await fetch(
+      `http://localhost:${DOC_PROCESSOR_PORT}/api/cancel?documentId=${documentId}`,
+      { method: 'POST', signal: AbortSignal.timeout(3000) }
+    );
+    if (response.ok) {
+      const data = await response.json();
+      console.log(`[Process] Cancelled via doc-processor for ${documentId}:`, data);
+      return NextResponse.json({ success: true, message: 'Processing cancelled' });
+    }
+  } catch (cancelError) {
+    console.log(`[Process] Doc-processor cancel failed for ${documentId}, using DB fallback: ${cancelError}`);
+  }
+
+  // Fallback: reset status in DB directly
+  try {
+    await db.document.update({
+      where: { id: documentId },
+      data: { processingStatus: 'pending', processingError: null },
+    });
+
+    const queueEntry = await db.processingQueue.findFirst({
+      where: { documentId, status: { in: ['queued', 'processing'] } },
+    });
+
+    if (queueEntry) {
+      await db.processingQueue.update({
+        where: { id: queueEntry.id },
+        data: { status: 'failed', error: 'Cancelled by user', completedAt: new Date() },
+      });
+    }
+
+    return NextResponse.json({ success: true, message: 'Processing cancelled (DB fallback)' });
+  } catch (dbError) {
+    console.error('[Process] DB fallback cancel error:', dbError);
+    return NextResponse.json(
+      { error: 'Failed to cancel processing', details: String(dbError) },
+      { status: 500 }
+    );
+  }
+}

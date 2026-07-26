@@ -160,9 +160,48 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
       queueId: queueEntry.id,
       documentId: queueEntry.documentId,
     }))
+  } else if (req.method === 'POST' && pathname === '/api/cancel') {
+    // Cancel processing for a specific document
+    const documentId = url.searchParams.get('documentId')
+    if (!documentId) {
+      res.writeHead(400, { 'Content-Type': 'application/json' })
+      res.end(JSON.stringify({ error: 'documentId parameter is required' }))
+      return
+    }
+
+    try {
+      // Find queue entry for this document that is currently queued or processing
+      const queueEntry = await db.processingQueue.findFirst({
+        where: { documentId, status: { in: ['queued', 'processing'] } },
+      })
+
+      if (queueEntry) {
+        // Remove from currentlyProcessing set to stop the in-progress work
+        currentlyProcessing.delete(queueEntry.id)
+
+        // Update queue entry status to cancelled
+        await db.processingQueue.update({
+          where: { id: queueEntry.id },
+          data: { status: 'cancelled', completedAt: new Date() },
+        })
+
+        // Reset document status to pending so it can be reprocessed later
+        await db.document.update({
+          where: { id: documentId },
+          data: { processingStatus: 'pending', processingError: null },
+        })
+      }
+
+      res.writeHead(200, { 'Content-Type': 'application/json' })
+      res.end(JSON.stringify({ success: true, message: 'Processing cancelled' }))
+    } catch (cancelError) {
+      console.error('[API] Cancel error:', cancelError)
+      res.writeHead(500, { 'Content-Type': 'application/json' })
+      res.end(JSON.stringify({ error: 'Internal server error', details: String(cancelError) }))
+    }
   } else {
     res.writeHead(404, { 'Content-Type': 'application/json' })
-    res.end(JSON.stringify({ error: 'Not found', availableEndpoints: ['/api/status', '/api/health', '/api/process'] }))
+    res.end(JSON.stringify({ error: 'Not found', availableEndpoints: ['/api/status', '/api/health', '/api/process', '/api/cancel'] }))
   }
 }
 
@@ -268,6 +307,7 @@ function startServer(): void {
     console.log(`[Server]   GET  /api/status?caseId=xxx - Processing queue status for a case`)
     console.log(`[Server]   GET  /api/health          - Service health check`)
     console.log(`[Server]   POST /api/process?documentId=xxx - Trigger processing for a document`)
+    console.log(`[Server]   POST /api/cancel?documentId=xxx  - Cancel processing for a document`)
     console.log(`[Server] Polling DB every ${POLL_INTERVAL_MS}ms for queued documents`)
   })
 

@@ -47,7 +47,12 @@ async function fetchApi<T>(endpoint: string, options?: RequestInit): Promise<T> 
 }
 
 // Upload documents (multi-file) for a specific case
-export async function uploadDocuments(files: File[], caseId?: string): Promise<DocumentData[]> {
+// Uses XMLHttpRequest for real-time upload progress tracking
+export async function uploadDocuments(
+  files: File[],
+  caseId?: string,
+  onProgress?: (percent: number) => void
+): Promise<DocumentData[]> {
   if (!files || files.length === 0) {
     throw new Error('Нет файлов для загрузки')
   }
@@ -62,38 +67,49 @@ export async function uploadDocuments(files: File[], caseId?: string): Promise<D
 
   console.log(`[UploadAPI] Uploading ${files.length} files for case ${caseId || 'none'}`)
 
-  try {
-    const response = await fetch(`${API_BASE}/upload`, {
-      method: 'POST',
-      body: formData,
-    })
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest()
+    xhr.open('POST', `${API_BASE}/upload`)
 
-    if (!response.ok) {
-      let errorMessage = 'Ошибка загрузки документов'
-      try {
-        const errorData = await response.json()
-        errorMessage = errorData.error || errorData.message || errorMessage
-        console.error(`[UploadAPI] Upload failed (${response.status}): ${errorMessage}`)
-      } catch {
-        // Response body is not JSON (e.g. HTML error page from proxy)
-        console.error(`[UploadAPI] Upload failed (${response.status}): non-JSON response`)
-        errorMessage = `Ошибка загрузки: сервер вернул ${response.status}`
+    xhr.upload.onprogress = (event) => {
+      if (event.lengthComputable && onProgress) {
+        const percent = Math.round((event.loaded / event.total) * 100)
+        onProgress(percent)
       }
-      throw new Error(errorMessage)
     }
 
-    const result = await response.json()
-    console.log(`[UploadAPI] Successfully uploaded ${Array.isArray(result) ? result.length : 0} documents`)
-    return result
-  } catch (error) {
-    if (error instanceof TypeError && error.message.includes('fetch')) {
-      // Network error — server unreachable or request too large
-      console.error('[UploadAPI] Network/fetch error during upload:', error.message)
-      throw new Error('Ошибка сети при загрузке файлов. Проверьте подключение или попробуйте файл меньшего размера.')
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        try {
+          const result = JSON.parse(xhr.responseText)
+          console.log(`[UploadAPI] Successfully uploaded ${Array.isArray(result) ? result.length : 0} documents`)
+          resolve(result)
+        } catch {
+          console.error('[UploadAPI] Failed to parse response as JSON')
+          reject(new Error('Ошибка обработки ответа сервера'))
+        }
+      } else {
+        // Handle error response
+        let errorMessage = 'Ошибка загрузки документов'
+        try {
+          const errorData = JSON.parse(xhr.responseText)
+          errorMessage = errorData.error || errorData.message || errorMessage
+          console.error(`[UploadAPI] Upload failed (${xhr.status}): ${errorMessage}`)
+        } catch {
+          console.error(`[UploadAPI] Upload failed (${xhr.status}): non-JSON response`)
+          errorMessage = `Ошибка загрузки: сервер вернул ${xhr.status}`
+        }
+        reject(new Error(errorMessage))
+      }
     }
-    // Re-throw already-processed errors (from the !response.ok block above)
-    throw error
-  }
+
+    xhr.onerror = () => {
+      console.error('[UploadAPI] Network error during upload')
+      reject(new Error('Ошибка сети при загрузке файлов. Проверьте подключение или попробуйте файл меньшего размера.'))
+    }
+
+    xhr.send(formData)
+  })
 }
 
 // Get all documents for a specific case (no mock-data fallback)
@@ -283,6 +299,13 @@ export async function processDocument(documentId: string): Promise<DocumentData>
   return fetchApi<DocumentData>('/process', {
     method: 'POST',
     body: JSON.stringify({ documentId }),
+  })
+}
+
+// Cancel processing for a document (stop current processing)
+export async function cancelProcessing(documentId: string): Promise<{ success: boolean }> {
+  return fetchApi<{ success: boolean }>(`/process?documentId=${encodeURIComponent(documentId)}`, {
+    method: 'DELETE',
   })
 }
 

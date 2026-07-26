@@ -260,10 +260,12 @@ function DocumentCompareDialog({ doc1, doc2, onClose }: { doc1: DocumentData; do
 export function CaseDocuments({ caseId }: { caseId: string }) {
   const queryClient = useQueryClient()
   const [isUploading, setIsUploading] = useState(false)
+  const [uploadProgress, setUploadProgress] = useState(0)
   const [isDragOver, setIsDragOver] = useState(false)
   const [selectedDoc, setSelectedDoc] = useState<DocumentData | null>(null)
   const [analyzingId, setAnalyzingId] = useState<string | null>(null)
   const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [cancellingId, setCancellingId] = useState<string | null>(null)
   const [compareMode, setCompareMode] = useState(false)
   const [compareDocs, setCompareDocs] = useState<[DocumentData, DocumentData] | null>(null)
   const [selectedForCompare, setSelectedForCompare] = useState<string[]>([])
@@ -333,8 +335,11 @@ export function CaseDocuments({ caseId }: { caseId: string }) {
   const handleUpload = async (files: FileList | null) => {
     if (!files?.length) return
     setIsUploading(true)
+    setUploadProgress(0)
     try {
-      const result = await caseApi.uploadDocuments(Array.from(files), caseId)
+      const result = await caseApi.uploadDocuments(Array.from(files), caseId, (percent) => {
+        setUploadProgress(percent)
+      })
       toast.success(`Загружено ${result.length} документ(ов)`)
       // Invalidate all case-related queries so the uploaded file appears immediately
       await queryClient.invalidateQueries({ queryKey: ['documents', caseId] })
@@ -350,6 +355,40 @@ export function CaseDocuments({ caseId }: { caseId: string }) {
       toast.error('Ошибка загрузки')
     }
     setIsUploading(false)
+    setUploadProgress(0)
+  }
+
+  const handleCancel = async (docId: string) => {
+    setCancellingId(docId)
+    try {
+      await caseApi.cancelProcessing(docId)
+      toast.success('Обработка остановлена')
+      await queryClient.invalidateQueries({ queryKey: ['documents', caseId] })
+      await queryClient.invalidateQueries({ queryKey: ['processing-status', caseId] })
+      refetch()
+    } catch (err: unknown) {
+      const errorMsg = err instanceof Error ? err.message : 'Не удалось остановить'
+      toast.error(`Ошибка: ${errorMsg}`)
+    }
+    setCancellingId(null)
+  }
+
+  const handleRestartStuck = async () => {
+    const stuckItems = processingStatus?.items.filter(i => i.status === 'queued' || (i.status === 'processing' && i.progressPercent < 5)) || []
+    if (stuckItems.length === 0) {
+      toast.info('Нет зависших документов')
+      return
+    }
+    for (const item of stuckItems) {
+      try {
+        await caseApi.cancelProcessing(item.documentId)
+        await caseApi.processDocument(item.documentId)
+      } catch { /* ignore errors for individual items */ }
+    }
+    toast.success(`Перезапущено ${stuckItems.length} документ(ов)`)
+    await queryClient.invalidateQueries({ queryKey: ['processing-status', caseId] })
+    await queryClient.invalidateQueries({ queryKey: ['documents', caseId] })
+    refetch()
   }
 
   const handleAnalyze = async (docId: string) => {
@@ -496,7 +535,11 @@ export function CaseDocuments({ caseId }: { caseId: string }) {
       >
         <CardContent className="p-6 text-center">
           {isUploading ? (
-            <div className="flex flex-col items-center gap-2"><Loader2 className="w-8 h-8 animate-spin text-amber-500" /><p className="text-sm">Загрузка...</p><Progress value={50} className="w-48" /></div>
+            <div className="flex flex-col items-center gap-2">
+              <Loader2 className="w-8 h-8 animate-spin text-amber-500" />
+              <p className="text-sm">Загрузка... {uploadProgress}%</p>
+              <Progress value={uploadProgress} className="w-48" />
+            </div>
           ) : (
             <>
               <Upload className="w-8 h-8 mx-auto text-muted-foreground" />
@@ -533,6 +576,11 @@ export function CaseDocuments({ caseId }: { caseId: string }) {
                 <Badge className={processingStatus.processing > 0 ? 'bg-amber-600 text-white' : processingStatus.failed > 0 ? 'bg-red-700 text-white' : 'bg-emerald-600 text-white'}>
                   {processingStatus.progressPercent}%
                 </Badge>
+                {(processingStatus.processing > 0 || processingStatus.queued > 0) && (
+                  <Button size="sm" variant="outline" className="rounded-xl h-7 text-xs" onClick={handleRestartStuck}>
+                    <RefreshCw className="w-3 h-3 mr-1" />Перезапуск зависших
+                  </Button>
+                )}
               </div>
             </div>
             <Progress value={processingStatus.progressPercent} className="h-2 rounded-full mb-3" />
@@ -692,7 +740,14 @@ export function CaseDocuments({ caseId }: { caseId: string }) {
                       </>
                     )}
                     {doc.processingStatus === 'processing' && (
-                      <Badge className="bg-amber-600 text-white text-xs"><Loader2 className="w-3 h-3 mr-1 animate-spin" />В обработке</Badge>
+                      <>
+                        <Badge className="bg-amber-600 text-white text-xs"><Loader2 className="w-3 h-3 mr-1 animate-spin" />В обработке</Badge>
+                        <Button size="sm" variant="outline" className="rounded-lg text-red-700 border-red-300 hover:bg-red-50"
+                          onClick={() => handleCancel(doc.id)} disabled={cancellingId === doc.id}>
+                          {cancellingId === doc.id ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : <XCircle className="w-3 h-3 mr-1" />}
+                          Стоп
+                        </Button>
+                      </>
                     )}
                     {doc.processingStatus === 'pending' && (
                       <Button size="sm" className="rounded-lg bg-gradient-to-r from-red-700 to-red-800 text-white" onClick={() => handleAnalyze(doc.id)} disabled={analyzingId === doc.id}>

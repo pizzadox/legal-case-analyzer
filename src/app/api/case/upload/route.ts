@@ -3,6 +3,9 @@ import { db } from '@/lib/db';
 import { writeFile, mkdir } from 'fs/promises';
 import path from 'path';
 
+// Use Node.js runtime for large file uploads (Edge runtime has body size limits)
+export const runtime = 'nodejs';
+
 // 5-minute timeout for large file uploads
 export const maxDuration = 300;
 
