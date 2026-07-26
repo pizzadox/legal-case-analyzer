@@ -52,3 +52,31 @@ prompt
 server.log
 # Skills directory
 /skills/
+
+# Database files with user data
+/db/*.db
+/db/*.db-journal
+
+# Uploaded files (large, user data)
+/upload/
+
+# Build artifacts
+/.next/standalone/
+/.next/static/
+
+# Mini service logs
+mini-services/*/processor.log
+mini-services/*/*.log
+
+# Bun lockfiles
+bun.lock
+
+# Caddy config is project-specific, keep it
+!Caddyfile
+
+# Keep-alive scripts
+mini-services/*/keep-alive.sh
+mini-services/*/start-daemon.sh
+
+# Tool results (temporary)
+/tool-results/
