@@ -1,164 +1,207 @@
-# LAW — Система Управления Уголовным Делом
+# Legal Case Analyzer — Юридический анализатор дел
 
-> **ИИ-аналитик v3.3** — Criminal Case Management System with AI-powered analysis
+> AI-powered система управления и анализа уголовных дел на Next.js 16 с извлечением лиц, эпизодов и рисков из документов
 
-## Обзор
+## Описание проекта
 
-LAW — это комплексная система управления уголовными делами с встроенным ИИ-аналитиком. Приложение позволяет загружать документы дела (PDF, DOCX, изображения и др.), автоматически распознавать текст, извлекать ключевые данные (участники, эпизоды, статьи УК) и формировать стратегию защиты.
+Система для юристов и адвокатов, позволяющая загружать документы по уголовным делам (PDF), автоматически извлекать ключевые данные (лица, эпизоды, статьи УК), анализировать риски и строить стратегию защиты. Использует AI (LLM, VLM) для обработки документов и генерации аналитики.
 
-### Ключевые возможности
+## Технологический стек
 
-- **Загрузка и обработка документов** — поддержка PDF, DOC/DOCX, изображений, TXT, CSV, RTF и других форматов (до 500 МБ)
-- **ИИ-распознавание текста** — OCR сканированных PDF через VLM, извлечение текста из любых документов
-- **Автоматический анализ** — ИИ извлекает участников, эпизоды, статьи УК и заполняет базу данных
-- **Отслеживание прогресса** — процент обработки каждого файла с отображением текущего шага и причин ошибок
-- **17 разделов анализа** — от дашборда до боевого плана защиты, матрицы рисков и процессуальных нарушений
-- **Очередь обработки** — фоновый микросервис для последовательной обработки документов
-- **Автообновление данных** — изменения в базе данных отображаются без перезагрузки страницы
-- **Экспорт** — CSV и PDF экспорт данных дела
-- **Тёмная/светлая тема** — переключение по кнопке или системным настройкам
-- **Быстрые команды** — Cmd+K / Ctrl+K для нававигации между разделами
+| Технология | Версия | Применение |
+|---|---|---|
+| **Next.js** | 16 | Фреймворк (App Router) |
+| **TypeScript** | 5 | Язык |
+| **Tailwind CSS** | 4 | Стили |
+| **shadcn/ui** | New York | UI-компоненты |
+| **Prisma** | SQLite | ORM / БД |
+| **Zustand** | 5 | Клиентское состояние |
+| **TanStack Query** | 5 | Серверное состояние |
+| **z-ai-web-dev-sdk** | 0.0.18 | AI SDK (LLM, VLM) |
+| **Recharts** | 2 | Графики |
+| **Framer Motion** | 12 | Анимации |
 
-## Технологии
-
-| Компонент | Технология |
-|---|---|
-| Frontend | Next.js 16 + React 19 + TypeScript 5 |
-| Стили | Tailwind CSS 4 + shadcn/ui (New York) |
-| База данных | Prisma ORM + SQLite |
-| Состояние | Zustand + TanStack Query |
-| ИИ-анализ | z-ai-web-dev-sdk (LLM + VLM) |
-| Фоновая обработка | Bun микросервис на порту 3005 |
-| Шлюз | Caddy (порт 81 → 3000) |
-
-## Структура проекта
+## Архитектура
 
 ```
 ├── src/
 │   ├── app/
-│   │   ├── page.tsx              — Главная страница (сайдбар + ленивая загрузка вкладок)
-│   │   └── api/case/             — API маршруты (cases, documents, persons, episodes, etc.)
+│   │   ├── page.tsx                    # Главная страница (8 вкладок)
+│   │   └── api/case/                   # API маршруты (26 endpoints)
+│   │       ├── upload/route.ts         # Загрузка документов
+│   │       ├── process/route.ts        # AI-обработка документов
+│   │       ├── processing-status/      # Статус обработки (WebSocket)
+│   │       ├── dashboard/              # Дашборд статистики
+│   │       ├── documents/              # CRUD документов
+│   │       ├── persons/                # извлечённые лица
+│   │       ├── episodes/               # Эпизоды дела
+│   │       ├── qa/                     # Вопрос-ответ (LLM)
+│   │       ├── search/                 # Поиск по документам
+│   │       ├── risk-assessment/        # Оценка рисков
+│   │       ├── evidence-chain/         # Цепочка доказательств
+│   │       ├── timeline/               # Хронология дела
+│   │       ├── defense/                # Стратегия защиты
+│   │       ├── compliance/             # Проверка соответствия
+│   │       ├── analytics/              # Аналитика
+│   │       └── ...                     # Другие endpoints
 │   ├── components/
-│   │   ├── case-documents.tsx    — Загрузка, просмотр и прогресс обработки документов
-│   │   ├── case-dashboard.tsx    — Обзор дела и статистика
-│   │   ├── case-persons.tsx      — Участники дела и виновность
-│   │   ├── case-episodes.tsx     — Преступные эпизоды
-│   │   ├── case-*.tsx            — 17 вкладок-разделов (ленивая загрузка)
-│   │   ├── ui/                   — shadcn/ui компоненты
-│   │   └── error-boundary.tsx    — Обработка ошибок
-│   ├── lib/
-│   │   ├── case-api.ts           — API клиент
-│   │   ├── case-store.ts         — Zustand стейт-менеджер + типы
-│   │   ├── db.ts                 — Prisma клиент
-│   │   └── mock-data.ts          — Моковые данные для отсутствующих API
-│   └── hooks/
-│       └── use-toast.ts          — Toast уведомления
+│   │   ├── case-dashboard.tsx          # Дашборд с статистикой
+│   │   ├── case-documents.tsx          # Управление документами
+│   │   ├── case-persons.tsx            # Карточки лиц
+│   │   ├── case-episodes.tsx           # Эпизоды дела
+│   │   ├── case-timeline.tsx           # Хронология
+│   │   ├── case-evidence-chain.tsx     # Цепочка доказательств
+│   │   ├── case-risk.tsx              # Оценка рисков
+│   │   ├── case-witness-matrix.tsx    # Матрица свидетелей
+│   │   ├── case-brief.tsx             # Краткое резюме дела
+│   │   ├── case-analytics.tsx         # Аналитика
+│   │   ├── case-export-center.tsx     # Экспорт CSV/PDF
+│   │   ├── case-battle-plan.tsx       # Боевой план защиты
+│   │   ├── case-violations.tsx        # Нарушения
+│   │   ├── case-search.tsx            # Поиск
+│   │   ├── case-qa.tsx               # Вопрос-ответ
+│   │   ├── case-defense.tsx           # Стратегия защиты
+│   │   ├── case-legal-check.tsx       # Правовая проверка
+│   │   ├── error-boundary.tsx         # Error Boundary
+│   │   └ ui/                          # shadcn/ui компоненты
+│   └── lib/
+│       ├── case-api.ts                # API клиент
+│       ├── case-store.ts              # Zustand store
+│       ├── db.ts                      # Prisma клиент
+│       ├── zai.ts                     # AI SDK wrapper
+│       ├── query-provider.tsx         # TanStack Query Provider
+│       ├── shared-ui.ts               # Общие UI функции
+│       ├── mock-data.ts               # Мок данные для разработки
+│       └── utils.ts                   # Утилиты
 ├── prisma/
-│   └── schema.prisma             — 15+ моделей: CriminalCase, Document, Person, Episode, ProcessingQueue...
+│   └ schema.prisma                    # 15+ моделей БД
+│   └ seed.ts                          # Seed данные
 ├── mini-services/
-│   └── doc-processor/            — Фоновый микросервис обработки документов
-│       ├── index.ts              — HTTP сервер + poller (порт 3005)
-│       ├── lib/processor.ts      — Pipeline обработки с шагами прогресса
-│       ├── lib/extraction.ts     — Многоформатное извлечение текста (PDF, DOCX, OCR)
-│       ├── lib/zai.ts            — z-ai-web-dev-sdk (LLM + VLM + OCR CLI)
-│       └── lib/db.ts             — Prisma клиент микросервиса
-├── db/                           — SQLite база данных
-├── upload/                       — Загруженные файлы
-└── Caddyfile                     — Шлюз конфигурация
+│   ├── doc-processor/                 # Сервис обработки документов
+│   └── web-app/                       # Web-сервис
+├── Caddyfile                          # Gateway конфигурация
+└── db/                                # SQLite база данных
 ```
 
-## Установка и запуск
+## Ключевые модели БД (Prisma)
 
-### Требования
+- **CriminalCase** — Уголовное дело (номер, статус, статьи)
+- **Document** — Загруженный документ (PDF, извлечённый текст, AI-сводка)
+- **Person** — Лицо из дела (подозреваемый, свидетель, потерпевший)
+- **Episode** — Эпизод дела (дата, описание, участники)
+- **ProcessingQueue** — очередь обработки документов
+- **LegalCompliance** — Проверка юридического соответствия
+- **CrossReference** — перекрестные ссылки между документами
+- **ChatMessage** — история Q&A диалогов
 
-- Node.js 18+ / Bun 1+
-- SQLite3
-- poppler-utils (pdftotext, pdftoppm для PDF)
-- LibreOffice (для DOCX конвертации, опционально)
+## Вкладки (Tabs)
 
-### Быстрый старт
+| ID | Название | Компонент | Описание |
+|---|---|---|---|
+| `dashboard` | Дашборд | `case-dashboard` | Статистика и обзор дела |
+| `documents` | Документы | `case-documents` | Загрузка, просмотр, AI-сводка |
+| `persons` | Лица | `case-persons` | Карточки всех лиц дела |
+| `episodes` | Эпизоды | `case-episodes` | Эпизоды/события дела |
+| `timeline` | Хронология | `case-timeline` | Временная шкала событий |
+| `evidence-chain` | Доказательства | `case-evidence-chain` | Цепочка доказательств |
+| `risk` | Риски | `case-risk` | Оценка юридических рисков |
+| `witness-matrix` | Свидетели | `case-witness-matrix` | Матрица показаний свидетелей |
+| `brief` | Резюме | `case-brief` | Краткое резюме дела |
+| `analytics` | Аналитика | `case-analytics` | Графики и статистика |
+| `export-center` | Экспорт | `case-export-center` | CSV/PDF экспорт |
+| `battle-plan` | Боевой план | `case-battle-plan` | Стратегия защиты |
+| `violations` | Нарушения | `case-violations` | Процессуальные нарушения |
+| `search` | Поиск | `case-search` | Поиск по тексту документов |
+| `qa` | Q&A | `case-qa` | AI вопрос-ответ |
+| `defense` | Защита | `case-defense` | Анализ стратегии защиты |
+| `legal-check` | Проверка | `case-legal-check` | Правовая проверка |
+
+## Основные правки ( changelog )
+
+### v3.9 — Стабилизация и исправление OOM
+- **Критическое исправление**: переключение с Turbopack на webpack в dev-скрипте (`--turbopack` → `--webpack`). Turbopack потреблял 1.7GB RAM, вызывая OOM Kill на Linux. Webpack — ~740MB
+- **Fix**: ошибка lint в SectionRenderer — setState внутри useEffect без правильного условия
+- **Fix**: переполнение извлечённого текста (text overflow) — добавлен `overflow-hidden` с `max-height` и прокруткой
+- **Fix**: кнопки в хедере (выбор дела, смена темы) — проверены через Agent Browser
+
+### v3.5 — Управление делами и AI-аналитика
+- **Новое**: диалог удаления дела (`AlertDialog`) с подтверждением
+- **Новое**: dropdown выбора дела в хедере (`FolderOpen` icon)
+- **Fix**: удаление дела — API 404 → исправлен routing
+- **Fix**: AI Insights — переключение с мок-данных на реальные данные из БД
+- **Fix**: цепочка доказательств — привязка к caseId
+
+### v3.4 — Обработка документов
+- **Fix**: VLM обработка — base64 data URLs вместо файловых путей
+- **Fix**: привязка документов к caseId
+- **Новое**: маршрут `/api/case/process/reprocess` для повторной обработки
+- **Fix**: кнопки retry/reprocess на вкладке документов
+
+### v3.3 — Оптимизация загрузки
+- **Новое**: ленивая загрузка вкладок через `COMPONENT_REGISTRY` с dynamic imports
+- **Новое**: прогресс обработки по каждому файлу (per-file progress)
+- **Новое**: отображение ошибок обработки
+- **Fix**: bump version до 3.3.0
+
+### v3.2 — Управление памятью
+- **Новое**: `--max-old-space-size=768` в dev-скрипте
+- **Новое**: per-file processing progress, error display
+- **Fix**: Export Center исправлен
+
+### v3.0 — Рефакторинг архитектуры
+- Переход на компонентный registry pattern для вкладок
+- Zustand store для глобального состояния (`activeCaseId`)
+- TanStack Query для серверного состояния
+- Error Boundary для обработки ошибок
+
+### v2.0 — AI-интеграция
+- Интеграция z-ai-web-dev-sdk (LLM, VLM)
+- AI-сводка документов
+- извлечение лиц и эпизодов через LLM
+- Q&A диалог с контекстом дела
+
+### v1.0 — MVP
+- Загрузка PDF документов
+- Базовый дашборд
+- Prisma схема (SQLite)
+- shadcn/ui компоненты
+
+## Запуск проекта
 
 ```bash
-# 1. Установить зависимости
+# Установка зависимостей
 bun install
 
-# 2. Инициализировать базу данных
+# Push схемы БД
 bun run db:push
 
-# 3. Запустить приложение
+# Генерация Prisma Client
+bun run db:generate
+
+# Запуск dev-сервера (webpack mode — важно!)
 bun run dev
 
-# 4. Запустить микросервис обработки (отдельно)
-cd mini-services/doc-processor
-bun install
-bun run db:push
-bun run dev
-```
+# Проверка кода
+bun run lint
 
-### Production запуск
-
-```bash
-# Build standalone server
+# Production build
 bun run build
-
-# Запустить production server
 bun run start
 ```
 
-## API маршруты
+## Важно
 
-| Метод | Путь | Описание |
-|---|---|---|
-| GET | `/api/case/cases` | Список уголовных дел |
-| POST | `/api/case/cases` | Создать новое дело |
-| GET | `/api/case/documents?caseId=X` | Документы дела |
-| POST | `/api/case/upload` | Загрузить файлы (FormData) |
-| GET | `/api/case/persons?caseId=X` | Участники дела |
-| GET | `/api/case/episodes?caseId=X` | Эпизоды дела |
-| GET | `/api/case/dashboard?caseId=X` | Статистика дашборда |
-| GET | `/api/case/processing-status?caseId=X` | Прогресс обработки файлов |
-| DELETE | `/api/case/documents/:id` | Удалить документ |
-| POST | `/api/case/process` | Запустить ИИ-анализ документа |
+- **Не используйте `--turbopack`** — вызывает OOM Kill (1.7GB RAM)
+- Dev-сервер работает на **порт 3000**
+- БД: **SQLite** (файл в `/db/`)
+- AI SDK: **z-ai-web-dev-sdk** (backend only!)
 
-## Архитектура обработки документов
+## Известные проблемы
 
-1. **Загрузка** — файл сохраняется на диск + создаётся Document в БД + создаётся ProcessingQueue entry
-2. **Poller** — микросервис doc-processor каждые 5 секунд проверяет очередь
-3. **Распознавание** — извлечение текста (pdftotext → OCR → pdf-parse fallback)
-4. **ИИ-анализ** — LLM анализирует текст и извлекает структурированные данные
-5. **Заполнение БД** — создаются Person, Episode, Article записи с ссылками на документ
-6. **Прогресс** — каждый шаг обновляет progressPercent и progressStep в ProcessingQueue
+- Загрузка файлов: `uploadDocuments` может возвращать ошибку при определённых условиях
+- Обработка документов: может зависать на 10% при больших файлах
+- Переключение вкладок: все 17 вкладок не восстановлены (текущий набор — 8)
 
-### Шаги прогресса
+## Лицензия
 
-| Шаг | Процент | Описание |
-|---|---|---|
-| starting | 5% | Запуск обработки |
-| extracting_text | 20% | Распознавание текста |
-| text_extracted | 35% | Текст распознан |
-| analyzing | 50% | ИИ-анализ документа |
-| analysis_complete | 70% | Анализ завершён |
-| creating_persons | 80% | Заполнение участников |
-| creating_episodes | 85% | Заполнение эпизодов |
-| creating_articles | 90% | Заполнение статей |
-| finalizing | 95% | Сохранение результатов |
-| completed | 100% | Обработка завершена |
-
-## Оптимизации v3.3
-
-- **Ленивая загрузка вкладок** — каждый раздел загружается отдельно через `React.lazy()`, уменьшая начальный размер страницы
-- **ErrorBoundary** — каждая вкладка обёрнута в ErrorBoundary для изоляции ошибок
-- **Polling автообновление** — TanStack Query с `refetchInterval: 5000-10000ms` для автоматического обновления данных
-- **Микросервисная архитектура** — фоновая обработка выделена в отдельный Bun процесс на порту 3005
-- **Caddy шлюз** — маршрутизация API запросов через `XTransformPort` query parameter
-
-## Переключение между делами
-
-- Dropdown в заголовке: выбор существующего дела
-- Создание нового дела: кнопка "Новое дело"
-- При переключении все данные обновляются автоматически (invalidateQueries)
-- Новое дело создаётся пустым — без документов, участников и эпизодов
-
-## License
-
-Private — для использования в адвокатской практике
+Private — проект в разработке

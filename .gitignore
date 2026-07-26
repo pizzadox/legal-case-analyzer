@@ -80,3 +80,17 @@ mini-services/*/start-daemon.sh
 
 # Tool results (temporary)
 /tool-results/
+
+# Screenshots (temporary)
+screenshot*.png
+qa-verify*.png
+
+# Shell scripts (project-specific)
+start.sh
+start-server.sh
+server-start.sh
+keep-server-alive.sh
+doc-processor-start.sh
+
+# Worklog (project-specific runtime)
+worklog.md
