@@ -83,7 +83,13 @@ export async function DELETE(
   try {
     const { caseId } = await params;
 
-    // Delete all related data first
+    // Check if case exists first
+    const existing = await db.criminalCase.findUnique({ where: { id: caseId } });
+    if (!existing) {
+      return NextResponse.json({ error: 'Дело не найдено' }, { status: 404 });
+    }
+
+    // Delete all related data first (cascade is handled by Prisma onDelete:Cascade)
     await db.criminalCase.delete({ where: { id: caseId } });
 
     return NextResponse.json({ success: true, message: 'Дело удалено' });

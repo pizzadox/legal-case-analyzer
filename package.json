@@ -1,12 +1,12 @@
 {
   "name": "nextjs_tailwind_shadcn_ts",
-  "version": "3.4.0",
+  "version": "3.5.0",
   "private": true,
   "prisma": {
     "seed": "bun prisma/seed.ts"
   },
   "scripts": {
-    "dev": "node --max-old-space-size=768 .next/standalone/server.js 2>&1 | tee dev.log",
+    "dev": "node --max-old-space-size=128 .next/standalone/server.js 2>&1 | tee dev.log",
     "build": "next build --webpack && cp -r .next/static .next/standalone/.next/ && cp -r public .next/standalone/",
     "start": "NODE_ENV=production bun .next/standalone/server.js 2>&1 | tee server.log",
     "lint": "eslint .",
