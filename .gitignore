@@ -94,3 +94,7 @@ doc-processor-start.sh
 
 # Worklog (project-specific runtime)
 worklog.md
+
+# Large files
+*.pdf
+*.png
