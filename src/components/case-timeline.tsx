@@ -84,15 +84,15 @@ function exportTimelineCSV(events: CaseTimelineEvent[]) {
 
 const monthFmt = new Intl.DateTimeFormat('ru-RU', { month: 'long', year: 'numeric' })
 
-export function CaseTimeline() {
+export function CaseTimeline({ caseId }: { caseId: string }) {
   const [categoryFilter, setCategoryFilter] = useState<Category>('all')
   const [importanceFilter, setImportanceFilter] = useState<Importance>('all')
 
   const { data, isLoading } = useQuery({
-    queryKey: ['case-timeline'],
-    queryFn: getCaseTimeline,
+    queryKey: ['case-timeline', caseId],
+    queryFn: () => getCaseTimeline(caseId),
     retry: 1,
-    refetchInterval: 10000,
+    refetchInterval: false,
   })
   const events = data ?? mockCaseTimeline
 

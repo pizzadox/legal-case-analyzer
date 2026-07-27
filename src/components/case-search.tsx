@@ -77,7 +77,7 @@ function BookmarksPanel({ bookmarks }: { bookmarks: BookmarkData[] }) {
 const SUGGESTIONS = ['мошенничество', 'алиби Колесниченко', 'обыск без адвоката', 'ст. 159 ч.3', 'показания Сидорова', 'финансовые документы', 'процессуальные нарушения', 'срок следствия']
 interface HistEntry { query: string; filterType: string; timestamp: string }
 
-export function CaseSearch() {
+export function CaseSearch({ caseId }: { caseId: string }) {
   const [query, setQuery] = useState('')
   const [filterType, setFilterType] = useState<string>('all')
   const [dateFrom, setDateFrom] = useState('')
@@ -92,8 +92,8 @@ export function CaseSearch() {
   const inputRef = useRef<HTMLInputElement>(null)
 
   const searchMutation = useMutation({ mutationFn: (params: { query: string; filterType: string }) => caseApi.search(params) })
-  const { data: bkData } = useQuery({ queryKey: ['bookmarks'], queryFn: caseApi.getBookmarks, retry: 1, refetchInterval: 10000 })
-  const { data: crData } = useQuery({ queryKey: ['cross-ref-graph'], queryFn: caseApi.getCrossRefGraph, retry: 1, refetchInterval: 10000 })
+  const { data: bkData } = useQuery({ queryKey: ['bookmarks', caseId], queryFn: () => caseApi.getBookmarks(caseId), retry: 1, refetchInterval: false })
+  const { data: crData } = useQuery({ queryKey: ['cross-ref-graph', caseId], queryFn: () => caseApi.getCrossRefGraph(), retry: 1, refetchInterval: false })
 
   const results = searchMutation.data ?? mockSearchResults
   const bookmarks = bkData ?? mockBookmarks

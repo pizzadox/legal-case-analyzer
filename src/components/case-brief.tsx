@@ -41,12 +41,12 @@ function hasValue(v: unknown): boolean {
   return v != null && v !== '' && v !== undefined && v !== '—'
 }
 
-export function CaseBrief() {
+export function CaseBrief({ caseId }: { caseId: string }) {
   const { data, isLoading, refetch, isFetching } = useQuery({
-    queryKey: ['case-brief'],
-    queryFn: getCaseBrief,
+    queryKey: ['case-brief', caseId],
+    queryFn: () => getCaseBrief(caseId),
     retry: 1,
-    refetchInterval: 10000,
+    refetchInterval: false,
   })
   const brief: CaseBriefData = data ?? mockCaseBrief
 

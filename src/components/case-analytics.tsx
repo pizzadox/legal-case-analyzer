@@ -23,9 +23,9 @@ const COMP_R: Record<string, { color: string; bg: string; icon: typeof Activity 
 const DOC_C: Record<string, string> = { Обвинение: '#dc2626', Показание: '#ea580c', Протокол: '#ca8a04', Экспертиза: '#78716c' }
 const DOC_CFG = { Обвинение: { label: 'Обвинение', color: '#dc2626' }, Показание: { label: 'Показание', color: '#ea580c' }, Протокол: { label: 'Протокол', color: '#ca8a04' }, Экспертиза: { label: 'Экспертиза', color: '#78716c' } }
 
-export function CaseAnalytics() {
+export function CaseAnalytics({ caseId }: { caseId: string }) {
   const [expandedInsight, setExpandedInsight] = useState<string | null>(null)
-  const { data, isLoading } = useQuery({ queryKey: ['analytics'], queryFn: getAnalytics, retry: 1, refetchInterval: 10000 })
+  const { data, isLoading } = useQuery({ queryKey: ['analytics', caseId], queryFn: () => getAnalytics(), retry: 1, refetchInterval: false })
   const a = data ?? mockAnalytics
   if (isLoading) return <div className="grid grid-cols-2 md:grid-cols-4 gap-4">{[0,1,2,3].map(i => <Skeleton key={i} className="h-24" />)}</div>
 

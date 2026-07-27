@@ -140,7 +140,7 @@ export function CaseEpisodes({ caseId }: { caseId: string }) {
   const [statusFilter, setStatusFilter] = useState('all')
   const [searchQuery, setSearchQuery] = useState('')
   const [expandedEpisodes, setExpandedEpisodes] = useState<Set<string>>(new Set())
-  const { data, isLoading } = useQuery({ queryKey: ['episodes', caseId], queryFn: () => getEpisodes(caseId), enabled: !!caseId, retry: 1, refetchInterval: 30000 })
+  const { data, isLoading } = useQuery({ queryKey: ['episodes', caseId], queryFn: () => getEpisodes(caseId), enabled: !!caseId, retry: 1, refetchInterval: 60000, staleTime: 60000 })
   const episodes = data ?? []
 
   // ─── Filtered episodes ────────────────────────────────────────────────────

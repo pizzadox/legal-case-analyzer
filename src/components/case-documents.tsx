@@ -281,18 +281,23 @@ export function CaseDocuments({ caseId }: { caseId: string }) {
     queryKey: ['documents', caseId],
     queryFn: () => caseApi.getDocuments(caseId),
     retry: 1,
-    refetchInterval: 30000,
+    staleTime: 30000,
+    refetchInterval: 60000,
+    refetchOnWindowFocus: false,
     enabled: !!caseId,
   })
-  const { data: evidenceChainData } = useQuery({ queryKey: ['evidence-chain', caseId], queryFn: () => caseApi.getEvidenceChain(caseId), retry: 1, refetchInterval: 30000, enabled: !!caseId })
+  const { data: evidenceChainData } = useQuery({ queryKey: ['evidence-chain', caseId], queryFn: () => caseApi.getEvidenceChain(caseId), retry: 1, staleTime: 60000, refetchInterval: false, refetchOnWindowFocus: false, enabled: !!caseId })
   
-  // Poll processing status from the microservice every 5 seconds
+  // Poll processing status — dynamic interval based on whether processing is active
+  const [isProcessingActive, setIsProcessingActive] = useState(false)
   const { data: processingStatus } = useQuery<ProcessingStatusResponse>({ 
     queryKey: ['processing-status', caseId],
     queryFn: () => caseApi.getProcessingStatus(caseId),
-    refetchInterval: 15000, // Poll every 15 seconds (reduced from 5s to prevent re-render loop)
+    staleTime: 30000,
+    refetchInterval: isProcessingActive ? 10000 : false,
+    refetchOnWindowFocus: false,
     retry: 1,
-    enabled: !!caseId, // Only poll when we have a caseId
+    enabled: !!caseId,
   })
   
   // Track previous processing state to detect TRANSITIONS (not every poll)
@@ -301,22 +306,25 @@ export function CaseDocuments({ caseId }: { caseId: string }) {
   const prevProcessingRef = useRef(0)
 
   // Only invalidate when processing status TRANSITIONS happen
-  // (e.g., a document goes from "processing" to "completed" or "failed")
-  // NOT on every 5-second poll cycle — that causes infinite re-render loop
+  // NOT on every poll cycle — that causes infinite re-render loop
+  // Use specific primitive values as deps instead of the whole object reference
+  const curCompleted = processingStatus?.completed ?? 0
+  const curFailed = processingStatus?.failed ?? 0
+  const curProcessing = processingStatus?.processing ?? 0
+  const curQueued = processingStatus?.queued ?? 0
+
+  // Update processing-active state for dynamic polling interval
   useEffect(() => {
-    if (!processingStatus) return
+    setIsProcessingActive(curProcessing > 0 || curQueued > 0)
+  }, [curProcessing, curQueued])
 
-    const curCompleted = processingStatus.completed
-    const curFailed = processingStatus.failed
-    const curProcessing = processingStatus.processing
-
-    // Detect transitions: completed/failed count changed, or processing count changed to 0
+  // Invalidate queries only when actual state transitions happen
+  useEffect(() => {
     const completedChanged = curCompleted !== prevCompletedRef.current
     const failedChanged = curFailed !== prevFailedRef.current
     const processingFinished = prevProcessingRef.current > 0 && curProcessing === 0
 
     if (completedChanged || failedChanged || processingFinished) {
-      // Only invalidate when actual transitions happen
       queryClient.invalidateQueries({ queryKey: ['documents', caseId] })
       queryClient.invalidateQueries({ queryKey: ['persons', caseId] })
       queryClient.invalidateQueries({ queryKey: ['episodes', caseId] })
@@ -325,11 +333,10 @@ export function CaseDocuments({ caseId }: { caseId: string }) {
       queryClient.invalidateQueries({ queryKey: ['evidence-chain', caseId] })
     }
 
-    // Update refs for next comparison
     prevCompletedRef.current = curCompleted
     prevFailedRef.current = curFailed
     prevProcessingRef.current = curProcessing
-  }, [processingStatus, caseId, queryClient])
+  }, [curCompleted, curFailed, curProcessing, caseId, queryClient])
   
   const documents = data ?? []
   const evidenceChain = evidenceChainData ?? []

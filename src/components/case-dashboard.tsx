@@ -286,13 +286,13 @@ function MiniTimeline({ events, onNavigate }: { events: CaseTimelineEvent[]; onN
 
 export function CaseDashboard({ caseId }: { caseId: string }) {
   const { setActiveSection } = useCaseStore()
-  const { data, isLoading } = useQuery({ queryKey: ['dashboard', caseId], queryFn: () => getDashboardStats(caseId), retry: 1, enabled: !!caseId, refetchInterval: 30000 })
-  const { data: healthData } = useQuery({ queryKey: ['health-score', caseId], queryFn: () => getCaseHealthScore(caseId), retry: 1, enabled: !!caseId, refetchInterval: 30000 })
-  const { data: tlData } = useQuery({ queryKey: ['evidence-timeline', caseId], queryFn: () => getEvidenceTimeline(caseId), retry: 1, enabled: !!caseId, refetchInterval: 30000 })
-  const { data: briefData } = useQuery({ queryKey: ['case-brief', caseId], queryFn: () => getCaseBrief(caseId), retry: 1, enabled: !!caseId, refetchInterval: 30000 })
-  const { data: bkData } = useQuery({ queryKey: ['bookmarks', caseId], queryFn: () => getBookmarks(caseId), retry: 1, enabled: !!caseId, refetchInterval: 30000 })
-  const { data: ctData } = useQuery({ queryKey: ['case-timeline', caseId], queryFn: () => getCaseTimeline(caseId), retry: 1, enabled: !!caseId, refetchInterval: 30000 })
-  const { data: auData } = useQuery({ queryKey: ['audit-log', caseId], queryFn: () => getAuditLog(caseId, 10), retry: 1, enabled: !!caseId, refetchInterval: 30000 })
+  const { data, isLoading } = useQuery({ queryKey: ['dashboard', caseId], queryFn: () => getDashboardStats(caseId), retry: 1, enabled: !!caseId, refetchInterval: 60000, staleTime: 60000 })
+  const { data: healthData } = useQuery({ queryKey: ['health-score', caseId], queryFn: () => getCaseHealthScore(caseId), retry: 1, enabled: !!caseId, refetchInterval: 60000, staleTime: 60000 })
+  const { data: tlData } = useQuery({ queryKey: ['evidence-timeline', caseId], queryFn: () => getEvidenceTimeline(caseId), retry: 1, enabled: !!caseId, refetchInterval: 60000, staleTime: 60000 })
+  const { data: briefData } = useQuery({ queryKey: ['case-brief', caseId], queryFn: () => getCaseBrief(caseId), retry: 1, enabled: !!caseId, refetchInterval: false })
+  const { data: bkData } = useQuery({ queryKey: ['bookmarks', caseId], queryFn: () => getBookmarks(caseId), retry: 1, enabled: !!caseId, refetchInterval: false })
+  const { data: ctData } = useQuery({ queryKey: ['case-timeline', caseId], queryFn: () => getCaseTimeline(caseId), retry: 1, enabled: !!caseId, refetchInterval: false })
+  const { data: auData } = useQuery({ queryKey: ['audit-log', caseId], queryFn: () => getAuditLog(caseId, 10), retry: 1, enabled: !!caseId, refetchInterval: false })
   const stats = data ?? { caseInfo: null, summary: { totalDocuments: 0, totalPersons: 0, totalEpisodes: 0, totalArticles: 0, totalLocations: 0, totalCrossReferences: 0, totalChatMessages: 0, totalComplianceChecks: 0, totalDefenseLines: 0, totalGuiltAssessments: 0 }, documents: { total: 0, byType: {}, byStatus: {}, recent: [] }, persons: { total: 0, kolesnichenko: null, byRole: {} }, episodes: { total: 0, bySeverity: {}, byStatus: {}, episodesWithDates: [] }, processingQueue: { inProgress: [], byStatus: {} }, guiltAssessments: { total: 0, byGuiltLevel: {}, byEvidenceStrength: {}, details: [] }, defenseLines: { total: 0, byType: {}, byStrength: {}, details: [] }, complianceChecks: { total: 0, byStatus: {}, byType: {}, details: [] } } as DashboardStats
   const hs = healthData ?? { score: 0, factors: { documentProcessing: { label: '', value: 0, tooltip: 'Нет данных' }, complianceRate: { label: '', value: 0, tooltip: 'Нет данных' }, evidenceStrength: { label: '', value: 0, tooltip: 'Нет данных' }, defenseCoverage: { label: '', value: 0, tooltip: 'Нет данных' } } } as CaseHealthScore
   const evs = tlData ?? []

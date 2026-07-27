@@ -126,7 +126,7 @@ function SectionRenderer({ sectionId, caseId }: { sectionId: SectionId; caseId: 
   }
   if (!Component) return null
 
-  const needsCaseId = ['dashboard', 'documents', 'persons', 'episodes', 'export-center', 'qa', 'legal-check', 'evidence-chain', 'battle-plan']
+  const needsCaseId = ['dashboard', 'documents', 'persons', 'episodes', 'export-center', 'qa', 'legal-check', 'evidence-chain', 'battle-plan', 'search', 'defense', 'timeline', 'risk', 'brief', 'analytics']
   if (needsCaseId.includes(sectionId)) {
     return <Component caseId={caseId} />
   }
@@ -152,7 +152,9 @@ export default function CasePage() {
   const { data: cases = [], isLoading: isLoadingCases } = useQuery<CriminalCaseData[]>({
     queryKey: ['criminal-cases'],
     queryFn: () => caseApi.getCases(),
-    refetchInterval: 30000,
+    staleTime: 60000,
+    refetchInterval: 120000,
+    refetchOnWindowFocus: false,
   })
 
   // Compute the currently active case
